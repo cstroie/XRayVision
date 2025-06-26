@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import asyncio
 import os
 import uuid
@@ -5,19 +7,21 @@ import base64
 import aiohttp
 import cv2
 import numpy as np
+import math
 from aiohttp import web
 from pydicom import dcmread
 from pynetdicom import AE, evt, StoragePresentationContexts
+from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayImageStorageForPresentation
 
 # Configuration
-PNG_STORAGE_DIR = 'png_files'
-OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
+IMAGES_DIR = 'images'
+OPENAI_API_URL = 'http://127.0.0.1:8080/v1/chat/completions'
 OPENAI_API_KEY = 'sk-your-api-key'  # Insert your OpenAI API key
 LISTEN_PORT = 4010  # Updated DICOM port
 DASHBOARD_PORT = 8000  # Updated dashboard port
 AE_TITLE = 'XRAYVISION'  # Updated AE Title
 
-os.makedirs(PNG_STORAGE_DIR, exist_ok=True)
+os.makedirs(IMAGES_DIR, exist_ok=True)
 data_queue = asyncio.Queue()
 
 # Dashboard state
@@ -26,18 +30,39 @@ dashboard_state = {
     'processing_file': None,
     'success_count': 0,
     'failure_count': 0,
-    'history': []  # List of (filename, response_text)
+    'history': []  # List of (filename, patient_name, patient_id, study_date, text)
 }
 
-MAX_HISTORY = 10
+MAX_HISTORY = 20
 
-def dicom_to_png(dicom_file, max_size=500):
+main_loop = None  # Global variable to hold the main event loop
+
+def adjust_gamma(image, gamma = 1.2):
+    # If gamma is None, compute it
+    if gamma is None:
+        if len(image.shape) > 2: # or image.shape[2] > 1:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # compute gamma = log(mid*255)/log(mean)
+        mid = 0.5
+        mean = np.median(image)
+        gamma = math.log(mid * 255) / math.log(mean)
+        print(f"Calculated gamma is {gamma:.2f}")
+    # build a lookup table mapping the pixel values [0, 255] to
+    # their adjusted gamma values
+    invGamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** invGamma) * 255
+        for i in np.arange(0, 256)]).astype("uint8")
+    # apply gamma correction using the lookup table
+    return cv2.LUT(image, table)
+
+def dicom_to_png(dicom_file, max_size = 500):
     """Convert DICOM to PNG and return PNG filename."""
+    # Get the dataset
     ds = dcmread(dicom_file)
-
+    # Check for PixelData
     if 'PixelData' not in ds:
         raise ValueError("DICOM file has no pixel data!")
-
+    # Normalize image to 0-255
     image = ds.pixel_array
     image = image.astype(np.float32)
     image -= image.min()
@@ -45,10 +70,12 @@ def dicom_to_png(dicom_file, max_size=500):
         image /= image.max()
     image *= 255.0
     image = image.astype(np.uint8)
-
-    if len(image.shape) == 2:
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-
+    # Adjust gamma
+    image = adjust_gamma(image, None)
+    # Convert to 3-channel if needed (for OpenAI if it expects color)
+    #if len(image.shape) == 2:
+    #    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    # Resize while maintaining aspect ratio
     height, width = image.shape[:2]
     if max(height, width) > max_size:
         if height > width:
@@ -57,86 +84,86 @@ def dicom_to_png(dicom_file, max_size=500):
         else:
             new_width = max_size
             new_height = int(height * (max_size / width))
-        image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
-
-    base_name = str(uuid.uuid4())
-    png_file = os.path.join(PNG_STORAGE_DIR, f"{base_name}.png")
+        image = cv2.resize(image, (new_width, new_height), interpolation = cv2.INTER_AREA)
+    # Save the PNG file
+    base_name = os.path.splitext(os.path.basename(dicom_file))[0]
+    png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
     print(f"Converted and resized image saved to {png_file}")
-
-    return png_file
+    # Return the PNG file name
+    return png_file, ds.PatientName, ds.PatientID, ds.StudyDate
 
 def handle_store(event):
     """Callback for receiving a DICOM file."""
+    # Get the dataset
     ds = event.dataset
     ds.file_meta = event.file_meta
-
-    dicom_file = os.path.join(PNG_STORAGE_DIR, f"{uuid.uuid4()}.dcm")
-    ds.save_as(dicom_file, write_like_original=False)
+    # Save the DICOM file
+    dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
+    ds.save_as(dicom_file, write_like_original = False)
     print(f"Received and saved DICOM file: {dicom_file}")
-
-    try:
-        png_file = dicom_to_png(dicom_file)
-        os.remove(dicom_file)
-        print(f"DICOM file {dicom_file} deleted after conversion.")
-        asyncio.create_task(data_queue.put(png_file))
-    except Exception as e:
-        print(f"Error converting DICOM file {dicom_file}: {e}")
-
+    # Schedule queue put on the main event loop
+    #main_loop.call_soon_threadsafe(asyncio.create_task, data_queue.put(dicom_file))
+    main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
+    dashboard_state['queue_size'] = data_queue.qsize()
+    # Return success
     return 0x0000
 
-async def send_image_to_openai(png_file, max_retries=3):
+async def send_image_to_openai(png_file, patient_name = "", patient_id = "", study_date = "", max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
+    # Read the PNG file
     with open(png_file, 'rb') as f:
         image_bytes = f.read()
-
+    # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
-
+    # Prepare the request headers
     headers = {
         'Authorization': f'Bearer {OPENAI_API_KEY}',
         'Content-Type': 'application/json',
-        'Connection': 'close'
     }
-
+    # Prepare the JSON data
     data = {
-        'model': 'gpt-4o',
+        'model': 'medgemma-4b-it',
         'messages': [
             {
                 'role': 'user',
                 'content': [
-                    {'type': 'text', 'text': 'Analyze this image.'},
+                    {'type': 'text', 'text': 'Is there anything abnormal with this chest xray? Answer yes or no, then provide a one line description like a radiologist.'},
                     {'type': 'image_url', 'image_url': {'url': image_url}}
                 ]
             }
         ]
     }
-
+    # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
     attempt = 0
     while attempt < max_retries:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(OPENAI_API_URL, headers=headers, json=data) as response:
-                    response_text = await response.text()
-                    print(f"OpenAI API response for {png_file}: {response_text}")
-
+                async with session.post(OPENAI_API_URL, headers = headers, json = data) as response:
+                    result = await response.json()
+                    text = result["choices"][0]["message"]["content"]
+                    text = text.replace('\n', " ").replace("  ", " ")
+                    print(f"OpenAI API response for {png_file}: {text}")
+                    # Save the result to a text file
                     base_name = os.path.splitext(os.path.basename(png_file))[0]
-                    response_file = os.path.join(PNG_STORAGE_DIR, f"{base_name}.txt")
-                    with open(response_file, 'w') as f:
-                        f.write(response_text)
-                    print(f"Response saved to {response_file}")
-
+                    text_file = os.path.join(IMAGES_DIR, f"{base_name}.txt")
+                    with open(text_file, 'w') as f:
+                        f.write(text)
+                    print(f"Response saved to {text_file}")
+                    # Update the dashboard
                     dashboard_state['success_count'] += 1
-
-                    dashboard_state['history'].insert(0, (os.path.basename(png_file), response_text))
+                    # Add to history (keep only last MAX_HISTORY)
+                    dashboard_state['history'].insert(0, (os.path.basename(png_file), patient_name, patient_id, study_date, text))
                     dashboard_state['history'] = dashboard_state['history'][:MAX_HISTORY]
-
-                    return True  # Success
+                    # Success
+                    return True
         except Exception as e:
             print(f"Error uploading {png_file} (Attempt {attempt + 1}): {e}")
-            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+            # Exponential backoff
+            await asyncio.sleep(2 ** attempt)
             attempt += 1
-
+    # Failure after max_retries
     print(f"Failed to upload {png_file} after {max_retries} attempts.")
     dashboard_state['failure_count'] += 1
     return False
@@ -144,13 +171,21 @@ async def send_image_to_openai(png_file, max_retries=3):
 async def relay_to_openai():
     """Relay PNG files to OpenAI API with retries and dashboard update."""
     while True:
-        png_file = await data_queue.get()
+        # Get one file from queue
+        dicom_file = await data_queue.get()
+        # Update the dashboard
+        dashboard_state['processing_file'] = os.path.basename(dicom_file)
+        dashboard_state['queue_size'] = data_queue.qsize()
+        # Try to convert to PNG
         try:
-            dashboard_state['processing_file'] = os.path.basename(png_file)
-            dashboard_state['queue_size'] = data_queue.qsize()
-
-            await send_image_to_openai(png_file)
-
+            png_file, patient_name, patient_id, study_date = dicom_to_png(dicom_file)
+            os.remove(dicom_file)
+            print(f"DICOM file {dicom_file} deleted after conversion.")
+        except Exception as e:
+            print(f"Error converting DICOM file {dicom_file}: {e}")
+        # Try to send to AI
+        try:
+            await send_image_to_openai(png_file, patient_name, patient_id, study_date)
         except Exception as e:
             print(f"Unhandled error processing {png_file}: {e}")
         finally:
@@ -158,60 +193,68 @@ async def relay_to_openai():
             dashboard_state['queue_size'] = data_queue.qsize()
             data_queue.task_done()
 
-async def start_dicom_server():
+def start_dicom_server():
     """Start the DICOM Storage SCP."""
     ae = AE(ae_title=AE_TITLE)
-    ae.supported_contexts = StoragePresentationContexts
+    # Accept only XRays
+    ae.add_supported_context(ComputedRadiographyImageStorage)
+    ae.add_supported_context(DigitalXRayImageStorageForPresentation)
+    # C-Store handler
     handlers = [(evt.EVT_C_STORE, handle_store)]
-
     print(f"Starting DICOM server on port {LISTEN_PORT} with AE Title '{AE_TITLE}'...")
-    ae.start_server(('', LISTEN_PORT), evt_handlers=handlers, block=True)
+    ae.start_server(("0.0.0.0", LISTEN_PORT), evt_handlers = handlers, block = True)
 
-# Dashboard Server
 async def dashboard(request):
     """Render the status dashboard with thumbnails and responses."""
     history_html = ""
-    for filename, response in dashboard_state['history']:
+    for filename, patient_name, patient_id, study_date, response in dashboard_state['history']:
         image_path = f"/static/{filename}"
         highlight = response.strip().lower().startswith('yes')
-        response_style = "color: green; font-weight: bold;" if highlight else "color: black;"
+        response_style = "color: red;" if highlight else "color: green;"
         history_html += f"""
-        <div class="card">
-            <img src="{image_path}" width="100"><br>
-            <strong>{filename}</strong><br>
-            <div style="{response_style}">{response}</div>
+        <div class="blockcard">
+            <img src="{image_path}">
+            <div>
+                <strong>{patient_name}</strong><br>
+                <span>{patient_id}</span><br>
+                <span>{study_date}</span><br>
+                <span style="{response_style}">{response}</span>
+            </div>
         </div>
         """
 
     content = f"""
     <html>
     <head>
-        <meta http-equiv="refresh" content="2">
-        <title>Processing Dashboard</title>
+        <meta http-equiv="refresh" content="5">
+        <title>XRayVision Processing Dashboard</title>
         <style>
             body {{ font-family: Arial, sans-serif; margin: 40px; }}
             .card {{ padding: 10px; margin: 10px; border: 1px solid #ddd; border-radius: 8px; display: inline-block; width: 200px; vertical-align: top; }}
+            .blockcard {{ padding: 10px; margin: 10px; border: 1px solid #ddd; border-radius: 8px; display: block; width: 700px; }}
+            .blockcard img {{ height: 100px; }}
+            .blockcard div {{ display: inline-block; vertical-align: top; max-width: 500px; }}
         </style>
     </head>
     <body>
-        <h1>📊 Processing Dashboard</h1>
+        <h1>📊 XRayVision Processing Dashboard</h1>
         <div class="card"><strong>Queue Size:</strong> {dashboard_state['queue_size']}</div>
         <div class="card"><strong>Currently Processing:</strong> {dashboard_state['processing_file'] or "Idle"}</div>
         <div class="card"><strong>Successful Uploads:</strong> {dashboard_state['success_count']}</div>
         <div class="card"><strong>Failed Uploads:</strong> {dashboard_state['failure_count']}</div>
 
-        <h2>Last 10 Processed Files</h2>
+        <h2>Last {MAX_HISTORY} Processed Files</h2>
         <div style="display: flex; flex-wrap: wrap;">{history_html}</div>
     </body>
     </html>
     """
-    return web.Response(text=content, content_type='text/html')
+    return web.Response(text = content, content_type = 'text/html')
 
 async def start_dashboard():
     """Start the dashboard web server."""
     app = web.Application()
     app.router.add_get('/', dashboard)
-    app.router.add_static('/static/', path=PNG_STORAGE_DIR, name='static')
+    app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
@@ -219,14 +262,18 @@ async def start_dashboard():
     print(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
 async def main():
+    # Store main event loop here
+    global main_loop
+    main_loop = asyncio.get_running_loop()  
+    # Start the asynchronous tasks
     asyncio.create_task(relay_to_openai())
     asyncio.create_task(start_dashboard())
+    # Start the DICOM server
+    await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
 
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, start_dicom_server)
 
 if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Server stopped by user. Shutting down, meatbag.")
+        print("Server stopped by user. Shutting down.")
