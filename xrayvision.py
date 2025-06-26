@@ -21,6 +21,8 @@ LISTEN_PORT = 4010  # Updated DICOM port
 DASHBOARD_PORT = 8000  # Updated dashboard port
 AE_TITLE = 'XRAYVISION'  # Updated AE Title
 
+PROMPT = "Identify the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb. Identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Assess carefully if there is anything abnormal pictured in the xray. Do not assume, stick to the facts. The answer should be YES or NO. If in doubt, say so. Then provide a one line description of the findings like a radiologist. Check for fractures, foreign metallic bodies, lung consolidation, lung hyperlucency, lung infitrates, lung nodules, air bronchogram, tracheal narrowing, mediastinal shift, pleural effusion, pneumothorax, cardiac silhouette, heart size reported to chest size, size of thimus, large abdominal hydroaeric levels, distended bowel loops, pneumoperitoneum, no gas in lower right abdomen suggestive to intussusception, catheters, spine curvatures, vertebral fractures, vertebral alignment, subcutaneous emphysema, skull fractures, maxilar and frontal sinus transparency."
+
 os.makedirs(IMAGES_DIR, exist_ok=True)
 data_queue = asyncio.Queue()
 websocket_clients = set()
@@ -91,7 +93,7 @@ def dicom_to_png(dicom_file, max_size = 500):
     cv2.imwrite(png_file, image)
     print(f"Converted and resized image saved to {png_file}")
     # Return the PNG file name
-    return png_file, ds.PatientName, ds.PatientID, ds.StudyDate
+    return png_file, str(ds.PatientName), str(ds.PatientID), str(ds.StudyDate)
 
 async def broadcast_dashboard_update():
     if not websocket_clients:
@@ -160,7 +162,7 @@ async def send_image_to_openai(png_file, patient_name = "", patient_id = "", stu
             {
                 'role': 'user',
                 'content': [
-                    {'type': 'text', 'text': 'Is there anything abnormal with this chest xray? Answer yes or no, then provide a one line description like a radiologist.'},
+                    {'type': 'text', 'text': PROMPT},
                     {'type': 'image_url', 'image_url': {'url': image_url}}
                 ]
             }
