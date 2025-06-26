@@ -16,12 +16,15 @@ from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayIma
 # Configuration
 IMAGES_DIR = 'images'
 OPENAI_API_URL = 'http://127.0.0.1:8080/v1/chat/completions'
+OPENAI_API_URL = 'http://192.168.3.239:8080/v1/chat/completions'
 OPENAI_API_KEY = 'sk-your-api-key'  # Insert your OpenAI API key
 LISTEN_PORT = 4010  # Updated DICOM port
 DASHBOARD_PORT = 8000  # Updated dashboard port
 AE_TITLE = 'XRAYVISION'  # Updated AE Title
 
-PROMPT = "Identify the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb. Identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Assess carefully if there is anything abnormal pictured in the xray. Do not assume, stick to the facts. The answer should be YES or NO. If in doubt, say so. Then provide a one line description of the findings like a radiologist. Check for fractures, foreign metallic bodies, lung consolidation, lung hyperlucency, lung infitrates, lung nodules, air bronchogram, tracheal narrowing, mediastinal shift, pleural effusion, pneumothorax, cardiac silhouette, heart size reported to chest size, size of thimus, large abdominal hydroaeric levels, distended bowel loops, pneumoperitoneum, no gas in lower right abdomen suggestive to intussusception, catheters, spine curvatures, vertebral fractures, vertebral alignment, subcutaneous emphysema, skull fractures, maxilar and frontal sinus transparency."
+#PROMPT = "Identify the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb. Identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Assess carefully if there is anything abnormal pictured in the xray. Do not assume, stick to the facts. The answer should be YES or NO, then provide a one line report of the findings like a radiologist. If in doubt, say so. Use the next checklist, but do not include the list in report. Check for fractures, foreign metallic bodies, subcutaneous emphysema. In chest xray, check for lung consolidation, lung hyperlucency, lung infitrates, lung nodules, air bronchogram, tracheal narrowing, mediastinal shift, pleural effusion, pneumothorax, cardiac silhouette, heart size reported to chest size, size of thimus. In abdominal xray check for large abdominal hydroaeric levels, distended bowel loops, pneumoperitoneum, calculi, catheters. If the spine is imaged, check for spine curvatures, vertebral fractures, vertebral alignment. In head xray, check for skull fractures, maxilar and frontal sinus transparency."
+#PROMPT = "You are a smart radiologist working in ER. Identify for yourself the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb, identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Respond in plaintext if there is anything abnormal in the xray: start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
+PROMPT = "You are a smart radiologist working in ER. Is there anything abnormal in this {} xray of a {}? Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
 
 os.makedirs(IMAGES_DIR, exist_ok=True)
 data_queue = asyncio.Queue()
@@ -33,7 +36,7 @@ dashboard_state = {
     'processing_file': None,
     'success_count': 0,
     'failure_count': 0,
-    'history': []  # List of (filename, patient_name, patient_id, study_date, text)
+    'history': []  # List of (filename, metadata, text)
 }
 
 MAX_HISTORY = 20
@@ -57,6 +60,24 @@ def adjust_gamma(image, gamma = 1.2):
         for i in np.arange(0, 256)]).astype("uint8")
     # apply gamma correction using the lookup table
     return cv2.LUT(image, table)
+
+
+"""
+>>> q.PatientName
+'BUCUR ^VLAD ANDREI'
+>>> q.PatientAge
+'002Y'
+>>> q.ProtocolName
+'W035 Torace a.p. 5-15Kg'
+>>> q.PatientSex
+'M'
+>>> q.SeriesDescription
+'W035 Torace a.p. 5-15Kg'
+>>> q.SeriesDate
+'20250626'
+>>> q.SeriesTime
+'152418.0557'
+"""
 
 def dicom_to_png(dicom_file, max_size = 500):
     """Convert DICOM to PNG and return PNG filename."""
@@ -92,8 +113,22 @@ def dicom_to_png(dicom_file, max_size = 500):
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
     print(f"Converted and resized image saved to {png_file}")
-    # Return the PNG file name
-    return png_file, str(ds.PatientName), str(ds.PatientID), str(ds.StudyDate)
+    # Return the PNG file name and metadata
+    meta = {
+        'patient': {
+            'name': str(ds.PatientName),
+            'id': str(ds.PatientID),
+            'age': str(ds.PatientAge),
+            'sex': str(ds.PatientSex),
+        },
+        'series': {
+            'desc': str(ds.SeriesDescription),
+            'proto': str(ds.ProtocolName),
+            'date': str(ds.SeriesDate),
+            'time': str(ds.SeriesTime),
+        }
+    }
+    return png_file, meta
 
 async def broadcast_dashboard_update():
     if not websocket_clients:
@@ -135,18 +170,42 @@ def handle_store(event):
     ds.save_as(dicom_file, write_like_original = False)
     print(f"Received and saved DICOM file: {dicom_file}")
     # Schedule queue put on the main event loop
-    #main_loop.call_soon_threadsafe(asyncio.create_task, data_queue.put(dicom_file))
     main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
     dashboard_state['queue_size'] = data_queue.qsize()
     asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
     return 0x0000
 
-async def send_image_to_openai(png_file, patient_name = "", patient_id = "", study_date = "", max_retries = 3):
+async def send_image_to_openai(png_file, meta, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
     # Read the PNG file
     with open(png_file, 'rb') as f:
         image_bytes = f.read()
+    # Prepare the prompt
+    region = ""
+    projection = ""
+    gender = "child"
+    age = ""
+    desc = meta["series"]["desc"].lower()
+    if 'torace' in desc:
+        anatomy = 'chest'
+    elif 'abdomen' in desc:
+        anatomy = 'abdominal'
+    elif 'cap' in desc:
+        anatomy = 'skull'
+    if 'a.p.' in desc:
+        projection = 'frontal'
+    elif 'lat.' in desc:
+        projection = 'lateral'
+    if 'm' in meta["patient"]["sex"].lower():
+        gender = 'boy'
+    elif 'f' in meta["patient"]["sex"].lower():
+        gender = 'girl'
+    age = meta["patient"]["age"].lower().replace("y", " years").replace("m", " months")
+    subject = " ".join([age, "old", gender])
+    region = " ".join([projection, anatomy])
+    prompt = PROMPT.format(region, subject)
+    print(f"Prompt: {prompt}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -162,7 +221,7 @@ async def send_image_to_openai(png_file, patient_name = "", patient_id = "", stu
             {
                 'role': 'user',
                 'content': [
-                    {'type': 'text', 'text': PROMPT},
+                    {'type': 'text', 'text': prompt},
                     {'type': 'image_url', 'image_url': {'url': image_url}}
                 ]
             }
@@ -187,7 +246,7 @@ async def send_image_to_openai(png_file, patient_name = "", patient_id = "", stu
                     # Update the dashboard
                     dashboard_state['success_count'] += 1
                     # Add to history (keep only last MAX_HISTORY)
-                    dashboard_state['history'].insert(0, (os.path.basename(png_file), patient_name, patient_id, study_date, text))
+                    dashboard_state['history'].insert(0, {'file': os.path.basename(png_file), 'meta': meta, 'text': text})
                     dashboard_state['history'] = dashboard_state['history'][:MAX_HISTORY]
                     await broadcast_dashboard_update()
                     # Success
@@ -214,14 +273,14 @@ async def relay_to_openai():
         await broadcast_dashboard_update()
         # Try to convert to PNG
         try:
-            png_file, patient_name, patient_id, study_date = dicom_to_png(dicom_file)
-            os.remove(dicom_file)
+            png_file, meta = dicom_to_png(dicom_file)
+            #os.remove(dicom_file)
             print(f"DICOM file {dicom_file} deleted after conversion.")
         except Exception as e:
             print(f"Error converting DICOM file {dicom_file}: {e}")
         # Try to send to AI
         try:
-            await send_image_to_openai(png_file, patient_name, patient_id, study_date)
+            await send_image_to_openai(png_file, meta)
         except Exception as e:
             print(f"Unhandled error processing {png_file}: {e}")
         finally:

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XRayVision Processing Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #2e3436;
+            color: #eeeeec;
+            margin: 20px;
+        }
+        h1, h2 {
+            color: #729fcf;
+        }
+        .card {
+            padding: 10px;
+            margin: 10px;
+            border: 1px solid #729fcf;
+            border-radius: 8px;
+            background-color: #555753;
+            display: inline-block;
+            width: 200px;
+            vertical-align: top;
+            text-align: center;
+        }
+        .blockcard {
+            padding: 10px;
+            margin: 10px;
+            border: 1px solid #729fcf;
+            border-radius: 8px;
+            background-color: #555753;
+            display: block;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        .blockcard img {
+            height: 100px;
+            border: 1px solid #729fcf;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .blockcard div {
+            display: inline-block;
+            vertical-align: top;
+            max-width: 500px;
+        }
+        .lightbox {
+            display: none;
+            position: fixed;
+            z-index: 999;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            text-align: center;
+            padding-top: 60px;
+        }
+        .lightbox img {
+            max-width: 90%;
+            max-height: 80%;
+        }
+        @media (max-width: 768px) {
+            .blockcard {
+                width: 100%;
+            }
+            .blockcard img {
+                height: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>📊 XRayVision Processing Dashboard</h1>
+    <div class="card"><strong>Queue Size:</strong><br><span id="queue">0</span></div>
+    <div class="card"><strong>Currently Processing:</strong><br><span id="processing">Idle</span></div>
+    <div class="card"><strong>Successful Uploads:</strong><br><span id="success">0</span></div>
+    <div class="card"><strong>Failed Uploads:</strong><br><span id="failure">0</span></div>
+
+    <h2>Last Processed Files</h2>
+    <div id="history" style="display: flex; flex-wrap: wrap; justify-content: center;"></div>
+
+    <div id="lightbox" class="lightbox">
+        <img id="lightbox-img" src="">
+    </div>
+
+    <script>
+    let ws;
+
+    function connectWebSocket() {
+        ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+        ws.onopen = function () {
+            console.log("WebSocket connected.");
+        };
+
+        ws.onmessage = function(event) {
+            let data = JSON.parse(event.data);
+
+            document.getElementById('queue').innerHTML = data.queue_size;
+            document.getElementById('processing').innerHTML = data.processing_file || 'Idle';
+            document.getElementById('success').innerHTML = data.success_count;
+            document.getElementById('failure').innerHTML = data.failure_count;
+
+            let historyHtml = '';
+            data.history.forEach(item => {
+                let highlight = item.text.trim().toLowerCase().startsWith('yes');
+                let style = highlight ? 'color: #8ae234; font-weight: bold;' : 'color: #eeeeec;';
+                historyHtml += `
+                    <div class="blockcard">
+                        <a href="/static/${item.file}" class="lightbox-link">
+                            <img src="/static/${item.file}" alt="Processed Image">
+                        </a>
+                        <div>
+                            <strong>${item.meta.patient.name}</strong><br>
+                            <span>${item.meta.series.desc}</span><br>
+                            <span>${item.meta.patient.id}</span><br>
+                            <span>${item.meta.series.date} ${item.meta.series.time}</span><br>
+                            <span style="${style}">${item.text}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            document.getElementById('history').innerHTML = historyHtml;
+
+            document.querySelectorAll('.lightbox-link img').forEach(img => {
+                img.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    document.getElementById('lightbox-img').src = this.src;
+                    document.getElementById('lightbox').style.display = 'block';
+                });
+            });
+        };
+
+        ws.onclose = function () {
+            console.warn("WebSocket connection closed. Attempting to reconnect in 3 seconds...");
+            setTimeout(connectWebSocket, 3000);
+        };
+
+        ws.onerror = function (error) {
+            console.error("WebSocket error: ", error);
+            ws.close();
+        };
+    }
+
+    connectWebSocket();
+
+    document.getElementById('lightbox').addEventListener('click', function () {
+        this.style.display = 'none';
+    });
+    </script>
+</body>
+</html>
