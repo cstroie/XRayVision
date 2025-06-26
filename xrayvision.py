@@ -205,15 +205,17 @@ def start_dicom_server():
     ae.start_server(("0.0.0.0", LISTEN_PORT), evt_handlers = handlers, block = True)
 
 async def dashboard(request):
-    """Render the status dashboard with thumbnails and responses."""
+    """Render the status dashboard with thumbnails, lightbox previews, and mobile responsiveness using a Tango dark theme."""
     history_html = ""
     for filename, patient_name, patient_id, study_date, response in dashboard_state['history']:
         image_path = f"/static/{filename}"
         highlight = response.strip().lower().startswith('yes')
-        response_style = "color: red;" if highlight else "color: green;"
+        response_style = "color: #8ae234; font-weight: bold;" if highlight else "color: #eeeeec;"
         history_html += f"""
         <div class="blockcard">
-            <img src="{image_path}">
+            <a href="{image_path}" class="lightbox-link">
+                <img src="{image_path}">
+            </a>
             <div>
                 <strong>{patient_name}</strong><br>
                 <span>{patient_id}</span><br>
@@ -229,26 +231,107 @@ async def dashboard(request):
         <meta http-equiv="refresh" content="5">
         <title>XRayVision Processing Dashboard</title>
         <style>
-            body {{ font-family: Arial, sans-serif; margin: 40px; }}
-            .card {{ padding: 10px; margin: 10px; border: 1px solid #ddd; border-radius: 8px; display: inline-block; width: 200px; vertical-align: top; }}
-            .blockcard {{ padding: 10px; margin: 10px; border: 1px solid #ddd; border-radius: 8px; display: block; width: 700px; }}
-            .blockcard img {{ height: 100px; }}
-            .blockcard div {{ display: inline-block; vertical-align: top; max-width: 500px; }}
+            body {{
+                font-family: Arial, sans-serif;
+                background-color: #2e3436;
+                color: #eeeeec;
+                margin: 20px;
+            }}
+            h1, h2 {{
+                color: #729fcf;
+            }}
+            .card {{
+                padding: 10px;
+                margin: 10px;
+                border: 1px solid #729fcf;
+                border-radius: 8px;
+                background-color: #555753;
+                display: inline-block;
+                width: 200px;
+                vertical-align: top;
+                text-align: center;
+            }}
+            .blockcard {{
+                padding: 10px;
+                margin: 10px;
+                border: 1px solid #729fcf;
+                border-radius: 8px;
+                background-color: #555753;
+                display: block;
+                max-width: 100%;
+                box-sizing: border-box;
+            }}
+            .blockcard img {{
+                height: 100px;
+                border: 1px solid #729fcf;
+                margin-right: 10px;
+                cursor: pointer;
+            }}
+            .blockcard div {{
+                display: inline-block;
+                vertical-align: top;
+                max-width: 500px;
+            }}
+            .lightbox {{
+                display: none;
+                position: fixed;
+                z-index: 999;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.9);
+                text-align: center;
+                padding-top: 60px;
+            }}
+            .lightbox img {{
+                max-width: 90%;
+                max-height: 80%;
+            }}
+            .lightbox:target {{
+                display: block;
+            }}
+            @media (max-width: 768px) {{
+                .blockcard {{
+                    width: 100%;
+                }}
+                .blockcard img {{
+                    height: 80px;
+                }}
+            }}
         </style>
     </head>
     <body>
         <h1>📊 XRayVision Processing Dashboard</h1>
-        <div class="card"><strong>Queue Size:</strong> {dashboard_state['queue_size']}</div>
-        <div class="card"><strong>Currently Processing:</strong> {dashboard_state['processing_file'] or "Idle"}</div>
-        <div class="card"><strong>Successful Uploads:</strong> {dashboard_state['success_count']}</div>
-        <div class="card"><strong>Failed Uploads:</strong> {dashboard_state['failure_count']}</div>
+        <div class="card"><strong>Queue Size:</strong><br>{dashboard_state['queue_size']}</div>
+        <div class="card"><strong>Currently Processing:</strong><br>{dashboard_state['processing_file'] or "Idle"}</div>
+        <div class="card"><strong>Successful Uploads:</strong><br>{dashboard_state['success_count']}</div>
+        <div class="card"><strong>Failed Uploads:</strong><br>{dashboard_state['failure_count']}</div>
 
         <h2>Last {MAX_HISTORY} Processed Files</h2>
-        <div style="display: flex; flex-wrap: wrap;">{history_html}</div>
+        <div style="display: flex; flex-wrap: wrap; justify-content: center;">{history_html}</div>
+
+        <div id="lightbox" class="lightbox">
+            <img id="lightbox-img" src="">
+        </div>
+
+        <script>
+            // Lightbox click handler
+            document.querySelectorAll('.lightbox-link img').forEach(img => {{
+                img.addEventListener('click', function(e) {{
+                    e.preventDefault();
+                    document.getElementById('lightbox-img').src = this.src;
+                    document.getElementById('lightbox').style.display = 'block';
+                }});
+            }});
+            document.getElementById('lightbox').addEventListener('click', function() {{
+                this.style.display = 'none';
+            }});
+        </script>
     </body>
     </html>
     """
-    return web.Response(text = content, content_type = 'text/html')
+    return web.Response(text=content, content_type='text/html')
 
 async def start_dashboard():
     """Start the dashboard web server."""
