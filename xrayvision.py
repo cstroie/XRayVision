@@ -16,7 +16,7 @@ from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayIma
 # Configuration
 IMAGES_DIR = 'images'
 OPENAI_API_URL = 'http://127.0.0.1:8080/v1/chat/completions'
-OPENAI_API_URL = 'http://192.168.3.239:8080/v1/chat/completions'
+#OPENAI_API_URL = 'http://192.168.3.239:8080/v1/chat/completions'
 OPENAI_API_KEY = 'sk-your-api-key'  # Insert your OpenAI API key
 LISTEN_PORT = 4010  # Updated DICOM port
 DASHBOARD_PORT = 8000  # Updated dashboard port
@@ -24,9 +24,11 @@ AE_TITLE = 'XRAYVISION'  # Updated AE Title
 
 #PROMPT = "Identify the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb. Identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Assess carefully if there is anything abnormal pictured in the xray. Do not assume, stick to the facts. The answer should be YES or NO, then provide a one line report of the findings like a radiologist. If in doubt, say so. Use the next checklist, but do not include the list in report. Check for fractures, foreign metallic bodies, subcutaneous emphysema. In chest xray, check for lung consolidation, lung hyperlucency, lung infitrates, lung nodules, air bronchogram, tracheal narrowing, mediastinal shift, pleural effusion, pneumothorax, cardiac silhouette, heart size reported to chest size, size of thimus. In abdominal xray check for large abdominal hydroaeric levels, distended bowel loops, pneumoperitoneum, calculi, catheters. If the spine is imaged, check for spine curvatures, vertebral fractures, vertebral alignment. In head xray, check for skull fractures, maxilar and frontal sinus transparency."
 #PROMPT = "You are a smart radiologist working in ER. Identify for yourself the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb, identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Respond in plaintext if there is anything abnormal in the xray: start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
-PROMPT = "You are a smart radiologist working in ER. Is there anything abnormal in this {} xray of a {}? Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
+PROMPT1 = "You are a smart radiologist working in ER."
+PROMPT2 = "{} in this {} xray of a {}?"
+PROMPT3 = "Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
 
-os.makedirs(IMAGES_DIR, exist_ok=True)
+os.makedirs(IMAGES_DIR, exist_ok = True)
 data_queue = asyncio.Queue()
 websocket_clients = set()
 
@@ -39,7 +41,7 @@ dashboard_state = {
     'history': []  # List of (filename, metadata, text)
 }
 
-MAX_HISTORY = 20
+MAX_HISTORY = 100
 
 main_loop = None  # Global variable to hold the main event loop
 
@@ -61,25 +63,7 @@ def adjust_gamma(image, gamma = 1.2):
     # apply gamma correction using the lookup table
     return cv2.LUT(image, table)
 
-
-"""
->>> q.PatientName
-'BUCUR ^VLAD ANDREI'
->>> q.PatientAge
-'002Y'
->>> q.ProtocolName
-'W035 Torace a.p. 5-15Kg'
->>> q.PatientSex
-'M'
->>> q.SeriesDescription
-'W035 Torace a.p. 5-15Kg'
->>> q.SeriesDate
-'20250626'
->>> q.SeriesTime
-'152418.0557'
-"""
-
-def dicom_to_png(dicom_file, max_size = 500):
+def dicom_to_png(dicom_file, max_size = 800):
     """Convert DICOM to PNG and return PNG filename."""
     # Get the dataset
     ds = dcmread(dicom_file)
@@ -165,14 +149,16 @@ def handle_store(event):
     # Get the dataset
     ds = event.dataset
     ds.file_meta = event.file_meta
-    # Save the DICOM file
-    dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
-    ds.save_as(dicom_file, write_like_original = False)
-    print(f"Received and saved DICOM file: {dicom_file}")
-    # Schedule queue put on the main event loop
-    main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
-    dashboard_state['queue_size'] = data_queue.qsize()
-    asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
+    # Check the Modality
+    if ds.Modality == "CR":
+        # Save the DICOM file
+        dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
+        ds.save_as(dicom_file, write_like_original = False)
+        print(f"Received and saved DICOM file: {dicom_file}")
+        # Schedule queue put on the main event loop
+        main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
+        dashboard_state['queue_size'] = data_queue.qsize()
+        asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
     return 0x0000
 
@@ -182,30 +168,84 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     with open(png_file, 'rb') as f:
         image_bytes = f.read()
     # Prepare the prompt
+    question = "Is there anything abnormal"
     region = ""
+    subject = ""
+    anatomy = ""
     projection = ""
     gender = "child"
     age = ""
     desc = meta["series"]["desc"].lower()
     if 'torace' in desc:
         anatomy = 'chest'
+        question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
+    elif 'grilaj' in desc or 'coaste' in desc:
+        anatomy = 'chest'
+        question = "Are there any ribs or clavicles fractures"
+    elif 'stern' in desc:
+        anatomy = 'sternum'
+        question = "Are there any fractures"
     elif 'abdomen' in desc:
         anatomy = 'abdominal'
-    elif 'cap' in desc:
+        question = "Are there any hydroaeric levels or pneumoperitoneum"
+    elif 'cap' in desc or 'craniu' in desc or 'craniu' in desc or 'occiput' in desc:
         anatomy = 'skull'
-    if 'a.p.' in desc:
+        question = "Are there any fractures"
+    elif 'mandibula' in desc:
+        anatomy = 'mandible'
+        question = "Are there any fractures"
+    elif 'nazal' in desc:
+        anatomy = 'nasal bones'
+        question = "Are there any fractures"
+    elif 'sinus' in desc:
+        anatomy = 'maxilar and frontal sinus'
+        question = "Are there any changes in transparency of the sinuses"
+    elif 'col.' in desc:
+        anatomy = 'spine'
+        question = "Are there any fractures or dislocations"
+    elif 'bazin' in desc:
+        anatomy = 'pelvis'
+        question = "Are there any fractures"
+    elif 'clavicul' in desc:
+        anatomy = 'clavicle'
+        question = "Are there any fractures"
+    elif 'humerus' in desc or 'antebrat' in desc:
+        anatomy = 'upper limb'
+        question = "Are there any fractures, dislocations or bone tumors"
+    elif 'pumn' in desc or 'mana' in desc or 'deget' in desc:
+        anatomy = 'hand'
+        question = "Are there any fractures, dislocations or bone tumors"
+    elif 'umar' in desc:
+        anatomy = 'shoulder'
+        question = "Are there any fractures or dislocations"
+    elif 'cot' in desc:
+        anatomy = 'elbow'
+        question = "Are there any fractures or dislocations"
+    elif 'sold' in desc:
+        anatomy = 'hip'
+        question = "Are there any fractures or dislocations"
+    elif 'femur' in desc or 'tibie' in desc or 'glezna' in desc or 'picior' in desc or 'gamba' in desc or 'calcai' in desc:
+        anatomy = 'lower limb'
+        question = "Are there any fractures, dislocations or bone tumors"
+    elif 'genunchi' in desc or 'patella' in desc:
+        anatomy = 'knee'
+        question = "Are there any fractures or dislocations"
+    if 'a.p.' in desc or 'p.a.' in desc or 'd.v.' in desc or 'v.d.' in desc:
         projection = 'frontal'
     elif 'lat.' in desc:
         projection = 'lateral'
+    elif 'oblic' in desc:
+        projection = 'oblique'
     if 'm' in meta["patient"]["sex"].lower():
         gender = 'boy'
     elif 'f' in meta["patient"]["sex"].lower():
         gender = 'girl'
     age = meta["patient"]["age"].lower().replace("y", " years").replace("m", " months")
     subject = " ".join([age, "old", gender])
-    region = " ".join([projection, anatomy])
-    prompt = PROMPT.format(region, subject)
-    print(f"Prompt: {prompt}")
+    if anatomy:
+        region = " ".join([projection, anatomy])
+    prompt = " ".join([PROMPT1, PROMPT2.format(question, region, subject), PROMPT3])
+    #print(f"Prompt: {prompt}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -292,6 +332,8 @@ async def relay_to_openai():
 def start_dicom_server():
     """Start the DICOM Storage SCP."""
     ae = AE(ae_title=AE_TITLE)
+    # Accept everything
+    #ae.supported_contexts = StoragePresentationContexts
     # Accept only XRays
     ae.add_supported_context(ComputedRadiographyImageStorage)
     ae.add_supported_context(DigitalXRayImageStorageForPresentation)
