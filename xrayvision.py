@@ -8,6 +8,7 @@ import aiohttp
 import cv2
 import numpy as np
 import math
+import json
 from aiohttp import web
 from pydicom import dcmread
 from pynetdicom import AE, evt, StoragePresentationContexts
@@ -21,12 +22,13 @@ OPENAI_API_KEY = 'sk-your-api-key'  # Insert your OpenAI API key
 LISTEN_PORT = 4010  # Updated DICOM port
 DASHBOARD_PORT = 8000  # Updated dashboard port
 AE_TITLE = 'XRAYVISION'  # Updated AE Title
+HISTORY_FILE = os.path.join(IMAGES_DIR, 'history.json')
 
 #PROMPT = "Identify the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb. Identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Assess carefully if there is anything abnormal pictured in the xray. Do not assume, stick to the facts. The answer should be YES or NO, then provide a one line report of the findings like a radiologist. If in doubt, say so. Use the next checklist, but do not include the list in report. Check for fractures, foreign metallic bodies, subcutaneous emphysema. In chest xray, check for lung consolidation, lung hyperlucency, lung infitrates, lung nodules, air bronchogram, tracheal narrowing, mediastinal shift, pleural effusion, pneumothorax, cardiac silhouette, heart size reported to chest size, size of thimus. In abdominal xray check for large abdominal hydroaeric levels, distended bowel loops, pneumoperitoneum, calculi, catheters. If the spine is imaged, check for spine curvatures, vertebral fractures, vertebral alignment. In head xray, check for skull fractures, maxilar and frontal sinus transparency."
 #PROMPT = "You are a smart radiologist working in ER. Identify for yourself the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb, identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Respond in plaintext if there is anything abnormal in the xray: start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
 PROMPT1 = "You are a smart radiologist working in ER."
 PROMPT2 = "{} in this {} xray of a {}?"
-PROMPT3 = "Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
+PROMPT3 = "Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
 
 os.makedirs(IMAGES_DIR, exist_ok = True)
 data_queue = asyncio.Queue()
@@ -44,6 +46,15 @@ dashboard_state = {
 MAX_HISTORY = 100
 
 main_loop = None  # Global variable to hold the main event loop
+
+# Load existing .dcm files into queue
+def preload_dicom_files():
+    for filename in os.listdir(IMAGES_DIR):
+        if filename.lower().endswith('.dcm'):
+            dicom_file = os.path.join(IMAGES_DIR, filename)
+            asyncio.create_task(data_queue.put(dicom_file))
+            print(f"Preloading {dicom_file} into processing queue...")
+    dashboard_state['queue_size'] = data_queue.qsize()
 
 def adjust_gamma(image, gamma = 1.2):
     # If gamma is None, compute it
@@ -114,7 +125,7 @@ def dicom_to_png(dicom_file, max_size = 800):
     }
     return png_file, meta
 
-async def broadcast_dashboard_update():
+async def broadcast_dashboard_update(client = None):
     if not websocket_clients:
         return
     update = {
@@ -124,17 +135,25 @@ async def broadcast_dashboard_update():
         'failure_count': dashboard_state['failure_count'],
         'history': dashboard_state['history']
     }
-    for ws in websocket_clients.copy():
+    if client:
         try:
-            await ws.send_json(update)
+            await client.send_json(update)
         except Exception as e:
             print(f"Error sending update to WebSocket client: {e}")
-            websocket_clients.remove(ws)
+            websocket_clients.remove(client)
+    else:
+        for ws in websocket_clients.copy():
+            try:
+                await ws.send_json(update)
+            except Exception as e:
+                print(f"Error sending update to WebSocket client: {e}")
+                websocket_clients.remove(ws)
 
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     websocket_clients.add(ws)
+    await broadcast_dashboard_update(ws)
     print("Dashboard connected via WebSocket.")
     try:
         async for msg in ws:
@@ -176,7 +195,7 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     gender = "child"
     age = ""
     desc = meta["series"]["desc"].lower()
-    if 'torace' in desc:
+    if 'torace' in desc or 'pulmon' in desc:
         anatomy = 'chest'
         question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
     elif 'grilaj' in desc or 'coaste' in desc:
@@ -230,6 +249,8 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     elif 'genunchi' in desc or 'patella' in desc:
         anatomy = 'knee'
         question = "Are there any fractures or dislocations"
+    else:
+        anatomy = desc
     if 'a.p.' in desc or 'p.a.' in desc or 'd.v.' in desc or 'v.d.' in desc:
         projection = 'frontal'
     elif 'lat.' in desc:
@@ -240,8 +261,15 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
         gender = 'boy'
     elif 'f' in meta["patient"]["sex"].lower():
         gender = 'girl'
-    age = meta["patient"]["age"].lower().replace("y", " years").replace("m", " months")
-    subject = " ".join([age, "old", gender])
+    age = meta["patient"]["age"].lower().replace("y", "").strip()
+    if age:
+        if age == '000':
+            age = 'newborn'
+        else:
+            age = age + " years old"
+    else:
+        age = ""
+    subject = " ".join([age, gender])
     if anatomy:
         region = " ".join([projection, anatomy])
     prompt = " ".join([PROMPT1, PROMPT2.format(question, region, subject), PROMPT3])
@@ -275,7 +303,7 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
                 async with session.post(OPENAI_API_URL, headers = headers, json = data) as response:
                     result = await response.json()
                     text = result["choices"][0]["message"]["content"]
-                    text = text.replace('\n', " ").replace("  ", " ")
+                    text = text.replace('\n', " ").replace("  ", " ").strip()
                     print(f"OpenAI API response for {png_file}: {text}")
                     # Save the result to a text file
                     base_name = os.path.splitext(os.path.basename(png_file))[0]
@@ -289,6 +317,11 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
                     dashboard_state['history'].insert(0, {'file': os.path.basename(png_file), 'meta': meta, 'text': text})
                     dashboard_state['history'] = dashboard_state['history'][:MAX_HISTORY]
                     await broadcast_dashboard_update()
+                    # Save as JSON-friendly structure
+                    history_to_save = [item for item in dashboard_state['history']]
+                    # Save history
+                    with open(HISTORY_FILE, 'w') as f:
+                        json.dump(history_to_save, f)
                     # Success
                     return True
         except Exception as e:
@@ -314,8 +347,6 @@ async def relay_to_openai():
         # Try to convert to PNG
         try:
             png_file, meta = dicom_to_png(dicom_file)
-            #os.remove(dicom_file)
-            print(f"DICOM file {dicom_file} deleted after conversion.")
         except Exception as e:
             print(f"Error converting DICOM file {dicom_file}: {e}")
         # Try to send to AI
@@ -328,6 +359,8 @@ async def relay_to_openai():
             dashboard_state['queue_size'] = data_queue.qsize()
             await broadcast_dashboard_update()
             data_queue.task_done()
+            os.remove(dicom_file)
+            print(f"DICOM file {dicom_file} deleted after processing.")
 
 def start_dicom_server():
     """Start the DICOM Storage SCP."""
@@ -359,13 +392,26 @@ async def start_dashboard():
     await site.start()
     print(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
+def load_history():
+    """Load history on startup."""
+    if os.path.exists(HISTORY_FILE):
+        print(f"Loading history from {HISTORY_FILE}")
+        with open(HISTORY_FILE, 'r') as f:
+            dashboard_state['history'] = json.load(f)
+    else:
+        dashboard_state['history'] = []
+
 async def main():
+    # Load history
+    load_history()
     # Store main event loop here
     global main_loop
-    main_loop = asyncio.get_running_loop()  
+    main_loop = asyncio.get_running_loop()
     # Start the asynchronous tasks
     asyncio.create_task(relay_to_openai())
     asyncio.create_task(start_dashboard())
+    # Preload the existing dicom files
+    preload_dicom_files()
     # Start the DICOM server
     await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
 
