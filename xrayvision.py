@@ -26,10 +26,7 @@ HISTORY_FILE = os.path.join(IMAGES_DIR, 'history.json')
 
 #PROMPT = "Identify the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb. Identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Assess carefully if there is anything abnormal pictured in the xray. Do not assume, stick to the facts. The answer should be YES or NO, then provide a one line report of the findings like a radiologist. If in doubt, say so. Use the next checklist, but do not include the list in report. Check for fractures, foreign metallic bodies, subcutaneous emphysema. In chest xray, check for lung consolidation, lung hyperlucency, lung infitrates, lung nodules, air bronchogram, tracheal narrowing, mediastinal shift, pleural effusion, pneumothorax, cardiac silhouette, heart size reported to chest size, size of thimus. In abdominal xray check for large abdominal hydroaeric levels, distended bowel loops, pneumoperitoneum, calculi, catheters. If the spine is imaged, check for spine curvatures, vertebral fractures, vertebral alignment. In head xray, check for skull fractures, maxilar and frontal sinus transparency."
 #PROMPT = "You are a smart radiologist working in ER. Identify for yourself the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb, identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Respond in plaintext if there is anything abnormal in the xray: start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
-PROMPT1 = "You are a smart radiologist working in ER."
-PROMPT2 = "{} in this {} xray of a {}?"
-PROMPT3 = "Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
-
+PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt. {} in this {} xray of a {}?"
 os.makedirs(IMAGES_DIR, exist_ok = True)
 data_queue = asyncio.Queue()
 websocket_clients = set()
@@ -80,7 +77,7 @@ def dicom_to_png(dicom_file, max_size = 800):
     ds = dcmread(dicom_file)
     # Check for PixelData
     if 'PixelData' not in ds:
-        raise ValueError("DICOM file has no pixel data!")
+        raise ValueError(f"DICOM file {dicom_file} has no pixel data!")
     # Normalize image to 0-255
     image = ds.pixel_array.astype(np.float32)
     image -= image.min()
@@ -90,9 +87,6 @@ def dicom_to_png(dicom_file, max_size = 800):
     image = image.astype(np.uint8)
     # Adjust gamma
     image = adjust_gamma(image, None)
-    # Convert to 3-channel if needed (for OpenAI if it expects color)
-    #if len(image.shape) == 2:
-    #    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
     # Resize while maintaining aspect ratio
     height, width = image.shape[:2]
     if max(height, width) > max_size:
@@ -107,7 +101,7 @@ def dicom_to_png(dicom_file, max_size = 800):
     base_name = os.path.splitext(os.path.basename(dicom_file))[0]
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
-    print(f"Converted and resized image saved to {png_file}")
+    print(f"Converted PNG saved to {png_file}")
     # Return the PNG file name and metadata
     meta = {
         'patient': {
@@ -115,15 +109,37 @@ def dicom_to_png(dicom_file, max_size = 800):
             'id': str(ds.PatientID),
             'age': str(ds.PatientAge),
             'sex': str(ds.PatientSex),
+            'bdate': str(ds.PatientBirthDate),
         },
         'series': {
+            'uid': str(ds.SeriesInstanceUID),
             'desc': str(ds.SeriesDescription),
             'proto': str(ds.ProtocolName),
             'date': str(ds.SeriesDate),
             'time': str(ds.SeriesTime),
+        },
+        'study': {
+            'uid': str(ds.StudyInstanceUID),
+            'date': str(ds.StudyDate),
+            'time': str(ds.StudyTime),
         }
     }
     return png_file, meta
+
+async def toggle_flag(request):
+    data = await request.json()
+    file_to_toggle = data.get('file')
+
+    for item in dashboard_state['history']:
+        if item['file'] == file_to_toggle:
+            item['flagged'] = not item.get('flagged', False)
+            break
+
+    with open(HISTORY_FILE, 'w') as f:
+        json.dump(dashboard_state['history'], f)
+
+    await broadcast_dashboard_update()
+    return web.json_response({'status': 'success', 'flagged': item['flagged']})
 
 async def broadcast_dashboard_update(client = None):
     if not websocket_clients:
@@ -173,7 +189,7 @@ def handle_store(event):
         # Save the DICOM file
         dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
         ds.save_as(dicom_file, write_like_original = False)
-        print(f"Received and saved DICOM file: {dicom_file}")
+        print(f"Received and saved DICOM file to {dicom_file}")
         # Schedule queue put on the main event loop
         main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
         dashboard_state['queue_size'] = data_queue.qsize()
@@ -272,7 +288,7 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     subject = " ".join([age, gender])
     if anatomy:
         region = " ".join([projection, anatomy])
-    prompt = " ".join([PROMPT1, PROMPT2.format(question, region, subject), PROMPT3])
+    prompt = PROMPT.format(question, region, subject)
     #print(f"Prompt: {prompt}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
@@ -314,7 +330,7 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
                     # Update the dashboard
                     dashboard_state['success_count'] += 1
                     # Add to history (keep only last MAX_HISTORY)
-                    dashboard_state['history'].insert(0, {'file': os.path.basename(png_file), 'meta': meta, 'text': text})
+                    dashboard_state['history'].insert(0, {'file': os.path.basename(png_file), 'meta': meta, 'text': text, 'flagged': False})
                     dashboard_state['history'] = dashboard_state['history'][:MAX_HISTORY]
                     await broadcast_dashboard_update()
                     # Save as JSON-friendly structure
@@ -359,8 +375,9 @@ async def relay_to_openai():
             dashboard_state['queue_size'] = data_queue.qsize()
             await broadcast_dashboard_update()
             data_queue.task_done()
-            os.remove(dicom_file)
-            print(f"DICOM file {dicom_file} deleted after processing.")
+        # Remove the DICOM file
+        os.remove(dicom_file)
+        print(f"DICOM file {dicom_file} deleted after processing.")
 
 def start_dicom_server():
     """Start the DICOM Storage SCP."""
@@ -386,6 +403,7 @@ async def start_dashboard():
     app.router.add_get('/', dashboard)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
     app.router.add_get('/ws', websocket_handler)
+    app.router.add_post('/toggle_flag', toggle_flag)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)

@@ -7,31 +7,21 @@
     <title>XRayVision Dashboard</title>
     <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@1.5.10/css/pico.min.css">
     <style>
-        :root {
-            --primary: #0d6efd;
-            --primary-hover: #0b5ed7;
-            --primary-focus: rgba(13, 110, 253, 0.25);
-            --background-color: #121212;
-            --card-background: #1e1e2f;
-            --border-color: #0d6efd;
-            --highlight-color: #4fc3f7;
-        }
-
         body {
-            background-color: var(--background-color);
+            background-color: #121212;
             color: white;
         }
 
         h1,
         h2 {
-            color: var(--highlight-color);
+            color: #4fc3f7;
         }
 
         .image-card {
             padding: 1rem;
-            border: 1px solid var(--border-color);
+            border: 1px solid #0d6efd;
             border-radius: 0.5rem;
-            background-color: var(--card-background);
+            background-color: #1e1e2f;
             margin-bottom: 1rem;
             display: flex;
             align-items: flex-start;
@@ -41,16 +31,46 @@
         .image-card img {
             cursor: pointer;
             max-width: 100px;
-            border: 1px solid var(--highlight-color);
+            border: 1px solid #4fc3f7;
+        }
+
+        .positive img {
+            border: 1px solid #00ff00;
+        }
+
+        .flagged img {
+            border: 1px solid #ff0000;
         }
 
         .image-card .text {
             word-break: break-word;
         }
 
-        .highlight {
+        .positive .report {
             color: #4fc3f7;
             font-weight: bold;
+        }
+
+        .positive {
+            background-color: #003b00;
+            border: 1px solid #00ff00;
+        }
+
+        .positive button {
+            background-color: #4caf50;
+            border-color: #00ff00;
+            color: white;
+        }
+
+        .flagged {
+            background-color: #3b0000;
+            border: 1px solid #ff0000;
+        }
+
+        .flagged button {
+            background-color: #ff4c4c;
+            border-color: #ff0000;
+            color: white;
         }
 
         .lightbox {
@@ -67,12 +87,28 @@
             color: white;
         }
 
+        .lightbox.flagged {
+            background-color: rgba(128, 0, 0, 0.9);
+        }
+
+        .lightbox.positive {
+            background-color: rgba(0, 128, 0, 0.9);
+        }
+
         .lightbox img {
             max-width: 90%;
             max-height: 80%;
             margin-bottom: 1rem;
-            border: 2px solid var(--highlight-color);
+            border: 1px solid #4fc3f7;
             border-radius: 0.5rem;
+        }
+
+        .lightbox.flagged img {
+            border: 1px solid #ff0000;
+        }
+
+        .lightbox.positive img {
+            border: 1px solid #00ff00;
         }
 
         .lightbox .lightbox-text {
@@ -101,13 +137,12 @@
 
     <script>
         let ws;
-        let currentLightboxText = '';
 
         function connectWebSocket() {
             ws = new WebSocket("ws://" + window.location.host + "/ws");
 
             ws.onopen = function () {
-                console.log("WebSocket connected.");
+                console.log("WebSocket connected to " + window.location.host);
             };
 
             ws.onmessage = function (event) {
@@ -120,8 +155,7 @@
 
                 let historyHtml = '';
                 data.history.forEach(item => {
-                    let highlight = item.text.trim().toLowerCase().startsWith('yes');
-                    let styleClass = highlight ? 'highlight' : '';
+                    let isPositive = item.text.trim().toLowerCase().startsWith('yes');
 
                     let date = item.meta.series.date;
                     let time = item.meta.series.time;
@@ -131,15 +165,20 @@
                     let patientNameParts = item.meta.patient.name.split('^');
                     let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
 
+                    let isFlagged = item.flagged;
+                    let flaggedClass = isFlagged ? 'flagged' : '';
+                    let positiveClass = isPositive ? 'positive' : '';
+                    let buttonLabel = isFlagged ? 'Wrong' : 'Correct';
+
                     historyHtml += `
-                        <div class="image-card">
-                            <img src="/static/${item.file}" alt="Processed Image" onclick="openLightbox('/static/${item.file}', '${formattedPatientName}', '${item.text}')">
+                        <div class="image-card ${positiveClass} ${flaggedClass}" id="card-${item.file}">
+                            <img src="/static/${item.file}" alt="Processed Image" onclick="openLightbox('/static/${item.file}', '${formattedPatientName}', '${item.text}', ${isFlagged}, ${isPositive})">
                             <div class="text">
                                 <strong>${formattedPatientName}</strong><br>
                                 <span>${item.meta.patient.id}</span><br>
                                 <span>${formattedDate} ${formattedTime}</span><br>
-                                <span>${item.meta.series.desc}</span><br>
-                                <span class="${styleClass}">${item.text}</span>
+                                <span class="report">${item.text}</span><br>
+                                <button onclick="toggleFlag('${item.file}')">${buttonLabel}</button>
                             </div>
                         </div>
                     `;
@@ -148,7 +187,7 @@
             };
 
             ws.onclose = function () {
-                console.warn("WebSocket closed. Attempting reconnect in 3 seconds...");
+                console.warn("WebSocket closed. Attempting reconnect in 5 seconds...");
                 setTimeout(connectWebSocket, 3000);
             };
 
@@ -158,10 +197,36 @@
             };
         }
 
-        function openLightbox(imageSrc, patientName, description) {
-            document.getElementById('lightbox-img').src = imageSrc;
+        function toggleFlag(file) {
+            fetch('/toggle_flag', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file: file })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Status update:', data.flagged ? 'wrong' : 'correct');
+            })
+            .catch(error => {
+                console.error('Error toggling flag:', error);
+            });
+        }
+
+        function openLightbox(imageSrc, patientName, description, isFlagged, isPositive) {
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImg = document.getElementById('lightbox-img');
             document.getElementById('lightbox-text').innerHTML = `<strong>${patientName}</strong><br>${description}`;
-            document.getElementById('lightbox').style.display = 'block';
+            lightboxImg.src = imageSrc;
+
+            lightbox.classList.remove('flagged', 'positive');
+
+            if (isFlagged) {
+                lightbox.classList.add('flagged');
+            } else if (isPositive) {
+                lightbox.classList.add('positive');
+            }
+
+            lightbox.style.display = 'block';
         }
 
         document.getElementById('lightbox').addEventListener('click', function () {
