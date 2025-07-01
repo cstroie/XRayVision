@@ -127,6 +127,20 @@
         <article><strong>Failed Uploads:</strong><br><span id="failure">0</span></article>
     </div>
 
+    <form>
+        <fieldset role="group">
+            <label for="queryInterval">Query Time Span (hours):</label>
+            <select id="queryInterval">
+                <option value="1">1</option>
+                <option value="3" selected>3</option>
+                <option value="6">6</option>
+                <option value="12">12</option>
+                <option value="24">24</option>
+            </select>
+            <button onclick="triggerQuery()">Trigger QueryRetrieve Now</button>
+        </fieldset>
+    </form>
+
     <h2>Last Processed Files</h2>
     <div id="history"></div>
 
@@ -137,6 +151,14 @@
 
     <script>
         let ws;
+
+        function sanitize(text) {
+            return text.replace(/&/g, "\&amp;")
+                       .replace(/</g, "\&lt;")
+                       .replace(/>/g, "\&gt;")
+                       .replace(/"/g, "\&quot;")
+                       .replace(/'/g, "\&#039;");
+        }
 
         function connectWebSocket() {
             ws = new WebSocket("ws://" + window.location.host + "/ws");
@@ -172,11 +194,12 @@
 
                     historyHtml += `
                         <div class="image-card ${positiveClass} ${flaggedClass}" id="card-${item.file}">
-                            <img src="/static/${item.file}" alt="Processed Image" onclick="openLightbox('/static/${item.file}', '${formattedPatientName}', '${item.text}', ${isFlagged}, ${isPositive})">
+                            <img src="/static/${item.file}" alt="Processed Image" onclick="openLightbox('/static/${item.file}', '${sanitize(formattedPatientName)}', '${sanitize(item.text)}', ${isFlagged}, ${isPositive})">
                             <div class="text">
                                 <strong>${formattedPatientName}</strong><br>
                                 <span>${item.meta.patient.id}</span><br>
                                 <span>${formattedDate} ${formattedTime}</span><br>
+                                <span>${item.meta.series.desc}</span><br>
                                 <span class="report">${item.text}</span><br>
                                 <button onclick="toggleFlag('${item.file}')">${buttonLabel}</button>
                             </div>
@@ -209,6 +232,22 @@
             })
             .catch(error => {
                 console.error('Error toggling flag:', error);
+            });
+        }
+
+        function triggerQuery() {
+            const hours = document.getElementById('queryInterval').value;
+            fetch('/trigger_query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hours: hours })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Query triggered:', data);
+            })
+            .catch(error => {
+                console.error('Error triggering query:', error);
             });
         }
 

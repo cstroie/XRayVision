@@ -11,8 +11,10 @@ import math
 import json
 from aiohttp import web
 from pydicom import dcmread
-from pynetdicom import AE, evt, StoragePresentationContexts
-from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayImageStorageForPresentation
+from pydicom.dataset import Dataset
+from pynetdicom import AE, evt, StoragePresentationContexts, QueryRetrievePresentationContexts
+from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayImageStorageForPresentation, PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
+from datetime import datetime, timedelta
 
 # Configuration
 IMAGES_DIR = 'images'
@@ -22,11 +24,13 @@ OPENAI_API_KEY = 'sk-your-api-key'  # Insert your OpenAI API key
 LISTEN_PORT = 4010  # Updated DICOM port
 DASHBOARD_PORT = 8000  # Updated dashboard port
 AE_TITLE = 'XRAYVISION'  # Updated AE Title
+REMOTE_AE_TITLE = '3DNETCLOUD'
+REMOTE_AE_IP = '192.168.3.50'
+REMOTE_AE_PORT = 104
 HISTORY_FILE = os.path.join(IMAGES_DIR, 'history.json')
 
-#PROMPT = "Identify the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb. Identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Assess carefully if there is anything abnormal pictured in the xray. Do not assume, stick to the facts. The answer should be YES or NO, then provide a one line report of the findings like a radiologist. If in doubt, say so. Use the next checklist, but do not include the list in report. Check for fractures, foreign metallic bodies, subcutaneous emphysema. In chest xray, check for lung consolidation, lung hyperlucency, lung infitrates, lung nodules, air bronchogram, tracheal narrowing, mediastinal shift, pleural effusion, pneumothorax, cardiac silhouette, heart size reported to chest size, size of thimus. In abdominal xray check for large abdominal hydroaeric levels, distended bowel loops, pneumoperitoneum, calculi, catheters. If the spine is imaged, check for spine curvatures, vertebral fractures, vertebral alignment. In head xray, check for skull fractures, maxilar and frontal sinus transparency."
-#PROMPT = "You are a smart radiologist working in ER. Identify for yourself the region in xray: skull, spine, chest, abdomen, pelvis, upper and lower limb, identify the projection: frontal or lateral, standing or laying back. The pacient is always a child, so the xray might not be perfect in exposure and projection. Check if the patient rotated. Respond in plaintext if there is anything abnormal in the xray: start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts."
-PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt. {} in this {} xray of a {}?"
+SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
+USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
 os.makedirs(IMAGES_DIR, exist_ok = True)
 data_queue = asyncio.Queue()
 websocket_clients = set()
@@ -37,12 +41,71 @@ dashboard_state = {
     'processing_file': None,
     'success_count': 0,
     'failure_count': 0,
-    'history': []  # List of (filename, metadata, text)
+    'history': []
 }
 
 MAX_HISTORY = 100
 
 main_loop = None  # Global variable to hold the main event loop
+
+async def query_retrieve_loop():
+    while True:
+        await query_and_retrieve()
+        await asyncio.sleep(3600)
+
+async def query_and_retrieve(hours=1):
+    ae = AE(ae_title=AE_TITLE)
+    ae.requested_contexts = QueryRetrievePresentationContexts
+
+    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
+    if assoc.is_established:
+        print(f"QueryRetrieve association established. Asking for studies in the last {hours} hours.")
+        current_time = datetime.now()
+        past_time = current_time - timedelta(hours=hours)
+        time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
+        date_today = current_time.strftime('%Y%m%d')
+
+        ds = Dataset()
+        ds.QueryRetrieveLevel = "STUDY"
+        ds.StudyDate = date_today
+        ds.StudyTime = time_range
+        ds.Modality = "CR"
+
+        responses = assoc.send_c_find(ds, PatientRootQueryRetrieveInformationModelFind)
+
+        for (status, identifier) in responses:
+            if status and status.Status in (0xFF00, 0xFF01):
+                study_instance_uid = identifier.StudyInstanceUID
+                print(f"Found Study {study_instance_uid}")
+                await send_c_move(ae, study_instance_uid)
+
+        assoc.release()
+    else:
+        print("Could not establish QueryRetrieve association.")
+
+async def send_c_move(ae, study_instance_uid):
+    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
+    if assoc.is_established:
+        ds = Dataset()
+        ds.QueryRetrieveLevel = "STUDY"
+        ds.StudyInstanceUID = study_instance_uid
+
+        responses = assoc.send_c_move(ds, AE_TITLE, PatientRootQueryRetrieveInformationModelMove)
+
+        assoc.release()
+    else:
+        print("Could not establish C-MOVE association.")
+
+async def handle_manual_query(request):
+    try:
+        data = await request.json()
+        hours = int(data.get('hours', 3))
+        print(f"Manual QueryRetrieve triggered for the last {hours} hours.")
+        await query_and_retrieve(hours)
+        return web.json_response({'status': 'success', 'message': f'Query triggered for the last {hours} hours.'})
+    except Exception as e:
+        print(f"Error processing manual query: {e}")
+        return web.json_response({'status': 'error', 'message': str(e)})
 
 # Load existing .dcm files into queue
 def preload_dicom_files():
@@ -170,7 +233,7 @@ async def websocket_handler(request):
     await ws.prepare(request)
     websocket_clients.add(ws)
     await broadcast_dashboard_update(ws)
-    print("Dashboard connected via WebSocket.")
+    print(f"Dashboard connected via WebSocket from {request.remote}")
     try:
         async for msg in ws:
             pass
@@ -189,7 +252,7 @@ def handle_store(event):
         # Save the DICOM file
         dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
         ds.save_as(dicom_file, write_like_original = False)
-        print(f"Received and saved DICOM file to {dicom_file}")
+        print(f"DICOM file saved to {dicom_file}")
         # Schedule queue put on the main event loop
         main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
         dashboard_state['queue_size'] = data_queue.qsize()
@@ -288,7 +351,7 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     subject = " ".join([age, gender])
     if anatomy:
         region = " ".join([projection, anatomy])
-    prompt = PROMPT.format(question, region, subject)
+    prompt = USR_PROMPT.format(question, region, subject)
     #print(f"Prompt: {prompt}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
@@ -302,6 +365,10 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     data = {
         'model': 'medgemma-4b-it',
         'messages': [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": SYS_PROMPT}]
+            },
             {
                 'role': 'user',
                 'content': [
@@ -376,8 +443,11 @@ async def relay_to_openai():
             await broadcast_dashboard_update()
             data_queue.task_done()
         # Remove the DICOM file
-        os.remove(dicom_file)
-        print(f"DICOM file {dicom_file} deleted after processing.")
+        try:
+            os.remove(dicom_file)
+            print(f"DICOM file {dicom_file} deleted after processing.")
+        except Exception as e:
+            print(f"Error removing DICOM file {dicom_file}: {e}")
 
 def start_dicom_server():
     """Start the DICOM Storage SCP."""
@@ -404,6 +474,7 @@ async def start_dashboard():
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
     app.router.add_get('/ws', websocket_handler)
     app.router.add_post('/toggle_flag', toggle_flag)
+    app.router.add_post('/trigger_query', handle_manual_query)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
@@ -428,6 +499,7 @@ async def main():
     # Start the asynchronous tasks
     asyncio.create_task(relay_to_openai())
     asyncio.create_task(start_dashboard())
+    asyncio.create_task(query_retrieve_loop())
     # Preload the existing dicom files
     preload_dicom_files()
     # Start the DICOM server
