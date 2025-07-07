@@ -15,7 +15,16 @@ from pydicom.dataset import Dataset
 from pynetdicom import AE, evt, StoragePresentationContexts, QueryRetrievePresentationContexts
 from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayImageStorageForPresentation, PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
 from datetime import datetime, timedelta
+import logging
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        #logging.FileHandler("xrayvision.log"),
+        logging.StreamHandler()
+    ]
+)
 # Configuration
 IMAGES_DIR = 'images'
 OPENAI_API_URL = 'http://127.0.0.1:8080/v1/chat/completions'
@@ -59,7 +68,7 @@ async def query_and_retrieve(hours=1):
 
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
     if assoc.is_established:
-        print(f"QueryRetrieve association established. Asking for studies in the last {hours} hours.")
+        logging.info(f"QueryRetrieve association established. Asking for studies in the last {hours} hours.")
         current_time = datetime.now()
         past_time = current_time - timedelta(hours=hours)
         time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
@@ -76,12 +85,12 @@ async def query_and_retrieve(hours=1):
         for (status, identifier) in responses:
             if status and status.Status in (0xFF00, 0xFF01):
                 study_instance_uid = identifier.StudyInstanceUID
-                print(f"Found Study {study_instance_uid}")
+                logging.info(f"Found Study {study_instance_uid}")
                 await send_c_move(ae, study_instance_uid)
 
         assoc.release()
     else:
-        print("Could not establish QueryRetrieve association.")
+        logging.info("Could not establish QueryRetrieve association.")
 
 async def send_c_move(ae, study_instance_uid):
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
@@ -94,17 +103,17 @@ async def send_c_move(ae, study_instance_uid):
 
         assoc.release()
     else:
-        print("Could not establish C-MOVE association.")
+        logging.info("Could not establish C-MOVE association.")
 
 async def handle_manual_query(request):
     try:
         data = await request.json()
         hours = int(data.get('hours', 3))
-        print(f"Manual QueryRetrieve triggered for the last {hours} hours.")
+        logging.info(f"Manual QueryRetrieve triggered for the last {hours} hours.")
         await query_and_retrieve(hours)
         return web.json_response({'status': 'success', 'message': f'Query triggered for the last {hours} hours.'})
     except Exception as e:
-        print(f"Error processing manual query: {e}")
+        logging.info(f"Error processing manual query: {e}")
         return web.json_response({'status': 'error', 'message': str(e)})
 
 # Load existing .dcm files into queue
@@ -113,7 +122,7 @@ def preload_dicom_files():
         if filename.lower().endswith('.dcm'):
             dicom_file = os.path.join(IMAGES_DIR, filename)
             asyncio.create_task(data_queue.put(dicom_file))
-            print(f"Preloading {dicom_file} into processing queue...")
+            logging.info(f"Preloading {dicom_file} into processing queue...")
     dashboard_state['queue_size'] = data_queue.qsize()
 
 def adjust_gamma(image, gamma = 1.2):
@@ -125,7 +134,7 @@ def adjust_gamma(image, gamma = 1.2):
         mid = 0.5
         mean = np.median(image)
         gamma = math.log(mid * 255) / math.log(mean)
-        print(f"Calculated gamma is {gamma:.2f}")
+        logging.info(f"Calculated gamma is {gamma:.2f}")
     # build a lookup table mapping the pixel values [0, 255] to
     # their adjusted gamma values
     invGamma = 1.0 / gamma
@@ -164,7 +173,7 @@ def dicom_to_png(dicom_file, max_size = 800):
     base_name = os.path.splitext(os.path.basename(dicom_file))[0]
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
-    print(f"Converted PNG saved to {png_file}")
+    logging.info(f"Converted PNG saved to {png_file}")
     # Return the PNG file name and metadata
     meta = {
         'patient': {
@@ -218,14 +227,14 @@ async def broadcast_dashboard_update(client = None):
         try:
             await client.send_json(update)
         except Exception as e:
-            print(f"Error sending update to WebSocket client: {e}")
+            logging.info(f"Error sending update to WebSocket client: {e}")
             websocket_clients.remove(client)
     else:
         for ws in websocket_clients.copy():
             try:
                 await ws.send_json(update)
             except Exception as e:
-                print(f"Error sending update to WebSocket client: {e}")
+                logging.info(f"Error sending update to WebSocket client: {e}")
                 websocket_clients.remove(ws)
 
 async def websocket_handler(request):
@@ -233,13 +242,13 @@ async def websocket_handler(request):
     await ws.prepare(request)
     websocket_clients.add(ws)
     await broadcast_dashboard_update(ws)
-    print(f"Dashboard connected via WebSocket from {request.remote}")
+    logging.info(f"Dashboard connected via WebSocket from {request.remote}")
     try:
         async for msg in ws:
             pass
     finally:
         websocket_clients.remove(ws)
-        print("Dashboard WebSocket disconnected.")
+        logging.info("Dashboard WebSocket disconnected.")
     return ws
 
 def handle_store(event):
@@ -252,7 +261,7 @@ def handle_store(event):
         # Save the DICOM file
         dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
         ds.save_as(dicom_file, write_like_original = False)
-        print(f"DICOM file saved to {dicom_file}")
+        logging.info(f"DICOM file saved to {dicom_file}")
         # Schedule queue put on the main event loop
         main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
         dashboard_state['queue_size'] = data_queue.qsize()
@@ -352,7 +361,7 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     if anatomy:
         region = " ".join([projection, anatomy])
     prompt = USR_PROMPT.format(question, region, subject)
-    #print(f"Prompt: {prompt}")
+    #logging.info(f"Prompt: {prompt}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -387,13 +396,13 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
                     result = await response.json()
                     text = result["choices"][0]["message"]["content"]
                     text = text.replace('\n', " ").replace("  ", " ").strip()
-                    print(f"OpenAI API response for {png_file}: {text}")
+                    logging.info(f"OpenAI API response for {png_file}: {text}")
                     # Save the result to a text file
                     base_name = os.path.splitext(os.path.basename(png_file))[0]
                     text_file = os.path.join(IMAGES_DIR, f"{base_name}.txt")
                     with open(text_file, 'w') as f:
                         f.write(text)
-                    print(f"Response saved to {text_file}")
+                    logging.info(f"Response saved to {text_file}")
                     # Update the dashboard
                     dashboard_state['success_count'] += 1
                     # Add to history (keep only last MAX_HISTORY)
@@ -408,12 +417,12 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
                     # Success
                     return True
         except Exception as e:
-            print(f"Error uploading {png_file} (Attempt {attempt + 1}): {e}")
+            logging.info(f"Error uploading {png_file} (Attempt {attempt + 1}): {e}")
             # Exponential backoff
             await asyncio.sleep(2 ** attempt)
             attempt += 1
     # Failure after max_retries
-    print(f"Failed to upload {png_file} after {max_retries} attempts.")
+    logging.info(f"Failed to upload {png_file} after {max_retries} attempts.")
     dashboard_state['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
@@ -431,12 +440,12 @@ async def relay_to_openai():
         try:
             png_file, meta = dicom_to_png(dicom_file)
         except Exception as e:
-            print(f"Error converting DICOM file {dicom_file}: {e}")
+            logging.info(f"Error converting DICOM file {dicom_file}: {e}")
         # Try to send to AI
         try:
             await send_image_to_openai(png_file, meta)
         except Exception as e:
-            print(f"Unhandled error processing {png_file}: {e}")
+            logging.info(f"Unhandled error processing {png_file}: {e}")
         finally:
             dashboard_state['processing_file'] = None
             dashboard_state['queue_size'] = data_queue.qsize()
@@ -445,9 +454,9 @@ async def relay_to_openai():
         # Remove the DICOM file
         try:
             os.remove(dicom_file)
-            print(f"DICOM file {dicom_file} deleted after processing.")
+            logging.info(f"DICOM file {dicom_file} deleted after processing.")
         except Exception as e:
-            print(f"Error removing DICOM file {dicom_file}: {e}")
+            logging.info(f"Error removing DICOM file {dicom_file}: {e}")
 
 def start_dicom_server():
     """Start the DICOM Storage SCP."""
@@ -459,7 +468,7 @@ def start_dicom_server():
     ae.add_supported_context(DigitalXRayImageStorageForPresentation)
     # C-Store handler
     handlers = [(evt.EVT_C_STORE, handle_store)]
-    print(f"Starting DICOM server on port {LISTEN_PORT} with AE Title '{AE_TITLE}'...")
+    logging.info(f"Starting DICOM server on port {LISTEN_PORT} with AE Title '{AE_TITLE}'...")
     ae.start_server(("0.0.0.0", LISTEN_PORT), evt_handlers = handlers, block = True)
 
 async def dashboard(request):
@@ -479,12 +488,12 @@ async def start_dashboard():
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
     await site.start()
-    print(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
+    logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
 def load_history():
     """Load history on startup."""
     if os.path.exists(HISTORY_FILE):
-        print(f"Loading history from {HISTORY_FILE}")
+        logging.info(f"Loading history from {HISTORY_FILE}")
         with open(HISTORY_FILE, 'r') as f:
             dashboard_state['history'] = json.load(f)
     else:
@@ -510,4 +519,4 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("Server stopped by user. Shutting down.")
+        logging.info("Server stopped by user. Shutting down.")
