@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# 
+# XRayVision - A Python-based DICOM storage and relay system with a real-time 
+#              dashboard for processing and reviewing X-ray images using 
+#              OpenAI APIs.
+# Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
 
 import asyncio
 import os
