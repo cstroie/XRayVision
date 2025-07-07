@@ -40,7 +40,7 @@ logging.basicConfig(
 IMAGES_DIR = 'images'
 OPENAI_API_URL = 'http://127.0.0.1:8080/v1/chat/completions'
 #OPENAI_API_URL = 'http://192.168.3.239:8080/v1/chat/completions'
-OPENAI_API_KEY = 'sk-your-api-key'  # Insert your OpenAI API key
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')  # Insert your OpenAI API key
 LISTEN_PORT = 4010  # Updated DICOM port
 DASHBOARD_PORT = 8000  # Updated dashboard port
 AE_TITLE = 'XRAYVISION'  # Updated AE Title
