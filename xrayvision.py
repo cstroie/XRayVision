@@ -30,28 +30,32 @@ import logging
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s | %(levelname)8s | %(message)s',
     handlers=[
         #logging.FileHandler("xrayvision.log"),
         logging.StreamHandler()
     ]
 )
+
 # Configuration
-IMAGES_DIR = 'images'
 OPENAI_API_URL = 'http://127.0.0.1:8080/v1/chat/completions'
 #OPENAI_API_URL = 'http://192.168.3.239:8080/v1/chat/completions'
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')  # Insert your OpenAI API key
-LISTEN_PORT = 4010  # Updated DICOM port
-DASHBOARD_PORT = 8000  # Updated dashboard port
-AE_TITLE = 'XRAYVISION'  # Updated AE Title
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')
+DASHBOARD_PORT = 8000
+AE_TITLE = 'XRAYVISION'
+AE_PORT  = 4010
 REMOTE_AE_TITLE = '3DNETCLOUD'
 REMOTE_AE_IP = '192.168.3.50'
 REMOTE_AE_PORT = 104
+IMAGES_DIR = 'images'
 HISTORY_FILE = os.path.join(IMAGES_DIR, 'history.json')
 
 SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
+
 os.makedirs(IMAGES_DIR, exist_ok = True)
+
+main_loop = None  # Global variable to hold the main event loop
 data_queue = asyncio.Queue()
 websocket_clients = set()
 
@@ -66,22 +70,21 @@ dashboard_state = {
 
 MAX_HISTORY = 100
 
-main_loop = None  # Global variable to hold the main event loop
-
 async def query_retrieve_loop():
     while True:
         await query_and_retrieve()
         await asyncio.sleep(3600)
 
-async def query_and_retrieve(hours=1):
-    ae = AE(ae_title=AE_TITLE)
+async def query_and_retrieve(hours = 1):
+    ae = AE(ae_title = AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
+    ae.connection_timeout = 30
 
-    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
+    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
     if assoc.is_established:
         logging.info(f"QueryRetrieve association established. Asking for studies in the last {hours} hours.")
         current_time = datetime.now()
-        past_time = current_time - timedelta(hours=hours)
+        past_time = current_time - timedelta(hours = hours)
         time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
         date_today = current_time.strftime('%Y%m%d')
 
@@ -101,10 +104,10 @@ async def query_and_retrieve(hours=1):
 
         assoc.release()
     else:
-        logging.info("Could not establish QueryRetrieve association.")
+        logging.error("Could not establish QueryRetrieve association.")
 
 async def send_c_move(ae, study_instance_uid):
-    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
+    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
     if assoc.is_established:
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
@@ -114,7 +117,7 @@ async def send_c_move(ae, study_instance_uid):
 
         assoc.release()
     else:
-        logging.info("Could not establish C-MOVE association.")
+        logging.error("Could not establish C-MOVE association.")
 
 async def handle_manual_query(request):
     try:
@@ -124,7 +127,7 @@ async def handle_manual_query(request):
         await query_and_retrieve(hours)
         return web.json_response({'status': 'success', 'message': f'Query triggered for the last {hours} hours.'})
     except Exception as e:
-        logging.info(f"Error processing manual query: {e}")
+        logging.error(f"Error processing manual query: {e}")
         return web.json_response({'status': 'error', 'message': str(e)})
 
 # Load existing .dcm files into queue
@@ -135,6 +138,7 @@ def preload_dicom_files():
             asyncio.create_task(data_queue.put(dicom_file))
             logging.info(f"Preloading {dicom_file} into processing queue...")
     dashboard_state['queue_size'] = data_queue.qsize()
+    broadcast_dashboard_update()
 
 def adjust_gamma(image, gamma = 1.2):
     # If gamma is None, compute it
@@ -145,7 +149,7 @@ def adjust_gamma(image, gamma = 1.2):
         mid = 0.5
         mean = np.median(image)
         gamma = math.log(mid * 255) / math.log(mean)
-        logging.info(f"Calculated gamma is {gamma:.2f}")
+        logging.debug(f"Calculated gamma is {gamma:.2f}")
     # build a lookup table mapping the pixel values [0, 255] to
     # their adjusted gamma values
     invGamma = 1.0 / gamma
@@ -238,14 +242,14 @@ async def broadcast_dashboard_update(client = None):
         try:
             await client.send_json(update)
         except Exception as e:
-            logging.info(f"Error sending update to WebSocket client: {e}")
+            logging.error(f"Error sending update to WebSocket client: {e}")
             websocket_clients.remove(client)
     else:
         for ws in websocket_clients.copy():
             try:
                 await ws.send_json(update)
             except Exception as e:
-                logging.info(f"Error sending update to WebSocket client: {e}")
+                logging.error(f"Error sending update to WebSocket client: {e}")
                 websocket_clients.remove(ws)
 
 async def websocket_handler(request):
@@ -280,6 +284,10 @@ def handle_store(event):
     # Return success
     return 0x0000
 
+def check_any(string, *words):
+    """ Check if any of the words are present in string """
+    return any(i in string for i in words)
+
 async def send_image_to_openai(png_file, meta, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
     # Read the PNG file
@@ -293,11 +301,13 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     projection = ""
     gender = "child"
     age = ""
+
+    # Identify anatomy
     desc = meta["series"]["desc"].lower()
-    if 'torace' in desc or 'pulmon' in desc:
+    if check_any(desc, 'torace', 'pulmon'):
         anatomy = 'chest'
         question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
-    elif 'grilaj' in desc or 'coaste' in desc:
+    elif check_any(desc, 'grilaj', 'coaste'):
         anatomy = 'chest'
         question = "Are there any ribs or clavicles fractures"
     elif 'stern' in desc:
@@ -306,7 +316,7 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     elif 'abdomen' in desc:
         anatomy = 'abdominal'
         question = "Are there any hydroaeric levels or pneumoperitoneum"
-    elif 'cap' in desc or 'craniu' in desc or 'craniu' in desc or 'occiput' in desc:
+    elif check_any(desc, 'cap', 'craniu', 'occiput'):
         anatomy = 'skull'
         question = "Are there any fractures"
     elif 'mandibula' in desc:
@@ -327,10 +337,10 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     elif 'clavicul' in desc:
         anatomy = 'clavicle'
         question = "Are there any fractures"
-    elif 'humerus' in desc or 'antebrat' in desc:
+    elif check_any(desc, 'humerus', 'antebrat'):
         anatomy = 'upper limb'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif 'pumn' in desc or 'mana' in desc or 'deget' in desc:
+    elif check_any(desc, 'pumn', 'mana', 'deget'):
         anatomy = 'hand'
         question = "Are there any fractures, dislocations or bone tumors"
     elif 'umar' in desc:
@@ -342,24 +352,30 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     elif 'sold' in desc:
         anatomy = 'hip'
         question = "Are there any fractures or dislocations"
-    elif 'femur' in desc or 'tibie' in desc or 'glezna' in desc or 'picior' in desc or 'gamba' in desc or 'calcai' in desc:
+    elif check_any(desc, 'femur', 'tibie', 'glezna', 'picior', 'gamba', 'calcai'):
         anatomy = 'lower limb'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif 'genunchi' in desc or 'patella' in desc:
+    elif check_any(desc, 'genunchi', 'patella'):
         anatomy = 'knee'
         question = "Are there any fractures or dislocations"
     else:
         anatomy = desc
-    if 'a.p.' in desc or 'p.a.' in desc or 'd.v.' in desc or 'v.d.' in desc:
+
+    # Identify projection
+    if check_any(desc, 'a.p.', 'p.a.', 'd.v.', 'v.d.'):
         projection = 'frontal'
     elif 'lat.' in desc:
         projection = 'lateral'
     elif 'oblic' in desc:
         projection = 'oblique'
+
+    # Identify gender
     if 'm' in meta["patient"]["sex"].lower():
         gender = 'boy'
     elif 'f' in meta["patient"]["sex"].lower():
         gender = 'girl'
+
+    # Identify age
     age = meta["patient"]["age"].lower().replace("y", "").strip()
     if age:
         if age == '000':
@@ -368,11 +384,12 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
             age = age + " years old"
     else:
         age = ""
+
     subject = " ".join([age, gender])
     if anatomy:
         region = " ".join([projection, anatomy])
     prompt = USR_PROMPT.format(question, region, subject)
-    #logging.info(f"Prompt: {prompt}")
+    logging.debug(f"Prompt: {prompt}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -428,12 +445,12 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
                     # Success
                     return True
         except Exception as e:
-            logging.info(f"Error uploading {png_file} (Attempt {attempt + 1}): {e}")
+            logging.warning(f"Error uploading {png_file} (Attempt {attempt + 1}): {e}")
             # Exponential backoff
             await asyncio.sleep(2 ** attempt)
             attempt += 1
     # Failure after max_retries
-    logging.info(f"Failed to upload {png_file} after {max_retries} attempts.")
+    logging.error(f"Failed to upload {png_file} after {max_retries} attempts.")
     dashboard_state['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
@@ -451,12 +468,12 @@ async def relay_to_openai():
         try:
             png_file, meta = dicom_to_png(dicom_file)
         except Exception as e:
-            logging.info(f"Error converting DICOM file {dicom_file}: {e}")
+            logging.error(f"Error converting DICOM file {dicom_file}: {e}")
         # Try to send to AI
         try:
             await send_image_to_openai(png_file, meta)
         except Exception as e:
-            logging.info(f"Unhandled error processing {png_file}: {e}")
+            logging.error(f"Unhandled error processing {png_file}: {e}")
         finally:
             dashboard_state['processing_file'] = None
             dashboard_state['queue_size'] = data_queue.qsize()
@@ -467,7 +484,7 @@ async def relay_to_openai():
             os.remove(dicom_file)
             logging.info(f"DICOM file {dicom_file} deleted after processing.")
         except Exception as e:
-            logging.info(f"Error removing DICOM file {dicom_file}: {e}")
+            logging.error(f"Error removing DICOM file {dicom_file}: {e}")
 
 def start_dicom_server():
     """Start the DICOM Storage SCP."""
@@ -479,8 +496,8 @@ def start_dicom_server():
     ae.add_supported_context(DigitalXRayImageStorageForPresentation)
     # C-Store handler
     handlers = [(evt.EVT_C_STORE, handle_store)]
-    logging.info(f"Starting DICOM server on port {LISTEN_PORT} with AE Title '{AE_TITLE}'...")
-    ae.start_server(("0.0.0.0", LISTEN_PORT), evt_handlers = handlers, block = True)
+    logging.info(f"Starting DICOM server on port {AE_PORT} with AE Title '{AE_TITLE}'...")
+    ae.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = True)
 
 async def dashboard(request):
     with open('dashboard.html', 'r') as f:
