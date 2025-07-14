@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # 
-# XRayVision - A Python-based DICOM storage and relay system with a real-time 
-#              dashboard for processing and reviewing X-ray images using 
-#              OpenAI APIs.
+# XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
 # Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
 # 
 # This program is free software: you can redistribute it and/or modify
@@ -62,7 +60,7 @@ data_queue = asyncio.Queue()
 websocket_clients = set()
 
 # Dashboard state
-dashboard_state = {
+dashboard = {
     'queue_size': 0,
     'processing_file': None,
     'success_count': 0,
@@ -72,7 +70,9 @@ dashboard_state = {
 
 MAX_HISTORY = 100
 
+# Database operations
 def init_database():
+    """ Initialize the database """
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
             CREATE TABLE IF NOT EXISTS history (
@@ -81,108 +81,152 @@ def init_database():
                 patient_id TEXT,
                 study_date TEXT,
                 study_time TEXT,
-                response TEXT,
+                protocol TEXT,
+                report TEXT,
                 flagged INTEGER DEFAULT 0
             )
         ''')
         logging.info("Initialized SQLite database.")
 
-async def query_retrieve_loop():
-    while True:
-        await query_and_retrieve()
-        await asyncio.sleep(3600)
+def db_load_history():
+    """ Load the history from the database """
+    dashboard['history'] = []
+    with sqlite3.connect(DB_FILE) as conn:
+        for row in conn.execute('SELECT * FROM history ORDER BY rowid DESC LIMIT ?', (MAX_HISTORY,)):
+            dashboard['history'].append({
+                'file': row[0],
+                'meta': {
+                    'patient': {'name': row[1], 'id': row[2]},
+                    'series': {'date': row[3], 'time': row[4], 'description': row[5]}
+                },
+                'report': row[6],
+                'flagged': bool(row[7])
+            })
+    return dashboard['history']
 
+def db_toggle_flag(pk):
+    """ Toggle the flag of a study """
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute('''
+            UPDATE history SET flagged = NOT flagged WHERE file = ?
+        ''', (pk,))
+
+def db_add_row(file_name, metadata, report):
+    """ Add one row to the database """
+    pk = os.path.basename(file_name)
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute('''
+            INSERT OR REPLACE INTO history (file, patient_name, patient_id, study_date, study_time, protocol, report, flagged)
+            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT flagged FROM history WHERE file = ?), 0))
+        ''', (pk, metadata["patient"]["name"], metadata["patient"]["id"], metadata["study"]["date"], metadata["study"]["time"], metadata["series"]["desc"], report, pk))
+
+
+# DICOM network operations
 async def query_and_retrieve(hours = 1):
+    """ Query and Retrieve new studies """
     ae = AE(ae_title = AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
     ae.connection_timeout = 30
-
+    # Create the association
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
     if assoc.is_established:
         logging.info(f"QueryRetrieve association established. Asking for studies in the last {hours} hours.")
+        # Prepare the timespan
+        # FIXME take care of the midnight
         current_time = datetime.now()
         past_time = current_time - timedelta(hours = hours)
         time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
         date_today = current_time.strftime('%Y%m%d')
-
+        # The query dataset
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
         ds.StudyDate = date_today
         ds.StudyTime = time_range
         ds.Modality = "CR"
-
+        # Get the responses list
         responses = assoc.send_c_find(ds, PatientRootQueryRetrieveInformationModelFind)
-
+        # Ask for each one to be sent
         for (status, identifier) in responses:
             if status and status.Status in (0xFF00, 0xFF01):
                 study_instance_uid = identifier.StudyInstanceUID
                 logging.info(f"Found Study {study_instance_uid}")
                 await send_c_move(ae, study_instance_uid)
-
+        # Release the association
         assoc.release()
     else:
         logging.error("Could not establish QueryRetrieve association.")
 
 async def send_c_move(ae, study_instance_uid):
+    """ Ask for a study to be sent """
+    # Create the association
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
     if assoc.is_established:
+        # The retrieval dataset
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
         ds.StudyInstanceUID = study_instance_uid
-
+        # Get the response
         responses = assoc.send_c_move(ds, AE_TITLE, PatientRootQueryRetrieveInformationModelMove)
-
+        # Release the association
         assoc.release()
     else:
         logging.error("Could not establish C-MOVE association.")
 
-async def handle_manual_query(request):
-    try:
-        data = await request.json()
-        hours = int(data.get('hours', 3))
-        logging.info(f"Manual QueryRetrieve triggered for the last {hours} hours.")
-        await query_and_retrieve(hours)
-        return web.json_response({'status': 'success', 'message': f'Query triggered for the last {hours} hours.'})
-    except Exception as e:
-        logging.error(f"Error processing manual query: {e}")
-        return web.json_response({'status': 'error', 'message': str(e)})
+def dicom_store(event):
+    """ Callback for receiving a DICOM file """
+    # Get the dataset
+    ds = event.dataset
+    ds.file_meta = event.file_meta
+    # Check the Modality
+    if ds.Modality == "CR":
+        # Save the DICOM file
+        dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
+        ds.save_as(dicom_file, write_like_original = False)
+        logging.info(f"DICOM file saved to {dicom_file}")
+        # Add to processing queue
+        main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
+        asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
+    # Return success
+    return 0x0000
 
-# Load existing .dcm files into queue
-def preload_dicom_files():
+# DICOM files operations
+async def load_existing_dicom_files():
+    """ Load existing .dcm files into queue """
     for filename in os.listdir(IMAGES_DIR):
         if filename.lower().endswith('.dcm'):
             dicom_file = os.path.join(IMAGES_DIR, filename)
             asyncio.create_task(data_queue.put(dicom_file))
-            logging.info(f"Preloading {dicom_file} into processing queue...")
-    dashboard_state['queue_size'] = data_queue.qsize()
-    broadcast_dashboard_update()
+            logging.info(f"Adding {dicom_file} into processing queue...")
+    await broadcast_dashboard_update()
 
+# Image processing operations
 def adjust_gamma(image, gamma = 1.2):
+    """ Auto-adjust gamma """
     # If gamma is None, compute it
     if gamma is None:
-        if len(image.shape) > 2: # or image.shape[2] > 1:
+        if len(image.shape) > 2:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        # compute gamma = log(mid*255)/log(mean)
         mid = 0.5
         mean = np.median(image)
         gamma = math.log(mid * 255) / math.log(mean)
         logging.debug(f"Calculated gamma is {gamma:.2f}")
-    # build a lookup table mapping the pixel values [0, 255] to
+    # Build a lookup table mapping the pixel values [0, 255] to
     # their adjusted gamma values
     invGamma = 1.0 / gamma
     table = np.array([((i / 255.0) ** invGamma) * 255
         for i in np.arange(0, 256)]).astype("uint8")
-    # apply gamma correction using the lookup table
+    # Apply gamma correction using the lookup table
     return cv2.LUT(image, table)
 
 def dicom_to_png(dicom_file, max_size = 800):
-    """Convert DICOM to PNG and return PNG filename."""
+    """ Convert DICOM to PNG and return the PNG filename """
     # Get the dataset
     ds = dcmread(dicom_file)
     # Check for PixelData
     if 'PixelData' not in ds:
         raise ValueError(f"DICOM file {dicom_file} has no pixel data!")
     # Normalize image to 0-255
+    # TODO consider 5 as mininum and 250 as maximum
     image = ds.pixel_array.astype(np.float32)
     image -= image.min()
     if image.max() != 0:
@@ -206,66 +250,39 @@ def dicom_to_png(dicom_file, max_size = 800):
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
     logging.info(f"Converted PNG saved to {png_file}")
-    # Return the PNG file name and metadata
-    meta = {
+    # Return the PNG file name and DICOM metadata
+    metadata = {
         'patient': {
-            'name': str(ds.PatientName),
-            'id': str(ds.PatientID),
-            'age': str(ds.PatientAge),
-            'sex': str(ds.PatientSex),
+            'name':  str(ds.PatientName),
+            'id':    str(ds.PatientID),
+            'age':   str(ds.PatientAge),
+            'sex':   str(ds.PatientSex),
             'bdate': str(ds.PatientBirthDate),
         },
         'series': {
-            'uid': str(ds.SeriesInstanceUID),
-            'desc': str(ds.SeriesDescription),
+            'uid':   str(ds.SeriesInstanceUID),
+            'desc':  str(ds.SeriesDescription),
             'proto': str(ds.ProtocolName),
-            'date': str(ds.SeriesDate),
-            'time': str(ds.SeriesTime),
+            'date':  str(ds.SeriesDate),
+            'time':  str(ds.SeriesTime),
         },
         'study': {
-            'uid': str(ds.StudyInstanceUID),
-            'date': str(ds.StudyDate),
-            'time': str(ds.StudyTime),
+            'uid':   str(ds.StudyInstanceUID),
+            'date':  str(ds.StudyDate),
+            'time':  str(ds.StudyTime),
         }
     }
-    return png_file, meta
+    # Return the PNG file name and metadata
+    return png_file, metadata
 
-async def toggle_flag(request):
-    data = await request.json()
-    file_to_toggle = data.get('file')
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute('''
-            UPDATE history SET flagged = NOT flagged WHERE file = ?
-        ''', (file_to_toggle,))
-    load_history()
-    await broadcast_dashboard_update()
-    return web.json_response({'status': 'success', 'flagged': item['flagged']})
-
-async def broadcast_dashboard_update(client = None):
-    if not websocket_clients:
-        return
-    update = {
-        'queue_size': dashboard_state['queue_size'],
-        'processing_file': dashboard_state['processing_file'],
-        'success_count': dashboard_state['success_count'],
-        'failure_count': dashboard_state['failure_count'],
-        'history': dashboard_state['history']
-    }
-    if client:
-        try:
-            await client.send_json(update)
-        except Exception as e:
-            logging.error(f"Error sending update to WebSocket client: {e}")
-            websocket_clients.remove(client)
-    else:
-        for ws in websocket_clients.copy():
-            try:
-                await ws.send_json(update)
-            except Exception as e:
-                logging.error(f"Error sending update to WebSocket client: {e}")
-                websocket_clients.remove(ws)
+# WebSocket and WebServer operations
+async def dashboard_handler(request):
+    with open('dashboard.html', 'r') as f:
+        content = f.read()
+    return web.Response(text = content, content_type = 'text/html')
 
 async def websocket_handler(request):
+    """ Handle each WebSocket client """
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     websocket_clients.add(ws)
@@ -279,75 +296,96 @@ async def websocket_handler(request):
         logging.info("Dashboard WebSocket disconnected.")
     return ws
 
-def handle_store(event):
-    """Callback for receiving a DICOM file."""
-    # Get the dataset
-    ds = event.dataset
-    ds.file_meta = event.file_meta
-    # Check the Modality
-    if ds.Modality == "CR":
-        # Save the DICOM file
-        dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
-        ds.save_as(dicom_file, write_like_original = False)
-        logging.info(f"DICOM file saved to {dicom_file}")
-        # Schedule queue put on the main event loop
-        main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
-        dashboard_state['queue_size'] = data_queue.qsize()
-        asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
-    # Return success
-    return 0x0000
+async def manual_query(request):
+    """ Trigger a manual query/retrieve operation """
+    try:
+        data = await request.json()
+        hours = int(data.get('hours', 3))
+        logging.info(f"Manual QueryRetrieve triggered for the last {hours} hours.")
+        await query_and_retrieve(hours)
+        return web.json_response({'status': 'success',
+                                  'message': f'Query triggered for the last {hours} hours.'})
+    except Exception as e:
+        logging.error(f"Error processing manual query: {e}")
+        return web.json_response({'status': 'error',
+                                  'message': str(e)})
 
+async def toggle_flag(request):
+    """ Toggle the flag of a study """
+    data = await request.json()
+    file_to_toggle = data.get('file')
+    db_toggle_flag(file_to_toggle)
+    db_load_history()
+    await broadcast_dashboard_update()
+    return web.json_response({'status': 'success', 'flagged': item['flagged']})
+
+async def broadcast_dashboard_update(client = None):
+    """ Update the dashboard for all clients """
+    # Check if there are any clients
+    if not (websocket_clients or client):
+        return
+    # FIXME Why not using directly the dashboard struct
+    dashboard['queue_size'] = data_queue.qsize()
+    update = {
+        'queue_size': dashboard['queue_size'],
+        'processing_file': dashboard['processing_file'],
+        'success_count': dashboard['success_count'],
+        'failure_count': dashboard['failure_count'],
+        'history': dashboard['history']
+    }
+    # Create a list of clients
+    if client:
+        clients = [client,]
+    else:
+        clients = websocket_clients.copy()
+    # Send the update to all clients
+    for client in clients:
+        # Send the udate to the client
+        try:
+            await client.send_json(update)
+        except Exception as e:
+            logging.error(f"Error sending update to WebSocket client: {e}")
+            websocket_clients.remove(client)
+
+# AI API operations
 def check_any(string, *words):
-    """ Check if any of the words are present in string """
+    """ Check if any of the words are present in the string """
     return any(i in string for i in words)
 
-async def send_image_to_openai(png_file, meta, max_retries = 3):
-    """Send PNG to OpenAI API with retries and save response to text file."""
-    # Read the PNG file
-    with open(png_file, 'rb') as f:
-        image_bytes = f.read()
-    # Prepare the prompt
-    question = "Is there anything abnormal"
-    region = ""
-    subject = ""
-    anatomy = ""
-    projection = ""
-    gender = "child"
-    age = ""
-
-    # Identify anatomy
-    desc = meta["series"]["desc"].lower()
+def get_anatomy(metadata):
+    """ Try to identify the anatomy. Return the anatomy and the question. """
+    desc = metadata["series"]["desc"].lower()
     if check_any(desc, 'torace', 'pulmon'):
         anatomy = 'chest'
         question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
     elif check_any(desc, 'grilaj', 'coaste'):
         anatomy = 'chest'
         question = "Are there any ribs or clavicles fractures"
-    elif 'stern' in desc:
+    elif check_any(desc, 'stern'):
         anatomy = 'sternum'
         question = "Are there any fractures"
-    elif 'abdomen' in desc:
+    elif check_any(desc, 'abdomen'):
         anatomy = 'abdominal'
         question = "Are there any hydroaeric levels or pneumoperitoneum"
     elif check_any(desc, 'cap', 'craniu', 'occiput'):
         anatomy = 'skull'
         question = "Are there any fractures"
-    elif 'mandibula' in desc:
+    elif check_any(desc, 'mandibula'):
         anatomy = 'mandible'
         question = "Are there any fractures"
-    elif 'nazal' in desc:
+    elif check_any(desc, 'nazal'):
         anatomy = 'nasal bones'
         question = "Are there any fractures"
-    elif 'sinus' in desc:
+    elif check_any(desc, 'sinus'):
         anatomy = 'maxilar and frontal sinus'
         question = "Are there any changes in transparency of the sinuses"
-    elif 'col.' in desc:
+    elif check_any(desc, 'col.'):
         anatomy = 'spine'
         question = "Are there any fractures or dislocations"
-    elif 'bazin' in desc:
+    elif check_any(desc, 'bazin'):
         anatomy = 'pelvis'
         question = "Are there any fractures"
-    elif 'clavicul' in desc:
+    elif check_any(desc, 'clavicul'):
         anatomy = 'clavicle'
         question = "Are there any fractures"
     elif check_any(desc, 'humerus', 'antebrat'):
@@ -356,13 +394,13 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     elif check_any(desc, 'pumn', 'mana', 'deget'):
         anatomy = 'hand'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif 'umar' in desc:
+    elif check_any(desc, 'umar'):
         anatomy = 'shoulder'
         question = "Are there any fractures or dislocations"
-    elif 'cot' in desc:
+    elif check_any(desc, 'cot'):
         anatomy = 'elbow'
         question = "Are there any fractures or dislocations"
-    elif 'sold' in desc:
+    elif check_any(desc, 'sold'):
         anatomy = 'hip'
         question = "Are there any fractures or dislocations"
     elif check_any(desc, 'femur', 'tibie', 'glezna', 'picior', 'gamba', 'calcai'):
@@ -372,35 +410,70 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
         anatomy = 'knee'
         question = "Are there any fractures or dislocations"
     else:
+        # Fallback
         anatomy = desc
+        question = "Is there anything abnormal"
+    # Return the anatomy and the question
+    return anatomy, question
 
-    # Identify projection
-    if check_any(desc, 'a.p.', 'p.a.', 'd.v.', 'v.d.'):
-        projection = 'frontal'
-    elif 'lat.' in desc:
-        projection = 'lateral'
-    elif 'oblic' in desc:
-        projection = 'oblique'
+def get_projection(metadata):
+    """ Try to identify the projection """
+    desc = metadata["series"]["desc"].lower()
+    if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d."):
+        projection = "frontal"
+    elif check_any(desc, "lat."):
+        projection = "lateral"
+    elif check_any(desc, "oblic"):
+        projection = "oblique"
+    else:
+        # Fallback
+        projection = ""
+    # Return the projection
+    return projection
 
-    # Identify gender
-    if 'm' in meta["patient"]["sex"].lower():
-        gender = 'boy'
-    elif 'f' in meta["patient"]["sex"].lower():
-        gender = 'girl'
+def get_gender(metadata):
+    """ Try to identify the gender """
+    patient_sex = metadata["patient"]["sex"].lower()
+    if "m" in patient_sex:
+        gender = "boy"
+    elif "f" in patient_sex:
+        gender = "girl"
+    else:
+        # Fallback
+        gender = "child"
+    # Return the gender
+    return gender
 
-    # Identify age
-    age = meta["patient"]["age"].lower().replace("y", "").strip()
+def get_age(metadata):
+    """ Try to get the age """
+    age = metadata["patient"]["age"].lower().replace("y", "").strip()
     if age:
-        if age == '000':
-            age = 'newborn'
+        if age == "000":
+            age = "newborn"
         else:
             age = age + " years old"
     else:
         age = ""
+    # Return the age (string)
+    return age
 
+async def send_image_to_openai(png_file, metadata, max_retries = 3):
+    """Send PNG to OpenAI API with retries and save response to text file."""
+    # Read the PNG file
+    with open(png_file, 'rb') as f:
+        image_bytes = f.read()
+    # Prepare the prompt
+    anatomy, question = get_anatomy(metadata)
+    projection = get_projection(metadata)
+    gender = get_gender(metadata)
+    age = get_age(metadata)
+    # Get the subject of the study and the studied region
     subject = " ".join([age, gender])
     if anatomy:
         region = " ".join([projection, anatomy])
+    else:
+        region = ""
+    # Create the prompt
     prompt = USR_PROMPT.format(question, region, subject)
     logging.debug(f"Prompt: {prompt}")
     # Base64 encode the PNG to comply with OpenAI Vision API
@@ -413,84 +486,99 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
     }
     # Prepare the JSON data
     data = {
-        'model': 'medgemma-4b-it',
-        'messages': [
+        "model": "medgemma-4b-it",
+        "messages": [
             {
                 "role": "system",
                 "content": [{"type": "text", "text": SYS_PROMPT}]
             },
             {
-                'role': 'user',
-                'content': [
-                    {'type': 'text', 'text': prompt},
-                    {'type': 'image_url', 'image_url': {'url': image_url}}
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}}
                 ]
             }
         ]
     }
     # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
-    attempt = 0
-    while attempt < max_retries:
+    attempt = 1
+    while attempt <= max_retries:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(OPENAI_API_URL, headers = headers, json = data) as response:
                     result = await response.json()
-                    text = result["choices"][0]["message"]["content"]
-                    text = text.replace('\n', " ").replace("  ", " ").strip()
-                    logging.info(f"OpenAI API response for {png_file}: {text}")
-                    # Save the result to a text file
+                    report = result["choices"][0]["message"]["content"]
+                    report = report.replace('\n', " ").replace("  ", " ").strip()
+                    logging.info(f"OpenAI API response for {png_file}: {report}")
+                    # Save the report to a text file
+                    # FIXME replaced by the database
                     base_name = os.path.splitext(os.path.basename(png_file))[0]
                     text_file = os.path.join(IMAGES_DIR, f"{base_name}.txt")
                     with open(text_file, 'w') as f:
-                        f.write(text)
+                        f.write(report)
                     logging.info(f"Response saved to {text_file}")
                     # Update the dashboard
-                    dashboard_state['success_count'] += 1
+                    dashboard['success_count'] += 1
                     # Add to history (keep only last MAX_HISTORY)
-                    dashboard_state['history'].insert(0, {'file': os.path.basename(png_file), 'meta': meta, 'text': text, 'flagged': False})
-                    dashboard_state['history'] = dashboard_state['history'][:MAX_HISTORY]
+                    dashboard['history'].insert(0, {
+                        'file': os.path.basename(png_file),
+                        'meta': metadata,
+                        'report': report,
+                        'flagged': False})
+                    dashboard['history'] = dashboard['history'][:MAX_HISTORY]
                     await broadcast_dashboard_update()
-                    # Save to history
-                    with sqlite3.connect(DB_FILE) as conn:
-                        conn.execute('''
-                            INSERT OR REPLACE INTO history (file, patient_name, patient_id, study_date, study_time, response, flagged)
-                            VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT flagged FROM history WHERE file = ?), 0))
-                        ''', (os.path.basename(png_file), patient_name, patient_id, study_date, study_time, text, os.path.basename(png_file)))
+                    # Save to history database
+                    db_add_row(png_file, metadata, report)
                     # Success
                     return True
         except Exception as e:
-            logging.warning(f"Error uploading {png_file} (Attempt {attempt + 1}): {e}")
+            logging.warning(f"Error uploading {png_file} (attempt {attempt}): {e}")
             # Exponential backoff
             await asyncio.sleep(2 ** attempt)
             attempt += 1
     # Failure after max_retries
     logging.error(f"Failed to upload {png_file} after {max_retries} attempts.")
-    dashboard_state['failure_count'] += 1
+    dashboard['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
 
-async def relay_to_openai():
-    """Relay PNG files to OpenAI API with retries and dashboard update."""
+
+# Threads
+async def start_dashboard():
+    """ Start the dashboard web server """
+    app = web.Application()
+    app.router.add_get('/', dashboard_handler)
+    app.router.add_get('/ws', websocket_handler)
+    app.router.add_post('/toggle_flag', toggle_flag)
+    app.router.add_post('/trigger_query', manual_query)
+    app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
+    await site.start()
+    logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
+
+async def relay_to_openai_loop():
+    """ Relay PNG files to OpenAI API with retries and dashboard update """
     while True:
         # Get one file from queue
         dicom_file = await data_queue.get()
         # Update the dashboard
-        dashboard_state['processing_file'] = os.path.basename(dicom_file)
-        dashboard_state['queue_size'] = data_queue.qsize()
+        dashboard['processing_file'] = os.path.basename(dicom_file)
         await broadcast_dashboard_update()
         # Try to convert to PNG
         try:
-            png_file, meta = dicom_to_png(dicom_file)
+            png_file, metadata = dicom_to_png(dicom_file)
         except Exception as e:
             logging.error(f"Error converting DICOM file {dicom_file}: {e}")
         # Try to send to AI
         try:
-            await send_image_to_openai(png_file, meta)
+            await send_image_to_openai(png_file, metadata)
         except Exception as e:
             logging.error(f"Unhandled error processing {png_file}: {e}")
         finally:
-            dashboard_state['processing_file'] = None
-            dashboard_state['queue_size'] = data_queue.qsize()
+            dashboard['processing_file'] = None
             await broadcast_dashboard_update()
             data_queue.task_done()
         # Remove the DICOM file
@@ -500,73 +588,46 @@ async def relay_to_openai():
         except Exception as e:
             logging.error(f"Error removing DICOM file {dicom_file}: {e}")
 
+async def query_retrieve_loop():
+    """ Async thread to periodically poll the server for new studies """
+    while True:
+        await query_and_retrieve()
+        await asyncio.sleep(3600)
+
 def start_dicom_server():
-    """Start the DICOM Storage SCP."""
-    ae = AE(ae_title=AE_TITLE)
+    """ Start the DICOM Storage SCP """
+    ae = AE(ae_title = AE_TITLE)
     # Accept everything
     #ae.supported_contexts = StoragePresentationContexts
     # Accept only XRays
     ae.add_supported_context(ComputedRadiographyImageStorage)
     ae.add_supported_context(DigitalXRayImageStorageForPresentation)
     # C-Store handler
-    handlers = [(evt.EVT_C_STORE, handle_store)]
+    handlers = [(evt.EVT_C_STORE, dicom_store)]
     logging.info(f"Starting DICOM server on port {AE_PORT} with AE Title '{AE_TITLE}'...")
     ae.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = True)
 
-async def dashboard(request):
-    with open('dashboard.html', 'r') as f:
-        content = f.read()
-    return web.Response(text = content, content_type = 'text/html')
-
-async def start_dashboard():
-    """Start the dashboard web server."""
-    app = web.Application()
-    app.router.add_get('/', dashboard)
-    app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
-    app.router.add_get('/ws', websocket_handler)
-    app.router.add_post('/toggle_flag', toggle_flag)
-    app.router.add_post('/trigger_query', handle_manual_query)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
-    await site.start()
-    logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
-
-def load_history():
-    dashboard_state['history'] = []
-    with sqlite3.connect(DB_FILE) as conn:
-        for row in conn.execute('SELECT * FROM history ORDER BY rowid DESC LIMIT ?', (MAX_HISTORY,)):
-            dashboard_state['history'].append({
-                'file': row[0],
-                'meta': {
-                    'patient': {'name': row[1], 'id': row[2]},
-                    'series': {'date': row[3], 'time': row[4]}
-                },
-                'text': row[5],
-                'flagged': bool(row[6])
-            })
-    return dashboard_state['history']
-
 async def main():
-    # Store main event loop here
+    """ The main thread """
+    # Main event loop
     global main_loop
     main_loop = asyncio.get_running_loop()
-    # Init the database
+    # Init the database if not found
     if not os.path.exists(DB_FILE):
-        logging.info("SQLite history database not found. Creating new one...")
+        logging.info("SQLite history database not found. Creating a new one...")
         init_database()
     else:
         logging.info("SQLite history database found.")
     # Load history
-    history = load_history()
+    history = db_load_history()
     logging.info(f"Loaded {len(history)} history items.")
 
     # Start the asynchronous tasks
-    asyncio.create_task(relay_to_openai())
     asyncio.create_task(start_dashboard())
+    asyncio.create_task(relay_to_openai_loop())
     asyncio.create_task(query_retrieve_loop())
     # Preload the existing dicom files
-    preload_dicom_files()
+    await load_existing_dicom_files()
     # Start the DICOM server
     await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
 
