@@ -317,7 +317,7 @@ async def toggle_flag(request):
     db_toggle_flag(file_to_toggle)
     db_load_history()
     await broadcast_dashboard_update()
-    return web.json_response({'status': 'success', 'flagged': item['flagged']})
+    return web.json_response({'status': 'success', 'file': file_to_toggle})
 
 async def broadcast_dashboard_update(client = None):
     """ Update the dashboard for all clients """
