@@ -85,6 +85,7 @@ def init_database():
                 flagged INTEGER DEFAULT 0
             )
         ''')
+        logging.info("Initialized SQLite database.")
 
 async def query_retrieve_loop():
     while True:
@@ -544,15 +545,22 @@ def load_history():
                 'text': row[5],
                 'flagged': bool(row[6])
             })
+    return dashboard_state['history']
 
 async def main():
-    # Init the database
-    init_database()
-    # Load history
-    load_history()
     # Store main event loop here
     global main_loop
     main_loop = asyncio.get_running_loop()
+    # Init the database
+    if not os.path.exists(DB_FILE):
+        logging.info("SQLite history database not found. Creating new one...")
+        init_database()
+    else:
+        logging.info("SQLite history database found.")
+    # Load history
+    history = load_history()
+    logging.info(f"Loaded {len(history)} history items.")
+
     # Start the asynchronous tasks
     asyncio.create_task(relay_to_openai())
     asyncio.create_task(start_dashboard())
@@ -561,7 +569,6 @@ async def main():
     preload_dicom_files()
     # Start the DICOM server
     await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
-
 
 if __name__ == '__main__':
     try:
