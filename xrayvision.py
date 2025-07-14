@@ -20,13 +20,15 @@ import cv2
 import numpy as np
 import math
 import json
+import sqlite3
+import logging
 from aiohttp import web
 from pydicom import dcmread
 from pydicom.dataset import Dataset
 from pynetdicom import AE, evt, StoragePresentationContexts, QueryRetrievePresentationContexts
 from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayImageStorageForPresentation, PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
 from datetime import datetime, timedelta
-import logging
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,7 +50,7 @@ REMOTE_AE_TITLE = '3DNETCLOUD'
 REMOTE_AE_IP = '192.168.3.50'
 REMOTE_AE_PORT = 104
 IMAGES_DIR = 'images'
-HISTORY_FILE = os.path.join(IMAGES_DIR, 'history.json')
+DB_FILE = os.path.join(IMAGES_DIR, "history.db")
 
 SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
@@ -69,6 +71,20 @@ dashboard_state = {
 }
 
 MAX_HISTORY = 100
+
+def init_database():
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS history (
+                file TEXT PRIMARY KEY,
+                patient_name TEXT,
+                patient_id TEXT,
+                study_date TEXT,
+                study_time TEXT,
+                response TEXT,
+                flagged INTEGER DEFAULT 0
+            )
+        ''')
 
 async def query_retrieve_loop():
     while True:
@@ -216,15 +232,11 @@ def dicom_to_png(dicom_file, max_size = 800):
 async def toggle_flag(request):
     data = await request.json()
     file_to_toggle = data.get('file')
-
-    for item in dashboard_state['history']:
-        if item['file'] == file_to_toggle:
-            item['flagged'] = not item.get('flagged', False)
-            break
-
-    with open(HISTORY_FILE, 'w') as f:
-        json.dump(dashboard_state['history'], f)
-
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute('''
+            UPDATE history SET flagged = NOT flagged WHERE file = ?
+        ''', (file_to_toggle,))
+    load_history()
     await broadcast_dashboard_update()
     return web.json_response({'status': 'success', 'flagged': item['flagged']})
 
@@ -437,11 +449,12 @@ async def send_image_to_openai(png_file, meta, max_retries = 3):
                     dashboard_state['history'].insert(0, {'file': os.path.basename(png_file), 'meta': meta, 'text': text, 'flagged': False})
                     dashboard_state['history'] = dashboard_state['history'][:MAX_HISTORY]
                     await broadcast_dashboard_update()
-                    # Save as JSON-friendly structure
-                    history_to_save = [item for item in dashboard_state['history']]
-                    # Save history
-                    with open(HISTORY_FILE, 'w') as f:
-                        json.dump(history_to_save, f)
+                    # Save to history
+                    with sqlite3.connect(DB_FILE) as conn:
+                        conn.execute('''
+                            INSERT OR REPLACE INTO history (file, patient_name, patient_id, study_date, study_time, response, flagged)
+                            VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT flagged FROM history WHERE file = ?), 0))
+                        ''', (os.path.basename(png_file), patient_name, patient_id, study_date, study_time, text, os.path.basename(png_file)))
                     # Success
                     return True
         except Exception as e:
@@ -519,15 +532,22 @@ async def start_dashboard():
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
 def load_history():
-    """Load history on startup."""
-    if os.path.exists(HISTORY_FILE):
-        logging.info(f"Loading history from {HISTORY_FILE}")
-        with open(HISTORY_FILE, 'r') as f:
-            dashboard_state['history'] = json.load(f)
-    else:
-        dashboard_state['history'] = []
+    dashboard_state['history'] = []
+    with sqlite3.connect(DB_FILE) as conn:
+        for row in conn.execute('SELECT * FROM history ORDER BY rowid DESC LIMIT ?', (MAX_HISTORY,)):
+            dashboard_state['history'].append({
+                'file': row[0],
+                'meta': {
+                    'patient': {'name': row[1], 'id': row[2]},
+                    'series': {'date': row[3], 'time': row[4]}
+                },
+                'text': row[5],
+                'flagged': bool(row[6])
+            })
 
 async def main():
+    # Init the database
+    init_database()
     # Load history
     load_history()
     # Store main event loop here
