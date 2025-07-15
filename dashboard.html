@@ -196,7 +196,7 @@
                 document.getElementById('success').innerHTML = data.success_count;
                 document.getElementById('failure').innerHTML = data.failure_count;
 
-                renderHistory(data)
+                renderHistory(data.history)
             };
 
             ws.onclose = function () {
