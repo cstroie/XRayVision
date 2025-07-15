@@ -122,9 +122,15 @@ def db_get_history_count():
 def db_toggle_right_wrong(uid):
     """ Toggle the right/wrong flag of a study """
     with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute(
+            "SELECT 1 FROM history WHERE uid = ?", (uid,)
+        ).fetchone()
+        print(result)
+        isWrong = not bool(result[8])
         conn.execute('''
             UPDATE history SET isWrong = NOT isWrong WHERE uid = ?
         ''', (uid,))
+    return isWrong
 
 def db_add_row(uid, metadata, report):
     """ Add one row to the database """
@@ -380,9 +386,8 @@ async def toggle_right_wrong(request):
     """ Toggle the right/wrong flag of a study """
     data = await request.json()
     uid = data.get('uid')
-    page = data.get('page', 1)
-    db_toggle_right_wrong(uid)
-    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = uid)
+    wrong = db_toggle_right_wrong(uid)
+    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'wrong': wrong})
     return web.json_response({'status': 'success', 'uid': uid})
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):

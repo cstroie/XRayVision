@@ -211,10 +211,13 @@
                         }
                     } else if (data.event.name === "toggle_right_wrong") {
                         // Locate and update that card if it's visible
-                        const card = document.getElementById(`card-${data.event.payload}`);
+                        const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
-                            loadPage(currentPage); // simplest approach
-                        }
+                            //loadPage(currentPage); // simplest approach
+                            card.classList.remove('wrong');
+                            if (data.event.payload.wrong) {
+                                card.classList.add('wrong');
+                            }
                     } else if (data.event.name !== undefined) {
                         // fallback for legacy full-state update
                         updateDashboardStats(data.event.payload);
