@@ -69,7 +69,7 @@ dashboard = {
     'history': []
 }
 
-MAX_HISTORY = 10
+PAGE_SIZE = 10
 KEEP_DICOM = False
 NO_QUERY = False
 
@@ -92,11 +92,11 @@ def init_database():
         ''')
         logging.info("Initialized SQLite database.")
 
-def db_load_history():
+def db_load_history(limit = PAGE_SIZE, offset = 0):
     """ Load the history from the database """
     dashboard['history'] = []
     with sqlite3.connect(DB_FILE) as conn:
-        for row in conn.execute('SELECT * FROM history ORDER BY rowid DESC LIMIT ?', (MAX_HISTORY,)):
+        for row in conn.execute('SELECT * FROM history ORDER BY stDateTime DESC LIMIT ? OFFSET ?', (limit, offset)):
             dt = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
             dashboard['history'].append({
                 'uid': row[0],
@@ -113,6 +113,12 @@ def db_load_history():
                 'isWrong': bool(row[8])
             })
     return dashboard['history']
+
+def db_get_history_count():
+    """ Get total row count """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute('SELECT COUNT(*) FROM history').fetchone()
+        return result[0] if result else 0
 
 def db_toggle_right_wrong(uid):
     """ Toggle the right/wrong flag of a study """
@@ -341,6 +347,21 @@ async def websocket_handler(request):
         websocket_clients.remove(ws)
         logging.info("Dashboard WebSocket disconnected.")
     return ws
+
+async def history_handler(request):
+    """ Provide a page of history """
+    try:
+        page = int(request.query.get("page", "1"))
+        offset = (page - 1) * PAGE_SIZE
+        data = db_load_history(limit = PAGE_SIZE, offset = offset)
+        total = db_get_history_count()
+        return web.json_response({
+            "history": data,
+            "total": total
+        })
+    except Exception as e:
+        logging.error(f"History page error: {e}")
+        return web.json_response([], status = 500)
 
 async def manual_query(request):
     """ Trigger a manual query/retrieve operation """
@@ -582,6 +603,7 @@ async def start_dashboard():
     app = web.Application()
     app.router.add_get('/', dashboard_handler)
     app.router.add_get('/ws', websocket_handler)
+    app.router.add_get('/history', history_handler)
     app.router.add_post('/toggle_right_wrong', toggle_right_wrong)
     app.router.add_post('/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')

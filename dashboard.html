@@ -150,6 +150,17 @@
     </form>
 
     <h2>Last Processed Files</h2>
+
+    <div id="pagination" style="margin-bottom: 1rem;">
+        <button onclick="prevPage()">⬅ Prev</button>
+        <span id="pageNumber">Page 1</span>
+        <span id="totalPages">?</span>
+        <button onclick="nextPage()">Next ➡</button>
+        <select id="pageSelect" onchange="jumpToPage(this.value)">
+            <!-- filled dynamically -->
+        </select>
+        </div>
+
     <div id="history"></div>
 
     <div id="lightbox" class="lightbox">
@@ -159,6 +170,8 @@
 
     <script>
         let ws;
+        let currentPage = 1;
+        let totalPages = 1;
 
         function sanitize(text) {
             return text.replace(/&/g, "\&amp;")
@@ -183,38 +196,7 @@
                 document.getElementById('success').innerHTML = data.success_count;
                 document.getElementById('failure').innerHTML = data.failure_count;
 
-                let historyHtml = '';
-                data.history.forEach(item => {
-                    let isPositive = item.report.trim().toLowerCase().startsWith('yes');
-
-                    let date = item.meta.series.date;
-                    let time = item.meta.series.time;
-                    let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
-                    let formattedTime = `${time.substring(0,2)}:${time.substring(2,4)}:${time.substring(4,6)}`;
-
-                    let patientNameParts = item.meta.patient.name.split('^');
-                    let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
-
-                    let isWrong = item.isWrong;
-                    let wrongClass = isWrong ? 'wrong' : '';
-                    let positiveClass = isPositive ? 'positive' : '';
-                    let buttonLabel = isWrong ? 'Wrong' : 'Correct';
-
-                    historyHtml += `
-                        <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
-                            <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
-                            <div class="text">
-                                <strong>${formattedPatientName}</strong><br>
-                                <span>${item.meta.patient.id}</span><br>
-                                <span>${formattedDate} ${formattedTime}</span><br>
-                                <span>${item.meta.series.protocol}</span><br>
-                                <span class="report">${item.report}</span><br>
-                                <button onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
-                            </div>
-                        </div>
-                    `;
-                });
-                document.getElementById('history').innerHTML = historyHtml;
+                renderHistory(data)
             };
 
             ws.onclose = function () {
@@ -279,6 +261,85 @@
         document.getElementById('lightbox').addEventListener('click', function () {
             this.style.display = 'none';
         });
+
+        function loadPage(page) {
+            fetch(`/history?page=${page}`)
+                .then(res => res.json())
+                .then(data => {
+                    const history = data.history || [];
+                    const totalCount = data.total || 0;
+                    totalPages = Math.ceil(totalCount / 10);
+
+                    document.getElementById('pageNumber').innerText = `Page ${page}`;
+                    document.getElementById('totalPages').innerText = totalPages;
+                    document.getElementById('pageSelect').innerHTML = '';
+
+                    for (let i = 1; i <= totalPages; i++) {
+                        const option = document.createElement('option');
+                        option.value = i;
+                        option.text = `Page ${i}`;
+                        if (i === page) option.selected = true;
+                        document.getElementById('pageSelect').appendChild(option);
+                    }
+
+                    currentPage = page;
+                    renderHistory(history);
+                })
+                .catch(err => {
+                    console.error("Failed to fetch history:", err);
+                });
+        }
+
+        function prevPage() {
+            if (currentPage > 1) loadPage(currentPage - 1);
+        }
+
+        function nextPage() {
+            if (currentPage < totalPages) loadPage(currentPage + 1);
+        }
+
+        function jumpToPage(page) {
+            loadPage(parseInt(page));
+        }
+
+        function renderHistory(data) {
+            let historyHtml = '';
+            data.history.forEach(item => {
+                let isPositive = item.report.trim().toLowerCase().startsWith('yes');
+
+                let date = item.meta.series.date;
+                let time = item.meta.series.time;
+                let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
+                let formattedTime = `${time.substring(0,2)}:${time.substring(2,4)}:${time.substring(4,6)}`;
+
+                let patientNameParts = item.meta.patient.name.split('^');
+                let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
+
+                let isWrong = item.isWrong;
+                let wrongClass = isWrong ? 'wrong' : '';
+                let positiveClass = isPositive ? 'positive' : '';
+                let buttonLabel = isWrong ? 'Wrong' : 'Correct';
+
+                historyHtml += `
+                    <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
+                        <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
+                        <div class="text">
+                            <strong>${formattedPatientName}</strong><br>
+                            <span>${item.meta.patient.id}</span><br>
+                            <span>${formattedDate} ${formattedTime}</span><br>
+                            <span>${item.meta.series.protocol}</span><br>
+                            <span class="report">${item.report}</span><br>
+                            <button onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
+                        </div>
+                    </div>
+                `;
+            });
+            document.getElementById('history').innerHTML = historyHtml;
+        }
+
+        window.onload = () => {
+            loadPage(1);
+        };
 
         connectWebSocket();
     </script>
