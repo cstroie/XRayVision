@@ -128,51 +128,51 @@
 
 <body class="container">
     <header>
-    <h1>📊 XRayVision Processing Dashboard</h1>
+        <h1>📊 XRayVision Processing Dashboard</h1>
 
-    <div class="grid">
-        <article><strong>Queue Size:</strong><br><span id="queue">0</span></article>
-        <article><strong>Currently Processing:</strong><br><span id="processing">Idle</span></article>
-        <article><strong>Successful Uploads:</strong><br><span id="success">0</span></article>
-        <article><strong>Failed Uploads:</strong><br><span id="failure">0</span></article>
-    </div>
+        <div class="grid">
+            <article><strong>Queue Size:</strong><br><span id="queue">0</span></article>
+            <article><strong>Currently Processing:</strong><br><span id="processing">Idle</span></article>
+            <article><strong>Successful Uploads:</strong><br><span id="success">0</span></article>
+            <article><strong>Failed Uploads:</strong><br><span id="failure">0</span></article>
+        </div>
 
-    <form>
-        <fieldset role="group">
-            <label for="queryInterval">Query Time Span (hours):</label>
-            <select id="queryInterval">
-                <option value="1">1</option>
-                <option value="3" selected>3</option>
-                <option value="6">6</option>
-                <option value="12">12</option>
-                <option value="24">24</option>
-            </select>
-            <button onclick="triggerQuery()">Trigger QueryRetrieve Now</button>
-        </fieldset>
-    </form>
+        <form>
+            <fieldset role="group">
+                <label for="queryInterval">Query Time Span (hours):</label>
+                <select id="queryInterval">
+                    <option value="1">1</option>
+                    <option value="3" selected>3</option>
+                    <option value="6">6</option>
+                    <option value="12">12</option>
+                    <option value="24">24</option>
+                </select>
+                <button onclick="triggerQuery()">Trigger QueryRetrieve Now</button>
+            </fieldset>
+        </form>
     </header>
 
     <main>
-    <h2>Last Processed Files</h2>
+        <h2>Last Processed Files</h2>
 
-    <div id="history"></div>
+        <div id="history"></div>
 
-    <div id="lightbox" class="lightbox">
-        <img id="lightbox-img" src="">
-        <div id="lightbox-text" class="lightbox-text"></div>
-    </div>
+        <div id="lightbox" class="lightbox">
+            <img id="lightbox-img" src="">
+            <div id="lightbox-text" class="lightbox-text"></div>
+        </div>
     </main>
 
     <footer>
-    <div id="pagination" role="group" style="margin-bottom: 1rem;">
-        <button onclick="prevPage()">⬅ Prev</button>
-        <span id="pageNumber">Page 1</span>
-        <span id="totalPages">?</span>
-        <button onclick="nextPage()">Next ➡</button>
-        <select id="pageSelect" onchange="jumpToPage(this.value)">
-            <!-- filled dynamically -->
-        </select>
-    </div>
+        <div id="pagination" role="group" style="margin-bottom: 1rem;">
+            <button onclick="prevPage()">⬅ Prev</button>
+            <span id="pageNumber">Page 1</span>
+            <span id="totalPages">?</span>
+            <button onclick="nextPage()">Next ➡</button>
+            <select id="pageSelect" onchange="jumpToPage(this.value)">
+                <!-- filled dynamically -->
+            </select>
+        </div>
     </footer>
 
     <script>
@@ -197,13 +197,30 @@
 
             ws.onmessage = function (event) {
                 let data = JSON.parse(event.data);
-
-                document.getElementById('queue').innerHTML = data.queue_size;
-                document.getElementById('processing').innerHTML = data.processing_file || 'Idle';
-                document.getElementById('success').innerHTML = data.success_count;
-                document.getElementById('failure').innerHTML = data.failure_count;
-
-                renderHistory(data.history)
+                if (data.dashboard !== undefined) {
+                    document.getElementById('queue').innerHTML = data.dashboard.queue_size;
+                    document.getElementById('processing').innerHTML = data.dashboard.processing_file || 'Idle';
+                    document.getElementById('success').innerHTML = data.dashboard.success_count;
+                    document.getElementById('failure').innerHTML = data.dashboard.failure_count;
+                }
+                if (data.event !== undefined) {
+                    if (data.event.name === "new_item") {
+                        // Reload page 1, if viewing it
+                        if (currentPage === 1) {
+                            loadPage(1);
+                        }
+                    } else if (data.event.name === "toggle_right_wrong") {
+                        // Locate and update that card if it's visible
+                        const card = document.getElementById(`card-${data.event.payload}`);
+                        if (card) {
+                            loadPage(currentPage); // simplest approach
+                        }
+                    } else if (data.event.name !== undefined) {
+                        // fallback for legacy full-state update
+                        updateDashboardStats(data.event.payload);
+                    }
+                }
+                //renderHistory(data.history)
             };
 
             ws.onclose = function () {
@@ -343,10 +360,6 @@
             });
             document.getElementById('history').innerHTML = historyHtml;
         }
-
-        window.onload = () => {
-            loadPage(1);
-        };
 
         connectWebSocket();
     </script>

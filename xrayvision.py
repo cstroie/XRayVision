@@ -65,8 +65,7 @@ dashboard = {
     'queue_size': 0,
     'processing_file': None,
     'success_count': 0,
-    'failure_count': 0,
-    'history': []
+    'failure_count': 0
 }
 
 PAGE_SIZE = 10
@@ -94,11 +93,11 @@ def init_database():
 
 def db_load_history(limit = PAGE_SIZE, offset = 0):
     """ Load the history from the database """
-    dashboard['history'] = []
+    history = []
     with sqlite3.connect(DB_FILE) as conn:
         for row in conn.execute('SELECT * FROM history ORDER BY stDateTime DESC LIMIT ? OFFSET ?', (limit, offset)):
             dt = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
-            dashboard['history'].append({
+            history.append({
                 'uid': row[0],
                 'meta': {
                     'patient': {'name': row[1], 'id': row[2]},
@@ -112,7 +111,7 @@ def db_load_history(limit = PAGE_SIZE, offset = 0):
                 'positive': bool(row[7]),
                 'isWrong': bool(row[8])
             })
-    return dashboard['history']
+    return history
 
 def db_get_history_count():
     """ Get total row count """
@@ -338,7 +337,7 @@ async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     websocket_clients.add(ws)
-    await broadcast_dashboard_update(ws)
+    await broadcast_dashboard_update(event = "new_item", payload = "", client = ws)
     logging.info(f"Dashboard connected via WebSocket from {request.remote}")
     try:
         async for msg in ws:
@@ -380,15 +379,13 @@ async def manual_query(request):
 async def toggle_right_wrong(request):
     """ Toggle the right/wrong flag of a study """
     data = await request.json()
-    toggle_uid = data.get('uid')
+    uid = data.get('uid')
     page = data.get('page', 1)
-    db_toggle_right_wrong(toggle_uid)
-    # FIXME No global dashboard
-    db_load_history()
-    await broadcast_dashboard_update()
-    return web.json_response({'status': 'success', 'uid': toggle_uid})
+    db_toggle_right_wrong(uid)
+    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = uid)
+    return web.json_response({'status': 'success', 'uid': uid})
 
-async def broadcast_dashboard_update(client = None):
+async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """ Update the dashboard for all clients """
     # Check if there are any clients
     if not (websocket_clients or client):
@@ -400,11 +397,15 @@ async def broadcast_dashboard_update(client = None):
         clients = [client,]
     else:
         clients = websocket_clients.copy()
+    # Create the json object
+    data = {'dashboard': dashboard}
+    if event:
+        data['event'] = {'name': event, 'payload': payload}
     # Send the update to all clients
     for client in clients:
-        # Send the udate to the client
+        # Send the update to the client
         try:
-            await client.send_json(dashboard)
+            await client.send_json(data)
         except Exception as e:
             logging.error(f"Error sending update to WebSocket client: {e}")
             websocket_clients.remove(client)
@@ -582,10 +583,8 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     dashboard['success_count'] += 1
                     # Save to history database
                     db_add_row(uid, metadata, report)
-                    # Rebuild the dashboard from database
-                    # FIXME No global dashboard
-                    db_load_history()
-                    await broadcast_dashboard_update()
+                    # Notify the dashboard frontend to reload first page
+                    await broadcast_dashboard_update(event = "new_item", payload = uid)
                     # Success
                     return True
         except Exception as e:
