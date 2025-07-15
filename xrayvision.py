@@ -52,6 +52,7 @@ DB_FILE = os.path.join(IMAGES_DIR, "history.db")
 
 SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
+ANATOMY_LIST = ["chest", "sternum", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle", "knee", "spine"]
 
 os.makedirs(IMAGES_DIR, exist_ok = True)
 
@@ -68,7 +69,8 @@ dashboard = {
     'history': []
 }
 
-MAX_HISTORY = 100
+MAX_HISTORY = 10
+KEEP_DICOM = False
 
 # Database operations
 def init_database():
@@ -120,6 +122,14 @@ def db_add_row(file_name, metadata, report):
             VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT flagged FROM history WHERE file = ?), 0))
         ''', (pk, metadata["patient"]["name"], metadata["patient"]["id"], metadata["study"]["date"], metadata["study"]["time"], metadata["series"]["desc"], report, pk))
 
+def db_check_already_processed(png_file):
+    """ Check if the file has already been processed """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute(
+            "SELECT 1 FROM history WHERE file = ?", (png_file,)
+        ).fetchone()
+        return result is not None
+
 
 # DICOM network operations
 async def query_and_retrieve(hours = 1):
@@ -135,24 +145,34 @@ async def query_and_retrieve(hours = 1):
         # FIXME take care of the midnight
         current_time = datetime.now()
         past_time = current_time - timedelta(hours = hours)
-        time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
-        date_today = current_time.strftime('%Y%m%d')
-        # The query dataset
-        ds = Dataset()
-        ds.QueryRetrieveLevel = "STUDY"
-        ds.StudyDate = date_today
-        ds.StudyTime = time_range
-        ds.Modality = "CR"
-        # Get the responses list
-        responses = assoc.send_c_find(ds, PatientRootQueryRetrieveInformationModelFind)
-        # Ask for each one to be sent
-        for (status, identifier) in responses:
-            if status and status.Status in (0xFF00, 0xFF01):
-                study_instance_uid = identifier.StudyInstanceUID
-                logging.info(f"Found Study {study_instance_uid}")
-                await send_c_move(ae, study_instance_uid)
-        # Release the association
-        assoc.release()
+        # Check if the time span rosses midnight, split into two queries
+        if past_time.date() < current_time.date():
+            date1 = past_time.strftime('%Y%m%d')
+            time_range1 = f"{past_time.strftime('%H%M%S')}-235959"
+            date2 = current_time.strftime('%Y%m%d')
+            time_range2 = f"000000-{current_time.strftime('%H%M%S')}"
+            queries = [(date1, time_range1), (date2, time_range2)]
+        else:
+            time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
+            date_today = current_time.strftime('%Y%m%d')
+            queries = [(date_today, time_range),]
+        for study_date, time_range in queries:
+            # The query dataset
+            ds = Dataset()
+            ds.QueryRetrieveLevel = "STUDY"
+            ds.StudyDate = study_date
+            ds.StudyTime = time_range
+            ds.Modality = "CR"
+            # Get the responses list
+            responses = assoc.send_c_find(ds, PatientRootQueryRetrieveInformationModelFind)
+            # Ask for each one to be sent
+            for (status, identifier) in responses:
+                if status and status.Status in (0xFF00, 0xFF01):
+                    study_instance_uid = identifier.StudyInstanceUID
+                    logging.info(f"Found Study {study_instance_uid}")
+                    await send_c_move(ae, study_instance_uid)
+            # Release the association
+            assoc.release()
     else:
         logging.error("Could not establish QueryRetrieve association.")
 
@@ -177,11 +197,14 @@ def dicom_store(event):
     # Get the dataset
     ds = event.dataset
     ds.file_meta = event.file_meta
-    # Check the Modality
-    if ds.Modality == "CR":
-        # Save the DICOM file
+    # Check if already processed
+    if ds.SOPInstanceUID and db_check_already_processed(f"{ds.SOPInstanceUID}.png"):
+        logging.info(f"Skipping already processed image {ds.SOPInstanceUID}.dcm")
+    elif ds.Modality == "CR":
+        # Check the Modality
         dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
-        ds.save_as(dicom_file, write_like_original = False)
+        # Save the DICOM file
+        ds.save_as(dicom_file, enforce_file_format = True)
         logging.info(f"DICOM file saved to {dicom_file}")
         # Add to processing queue
         main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
@@ -324,15 +347,8 @@ async def broadcast_dashboard_update(client = None):
     # Check if there are any clients
     if not (websocket_clients or client):
         return
-    # FIXME Why not using directly the dashboard struct
+    # Update the queue size
     dashboard['queue_size'] = data_queue.qsize()
-    update = {
-        'queue_size': dashboard['queue_size'],
-        'processing_file': dashboard['processing_file'],
-        'success_count': dashboard['success_count'],
-        'failure_count': dashboard['failure_count'],
-        'history': dashboard['history']
-    }
     # Create a list of clients
     if client:
         clients = [client,]
@@ -342,7 +358,7 @@ async def broadcast_dashboard_update(client = None):
     for client in clients:
         # Send the udate to the client
         try:
-            await client.send_json(update)
+            await client.send_json(dashboard)
         except Exception as e:
             logging.error(f"Error sending update to WebSocket client: {e}")
             websocket_clients.remove(client)
@@ -355,7 +371,7 @@ def check_any(string, *words):
 def get_anatomy(metadata):
     """ Try to identify the anatomy. Return the anatomy and the question. """
     desc = metadata["series"]["desc"].lower()
-    if check_any(desc, 'torace', 'pulmon'):
+    if check_any(desc, 'torace', 'pulmon', "thorax"):
         anatomy = 'chest'
         question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
     elif check_any(desc, 'grilaj', 'coaste'):
@@ -467,6 +483,10 @@ async def send_image_to_openai(png_file, metadata, max_retries = 3):
     projection = get_projection(metadata)
     gender = get_gender(metadata)
     age = get_age(metadata)
+    # Filter on specific anatomy
+    if not anatomy in ANATOMY_LIST:
+        logging.info(f"Ignoring {png_file} with {anatomy} x-ray.")
+        return False
     # Get the subject of the study and the studied region
     subject = " ".join([age, gender])
     if anatomy:
@@ -520,16 +540,11 @@ async def send_image_to_openai(png_file, metadata, max_retries = 3):
                     logging.info(f"Response saved to {text_file}")
                     # Update the dashboard
                     dashboard['success_count'] += 1
-                    # Add to history (keep only last MAX_HISTORY)
-                    dashboard['history'].insert(0, {
-                        'file': os.path.basename(png_file),
-                        'meta': metadata,
-                        'report': report,
-                        'flagged': False})
-                    dashboard['history'] = dashboard['history'][:MAX_HISTORY]
-                    await broadcast_dashboard_update()
                     # Save to history database
                     db_add_row(png_file, metadata, report)
+                    # Rebuild the dashboard from database
+                    db_load_history()
+                    await broadcast_dashboard_update()
                     # Success
                     return True
         except Exception as e:
@@ -582,11 +597,14 @@ async def relay_to_openai_loop():
             await broadcast_dashboard_update()
             data_queue.task_done()
         # Remove the DICOM file
-        try:
-            os.remove(dicom_file)
-            logging.info(f"DICOM file {dicom_file} deleted after processing.")
-        except Exception as e:
-            logging.error(f"Error removing DICOM file {dicom_file}: {e}")
+        if not KEEP_DICOM:
+            try:
+                os.remove(dicom_file)
+                logging.info(f"DICOM file {dicom_file} deleted after processing.")
+            except Exception as e:
+                logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+        else:
+            logging.debug(f"Kept DICOM file: {dicom_file}")
 
 async def query_retrieve_loop():
     """ Async thread to periodically poll the server for new studies """
@@ -632,6 +650,14 @@ async def main():
     await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
 
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description = "XRayVision Server")
+    parser.add_argument("--keep-dicom", action = "store_true", help = "Do not delete .dcm files after conversion")
+    args = parser.parse_args()
+
+    KEEP_DICOM = args.keep_dicom
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
