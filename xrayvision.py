@@ -71,6 +71,7 @@ dashboard = {
 
 MAX_HISTORY = 10
 KEEP_DICOM = False
+NO_QUERY = False
 
 # Database operations
 def init_database():
@@ -78,14 +79,15 @@ def init_database():
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
             CREATE TABLE IF NOT EXISTS history (
-                file TEXT PRIMARY KEY,
-                patient_name TEXT,
-                patient_id TEXT,
-                study_date TEXT,
-                study_time TEXT,
-                protocol TEXT,
+                uid TEXT PRIMARY KEY,
+                patName TEXT,
+                patId TEXT,
+                stDateTime TIMESTAMP,
+                stProtocol TEXT,
+                repDateTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 report TEXT,
-                flagged INTEGER DEFAULT 0
+                isPositive INTEGER DEFAULT 0,
+                isWrong INTEGER DEFAULT 0
             )
         ''')
         logging.info("Initialized SQLite database.")
@@ -95,38 +97,54 @@ def db_load_history():
     dashboard['history'] = []
     with sqlite3.connect(DB_FILE) as conn:
         for row in conn.execute('SELECT * FROM history ORDER BY rowid DESC LIMIT ?', (MAX_HISTORY,)):
+            dt = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
             dashboard['history'].append({
-                'file': row[0],
+                'uid': row[0],
                 'meta': {
                     'patient': {'name': row[1], 'id': row[2]},
-                    'series': {'date': row[3], 'time': row[4], 'description': row[5]}
+                    'series': {
+                        'date': dt.strftime('%Y%m%d'),
+                        'time': dt.strftime('%H%M%S'),
+                        'protocol': row[4]
+                    }
                 },
                 'report': row[6],
-                'flagged': bool(row[7])
+                'positive': bool(row[7]),
+                'isWrong': bool(row[8])
             })
     return dashboard['history']
 
-def db_toggle_flag(pk):
-    """ Toggle the flag of a study """
+def db_toggle_right_wrong(uid):
+    """ Toggle the right/wrong flag of a study """
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
-            UPDATE history SET flagged = NOT flagged WHERE file = ?
-        ''', (pk,))
+            UPDATE history SET isWrong = NOT isWrong WHERE uid = ?
+        ''', (uid,))
 
-def db_add_row(file_name, metadata, report):
+def db_add_row(uid, metadata, report):
     """ Add one row to the database """
-    pk = os.path.basename(file_name)
+    poz = report.lower().startswith("yes") and 1 or 0
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if metadata["study"]["date"] and metadata["study"]["time"] and \
+        len(metadata["study"]["date"]) == 8 and len(metadata["study"]["time"]) >= 6:
+        try:
+            dt = datetime.strptime(f'{metadata["study"]["date"]} {metadata["study"]["time"][:6]}', "%Y%m%d %H%M%S")
+            stDateTime = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            stDateTime = now
+    else:
+        stDateTime = now
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
-            INSERT OR REPLACE INTO history (file, patient_name, patient_id, study_date, study_time, protocol, report, flagged)
-            VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT flagged FROM history WHERE file = ?), 0))
-        ''', (pk, metadata["patient"]["name"], metadata["patient"]["id"], metadata["study"]["date"], metadata["study"]["time"], metadata["series"]["desc"], report, pk))
+            INSERT OR REPLACE INTO history (uid, patName, patId, stDateTime, stProtocol, repDateTime, report, isPositive, isWrong)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT isWrong FROM history WHERE uid = ?), 0))
+        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], stDateTime, metadata["series"]["desc"], now, report, poz, uid))
 
-def db_check_already_processed(png_file):
+def db_check_already_processed(uid):
     """ Check if the file has already been processed """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute(
-            "SELECT 1 FROM history WHERE file = ?", (png_file,)
+            "SELECT 1 FROM history WHERE uid = ?", (uid,)
         ).fetchone()
         return result is not None
 
@@ -198,17 +216,18 @@ def dicom_store(event):
     # Get the dataset
     ds = event.dataset
     ds.file_meta = event.file_meta
+    uid = f"{ds.SOPInstanceUID}"
     # Check if already processed
-    if ds.SOPInstanceUID and db_check_already_processed(f"{ds.SOPInstanceUID}.png"):
-        logging.info(f"Skipping already processed image {ds.SOPInstanceUID}.dcm")
+    if db_check_already_processed(uid):
+        logging.info(f"Skipping already processed image {uid}")
     elif ds.Modality == "CR":
         # Check the Modality
-        dicom_file = os.path.join(IMAGES_DIR, f"{ds.SOPInstanceUID}.dcm")
+        dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
         # Save the DICOM file
         ds.save_as(dicom_file, enforce_file_format = True)
         logging.info(f"DICOM file saved to {dicom_file}")
         # Add to processing queue
-        main_loop.call_soon_threadsafe(data_queue.put_nowait, dicom_file)
+        main_loop.call_soon_threadsafe(data_queue.put_nowait, uid)
         asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
     return 0x0000
@@ -217,11 +236,11 @@ def dicom_store(event):
 # DICOM files operations
 async def load_existing_dicom_files():
     """ Load existing .dcm files into queue """
-    for filename in os.listdir(IMAGES_DIR):
-        if filename.lower().endswith('.dcm'):
-            dicom_file = os.path.join(IMAGES_DIR, filename)
-            asyncio.create_task(data_queue.put(dicom_file))
-            logging.info(f"Adding {dicom_file} into processing queue...")
+    for file_name in os.listdir(IMAGES_DIR):
+        uid, ext = os.path.splitext(os.path.basename(file_name.lower()))
+        if ext == '.dcm':
+            asyncio.create_task(data_queue.put(uid))
+            logging.info(f"Adding {uid} into processing queue...")
     await broadcast_dashboard_update()
 
 
@@ -337,14 +356,14 @@ async def manual_query(request):
         return web.json_response({'status': 'error',
                                   'message': str(e)})
 
-async def toggle_flag(request):
-    """ Toggle the flag of a study """
+async def toggle_right_wrong(request):
+    """ Toggle the right/wrong flag of a study """
     data = await request.json()
-    file_to_toggle = data.get('file')
-    db_toggle_flag(file_to_toggle)
+    toggle_uid = data.get('uid')
+    db_toggle_right_wrong(toggle_uid)
     db_load_history()
     await broadcast_dashboard_update()
-    return web.json_response({'status': 'success', 'file': file_to_toggle})
+    return web.json_response({'status': 'success', 'uid': toggle_uid})
 
 async def broadcast_dashboard_update(client = None):
     """ Update the dashboard for all clients """
@@ -478,10 +497,10 @@ def get_age(metadata):
     # Return the age (string)
     return age
 
-async def send_image_to_openai(png_file, metadata, max_retries = 3):
+async def send_image_to_openai(uid, metadata, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
     # Read the PNG file
-    with open(png_file, 'rb') as f:
+    with open(os.path.join(IMAGES_DIR, f"{uid}.png"), 'rb') as f:
         image_bytes = f.read()
     # Prepare the prompt
     anatomy, question = get_anatomy(metadata)
@@ -490,7 +509,7 @@ async def send_image_to_openai(png_file, metadata, max_retries = 3):
     age = get_age(metadata)
     # Filter on specific anatomy
     if not anatomy in ANATOMY_LIST:
-        logging.info(f"Ignoring {png_file} with {anatomy} x-ray.")
+        logging.info(f"Ignoring {uid} with {anatomy} x-ray.")
         return False
     # Get the subject of the study and the studied region
     subject = " ".join([age, gender])
@@ -535,30 +554,23 @@ async def send_image_to_openai(png_file, metadata, max_retries = 3):
                     result = await response.json()
                     report = result["choices"][0]["message"]["content"]
                     report = report.replace('\n', " ").replace("  ", " ").strip()
-                    logging.info(f"OpenAI API response for {png_file}: {report}")
-                    # Save the report to a text file
-                    # FIXME replaced by the database
-                    base_name = os.path.splitext(os.path.basename(png_file))[0]
-                    text_file = os.path.join(IMAGES_DIR, f"{base_name}.txt")
-                    with open(text_file, 'w') as f:
-                        f.write(report)
-                    logging.info(f"Response saved to {text_file}")
+                    logging.info(f"OpenAI API response for {uid}: {report}")
                     # Update the dashboard
                     dashboard['success_count'] += 1
                     # Save to history database
-                    db_add_row(png_file, metadata, report)
+                    db_add_row(uid, metadata, report)
                     # Rebuild the dashboard from database
                     db_load_history()
                     await broadcast_dashboard_update()
                     # Success
                     return True
         except Exception as e:
-            logging.warning(f"Error uploading {png_file} (attempt {attempt}): {e}")
+            logging.warning(f"Error uploading {uid} (attempt {attempt}): {e}")
             # Exponential backoff
             await asyncio.sleep(2 ** attempt)
             attempt += 1
     # Failure after max_retries
-    logging.error(f"Failed to upload {png_file} after {max_retries} attempts.")
+    logging.error(f"Failed to upload {uid} after {max_retries} attempts.")
     dashboard['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
@@ -570,7 +582,7 @@ async def start_dashboard():
     app = web.Application()
     app.router.add_get('/', dashboard_handler)
     app.router.add_get('/ws', websocket_handler)
-    app.router.add_post('/toggle_flag', toggle_flag)
+    app.router.add_post('/toggle_right_wrong', toggle_right_wrong)
     app.router.add_post('/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
     runner = web.AppRunner(app)
@@ -583,10 +595,12 @@ async def relay_to_openai_loop():
     """ Relay PNG files to OpenAI API with retries and dashboard update """
     while True:
         # Get one file from queue
-        dicom_file = await data_queue.get()
+        uid = await data_queue.get()
         # Update the dashboard
-        dashboard['processing_file'] = os.path.basename(dicom_file)
+        dashboard['processing_file'] = uid
         await broadcast_dashboard_update()
+        # The DICOM file name
+        dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
         # Try to convert to PNG
         try:
             png_file, metadata = dicom_to_png(dicom_file)
@@ -594,9 +608,9 @@ async def relay_to_openai_loop():
             logging.error(f"Error converting DICOM file {dicom_file}: {e}")
         # Try to send to AI
         try:
-            await send_image_to_openai(png_file, metadata)
+            await send_image_to_openai(uid, metadata)
         except Exception as e:
-            logging.error(f"Unhandled error processing {png_file}: {e}")
+            logging.error(f"Unhandled error processing {uid}: {e}")
         finally:
             dashboard['processing_file'] = None
             await broadcast_dashboard_update()
@@ -613,7 +627,7 @@ async def relay_to_openai_loop():
 
 async def query_retrieve_loop():
     """ Async thread to periodically poll the server for new studies """
-    while True:
+    while not NO_QUERY:
         await query_and_retrieve()
         await asyncio.sleep(3600)
 
@@ -659,11 +673,13 @@ async def main():
 if __name__ == '__main__':
     # Need to process the arguments
     import argparse
-    parser = argparse.ArgumentParser(description = "XRayVision")
+    parser = argparse.ArgumentParser(description = "XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard")
     parser.add_argument("--keep-dicom", action = "store_true", help = "Do not delete .dcm files after conversion")
+    parser.add_argument("--no-query", action = "store_true", help = "Do not query the DICOM server automatically")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
+    NO_QUERY = args.no_query
 
     # Run
     try:

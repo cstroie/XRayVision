@@ -46,7 +46,7 @@
             border: 1px solid #00ff00;
         }
 
-        .flagged img {
+        .wrong img {
             border: 1px solid #ff0000;
         }
 
@@ -70,12 +70,12 @@
             color: white;
         }
 
-        .flagged {
+        .wrong {
             background-color: #3b0000;
             border: 1px solid #ff0000;
         }
 
-        .flagged button {
+        .wrong button {
             background-color: #ff4c4c;
             border-color: #ff0000;
             color: white;
@@ -95,7 +95,7 @@
             color: white;
         }
 
-        .lightbox.flagged {
+        .lightbox.wrong {
             background-color: rgba(128, 0, 0, 0.9);
         }
 
@@ -111,7 +111,7 @@
             border-radius: 0.5rem;
         }
 
-        .lightbox.flagged img {
+        .lightbox.wrong img {
             border: 1px solid #ff0000;
         }
 
@@ -195,21 +195,21 @@
                     let patientNameParts = item.meta.patient.name.split('^');
                     let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
 
-                    let isFlagged = item.flagged;
-                    let flaggedClass = isFlagged ? 'flagged' : '';
+                    let isWrong = item.isWrong;
+                    let wrongClass = isWrong ? 'wrong' : '';
                     let positiveClass = isPositive ? 'positive' : '';
-                    let buttonLabel = isFlagged ? 'Wrong' : 'Correct';
+                    let buttonLabel = isWrong ? 'Wrong' : 'Correct';
 
                     historyHtml += `
-                        <div class="image-card ${positiveClass} ${flaggedClass}" id="card-${item.file}">
-                            <img src="/static/${item.file}" alt="Processed Image" onclick="openLightbox('/static/${item.file}', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isFlagged}, ${isPositive})">
+                        <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
+                            <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
                             <div class="text">
                                 <strong>${formattedPatientName}</strong><br>
                                 <span>${item.meta.patient.id}</span><br>
                                 <span>${formattedDate} ${formattedTime}</span><br>
-                                <span>${item.meta.series.description}</span><br>
+                                <span>${item.meta.series.protocol}</span><br>
                                 <span class="report">${item.report}</span><br>
-                                <button onclick="toggleFlag('${item.file}')">${buttonLabel}</button>
+                                <button onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
                             </div>
                         </div>
                     `;
@@ -228,18 +228,18 @@
             };
         }
 
-        function toggleFlag(file) {
-            fetch('/toggle_flag', {
+        function toggleRightWrong(uid) {
+            fetch('/toggle_right_wrong', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ file: file })
+                body: JSON.stringify({ uid: uid })
             })
             .then(response => response.json())
             .then(data => {
-                console.log('Status update:', data.flagged ? 'wrong' : 'correct');
+                console.log('Status update:', data.isWrong ? 'wrong' : 'correct');
             })
             .catch(error => {
-                console.error('Error toggling flag:', error);
+                console.error('Error toggling right/wrong:', error);
             });
         }
 
@@ -259,16 +259,16 @@
             });
         }
 
-        function openLightbox(imageSrc, patientName, report, isFlagged, isPositive) {
+        function openLightbox(imageSrc, patientName, report, isWrong, isPositive) {
             const lightbox = document.getElementById('lightbox');
             const lightboxImg = document.getElementById('lightbox-img');
             document.getElementById('lightbox-text').innerHTML = `<strong>${patientName}</strong><br>${report}`;
             lightboxImg.src = imageSrc;
 
-            lightbox.classList.remove('flagged', 'positive');
+            lightbox.classList.remove('wrong', 'positive');
 
-            if (isFlagged) {
-                lightbox.classList.add('flagged');
+            if (isWrong) {
+                lightbox.classList.add('wrong');
             } else if (isPositive) {
                 lightbox.classList.add('positive');
             }
