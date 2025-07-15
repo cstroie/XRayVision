@@ -185,7 +185,7 @@
 
                 let historyHtml = '';
                 data.history.forEach(item => {
-                    let isPositive = item.text.trim().toLowerCase().startsWith('yes');
+                    let isPositive = item.report.trim().toLowerCase().startsWith('yes');
 
                     let date = item.meta.series.date;
                     let time = item.meta.series.time;
@@ -202,13 +202,13 @@
 
                     historyHtml += `
                         <div class="image-card ${positiveClass} ${flaggedClass}" id="card-${item.file}">
-                            <img src="/static/${item.file}" alt="Processed Image" onclick="openLightbox('/static/${item.file}', '${sanitize(formattedPatientName)}', '${sanitize(item.text)}', ${isFlagged}, ${isPositive})">
+                            <img src="/static/${item.file}" alt="Processed Image" onclick="openLightbox('/static/${item.file}', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isFlagged}, ${isPositive})">
                             <div class="text">
                                 <strong>${formattedPatientName}</strong><br>
                                 <span>${item.meta.patient.id}</span><br>
                                 <span>${formattedDate} ${formattedTime}</span><br>
-                                <span>${item.meta.series.desc}</span><br>
-                                <span class="report">${item.text}</span><br>
+                                <span>${item.meta.series.description}</span><br>
+                                <span class="report">${item.report}</span><br>
                                 <button onclick="toggleFlag('${item.file}')">${buttonLabel}</button>
                             </div>
                         </div>
@@ -259,10 +259,10 @@
             });
         }
 
-        function openLightbox(imageSrc, patientName, description, isFlagged, isPositive) {
+        function openLightbox(imageSrc, patientName, report, isFlagged, isPositive) {
             const lightbox = document.getElementById('lightbox');
             const lightboxImg = document.getElementById('lightbox-img');
-            document.getElementById('lightbox-text').innerHTML = `<strong>${patientName}</strong><br>${description}`;
+            document.getElementById('lightbox-text').innerHTML = `<strong>${patientName}</strong><br>${report}`;
             lightboxImg.src = imageSrc;
 
             lightbox.classList.remove('flagged', 'positive');
