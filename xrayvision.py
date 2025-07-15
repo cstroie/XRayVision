@@ -100,6 +100,7 @@ def db_load_history(limit = PAGE_SIZE, offset = 0):
             dt = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
             dashboard['history'].append({
                 'uid': row[0],
+                'png_file': f"{row[0]}.png",
                 'meta': {
                     'patient': {'name': row[1], 'id': row[2]},
                     'series': {

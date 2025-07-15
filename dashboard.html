@@ -304,7 +304,7 @@
 
         function renderHistory(data) {
             let historyHtml = '';
-            data.history.forEach(item => {
+            data.forEach(item => {
                 let isPositive = item.report.trim().toLowerCase().startsWith('yes');
 
                 let date = item.meta.series.date;
@@ -322,7 +322,7 @@
 
                 historyHtml += `
                     <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
-                        <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
+                        <img src="/static/${item.png_file}" alt="Processed Image" onclick="openLightbox('/static/${item.png_file}', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
                         <div class="text">
                             <strong>${formattedPatientName}</strong><br>
                             <span>${item.meta.patient.id}</span><br>
