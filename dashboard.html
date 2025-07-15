@@ -13,7 +13,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XRayVision Dashboard</title>
-    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@1.5.10/css/pico.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <style>
         body {
             background-color: #121212;
@@ -126,6 +126,7 @@
 </head>
 
 <body class="container">
+    <header>
     <h1>📊 XRayVision Processing Dashboard</h1>
 
     <div class="grid">
@@ -148,18 +149,10 @@
             <button onclick="triggerQuery()">Trigger QueryRetrieve Now</button>
         </fieldset>
     </form>
+    </header>
 
+    <main>
     <h2>Last Processed Files</h2>
-
-    <div id="pagination" style="margin-bottom: 1rem;">
-        <button onclick="prevPage()">⬅ Prev</button>
-        <span id="pageNumber">Page 1</span>
-        <span id="totalPages">?</span>
-        <button onclick="nextPage()">Next ➡</button>
-        <select id="pageSelect" onchange="jumpToPage(this.value)">
-            <!-- filled dynamically -->
-        </select>
-        </div>
 
     <div id="history"></div>
 
@@ -167,6 +160,19 @@
         <img id="lightbox-img" src="">
         <div id="lightbox-text" class="lightbox-text"></div>
     </div>
+    </main>
+
+    <footer>
+    <div id="pagination" role="group" style="margin-bottom: 1rem;">
+        <button onclick="prevPage()">⬅ Prev</button>
+        <span id="pageNumber">Page 1</span>
+        <span id="totalPages">?</span>
+        <button onclick="nextPage()">Next ➡</button>
+        <select id="pageSelect" onchange="jumpToPage(this.value)">
+            <!-- filled dynamically -->
+        </select>
+    </div>
+    </footer>
 
     <script>
         let ws;
@@ -322,7 +328,7 @@
 
                 historyHtml += `
                     <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
-                        <img src="/static/${item.png_file}" alt="Processed Image" onclick="openLightbox('/static/${item.png_file}', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
+                        <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
                         <div class="text">
                             <strong>${formattedPatientName}</strong><br>
                             <span>${item.meta.patient.id}</span><br>

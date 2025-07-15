@@ -100,7 +100,6 @@ def db_load_history(limit = PAGE_SIZE, offset = 0):
             dt = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
             dashboard['history'].append({
                 'uid': row[0],
-                'png_file': f"{row[0]}.png",
                 'meta': {
                     'patient': {'name': row[1], 'id': row[2]},
                     'series': {
@@ -382,7 +381,9 @@ async def toggle_right_wrong(request):
     """ Toggle the right/wrong flag of a study """
     data = await request.json()
     toggle_uid = data.get('uid')
+    page = data.get('page', 1)
     db_toggle_right_wrong(toggle_uid)
+    # FIXME No global dashboard
     db_load_history()
     await broadcast_dashboard_update()
     return web.json_response({'status': 'success', 'uid': toggle_uid})
@@ -582,6 +583,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     # Save to history database
                     db_add_row(uid, metadata, report)
                     # Rebuild the dashboard from database
+                    # FIXME No global dashboard
                     db_load_history()
                     await broadcast_dashboard_update()
                     # Success
