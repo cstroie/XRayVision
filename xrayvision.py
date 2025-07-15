@@ -145,17 +145,18 @@ async def query_and_retrieve(hours = 1):
         # FIXME take care of the midnight
         current_time = datetime.now()
         past_time = current_time - timedelta(hours = hours)
-        # Check if the time span rosses midnight, split into two queries
+        # Check if the time span crosses midnight, split into two queries
         if past_time.date() < current_time.date():
-            date1 = past_time.strftime('%Y%m%d')
-            time_range1 = f"{past_time.strftime('%H%M%S')}-235959"
-            date2 = current_time.strftime('%Y%m%d')
-            time_range2 = f"000000-{current_time.strftime('%H%M%S')}"
-            queries = [(date1, time_range1), (date2, time_range2)]
+            date_yesterday = past_time.strftime('%Y%m%d')
+            time_yesterday = f"{past_time.strftime('%H%M%S')}-235959"
+            date_today = current_time.strftime('%Y%m%d')
+            time_today = f"000000-{current_time.strftime('%H%M%S')}"
+            queries = [(date_yesterday, time_yesterday), (date_today, time_today)]
         else:
             time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
             date_today = current_time.strftime('%Y%m%d')
             queries = [(date_today, time_range),]
+        # Perform one or two queries, as needed
         for study_date, time_range in queries:
             # The query dataset
             ds = Dataset()
@@ -171,8 +172,8 @@ async def query_and_retrieve(hours = 1):
                     study_instance_uid = identifier.StudyInstanceUID
                     logging.info(f"Found Study {study_instance_uid}")
                     await send_c_move(ae, study_instance_uid)
-            # Release the association
-            assoc.release()
+        # Release the association
+        assoc.release()
     else:
         logging.error("Could not establish QueryRetrieve association.")
 
@@ -212,6 +213,7 @@ def dicom_store(event):
     # Return success
     return 0x0000
 
+
 # DICOM files operations
 async def load_existing_dicom_files():
     """ Load existing .dcm files into queue """
@@ -221,6 +223,7 @@ async def load_existing_dicom_files():
             asyncio.create_task(data_queue.put(dicom_file))
             logging.info(f"Adding {dicom_file} into processing queue...")
     await broadcast_dashboard_update()
+
 
 # Image processing operations
 def adjust_gamma(image, gamma = 1.2):
@@ -298,6 +301,7 @@ def dicom_to_png(dicom_file, max_size = 800):
     # Return the PNG file name and metadata
     return png_file, metadata
 
+
 # WebSocket and WebServer operations
 async def dashboard_handler(request):
     with open('dashboard.html', 'r') as f:
@@ -362,6 +366,7 @@ async def broadcast_dashboard_update(client = None):
         except Exception as e:
             logging.error(f"Error sending update to WebSocket client: {e}")
             websocket_clients.remove(client)
+
 
 # AI API operations
 def check_any(string, *words):
@@ -649,16 +654,19 @@ async def main():
     # Start the DICOM server
     await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
 
-if __name__ == '__main__':
-    import argparse
 
-    parser = argparse.ArgumentParser(description = "XRayVision Server")
+# Command run
+if __name__ == '__main__':
+    # Need to process the arguments
+    import argparse
+    parser = argparse.ArgumentParser(description = "XRayVision")
     parser.add_argument("--keep-dicom", action = "store_true", help = "Do not delete .dcm files after conversion")
     args = parser.parse_args()
-
+    # Store in globals
     KEEP_DICOM = args.keep_dicom
 
+    # Run
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logging.info("Server stopped by user. Shutting down.")
+        logging.info("XRayVision stopped by user. Shutting down.")
