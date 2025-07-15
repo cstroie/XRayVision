@@ -123,10 +123,10 @@ def db_toggle_right_wrong(uid):
     """ Toggle the right/wrong flag of a study """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute(
-            "SELECT 1 FROM history WHERE uid = ?", (uid,)
+            "SELECT isWrong FROM history WHERE uid = ?", (uid,)
         ).fetchone()
         print(result)
-        isWrong = not bool(result[8])
+        isWrong = not bool(result[0])
         conn.execute('''
             UPDATE history SET isWrong = NOT isWrong WHERE uid = ?
         ''', (uid,))

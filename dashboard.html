@@ -218,6 +218,7 @@
                             if (data.event.payload.wrong) {
                                 card.classList.add('wrong');
                             }
+                        }
                     } else if (data.event.name !== undefined) {
                         // fallback for legacy full-state update
                         updateDashboardStats(data.event.payload);
