@@ -32,7 +32,7 @@ def ensure_database():
                 study_date TEXT,
                 study_time TEXT,
                 protocol TEXT,
-                response TEXT,
+                report TEXT,
                 flagged INTEGER DEFAULT 0
             )
         ''')
@@ -53,7 +53,7 @@ def import_history():
             try:
                 conn.execute('''
                     INSERT OR REPLACE INTO history
-                    (file, patient_name, patient_id, study_date, study_time, protocol, response, flagged)
+                    (file, patient_name, patient_id, study_date, study_time, protocol, report, flagged)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     item['file'],
