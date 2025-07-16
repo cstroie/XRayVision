@@ -202,7 +202,7 @@ async def db_stats_handler(request):
         cursor.execute("""
             SELECT stAnatomy, COUNT(*) AS total,
                 SUM(LOWER(report) LIKE 'yes%') AS positive,
-                SUM(flagged = 1) AS flagged
+                SUM(isWrong = 1) AS wrong
             FROM history
             GROUP BY stAnatomy
         """)
