@@ -50,6 +50,11 @@
             font-weight: bold;
         }
 
+        .wrong .report {
+            color: #3b0000;
+            font-weight: bold;
+        }
+
         .positive {
             background-color: #003b00;
             border: 1px solid #00ff00;
@@ -175,13 +180,6 @@
 
         <div id="history"></div>
 
-        <div id="lightbox" class="lightbox">
-            <img id="lightbox-img" src="">
-            <div id="lightbox-text" class="lightbox-text"></div>
-        </div>
-    </main>
-
-    <footer>
         <div id="pagination" role="group" style="margin-bottom: 1rem;">
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
@@ -190,8 +188,19 @@
             <button onclick="jumpToPage(totalPages)">Last</button>
         </div>
 
+        <div id="lightbox" class="lightbox">
+            <img id="lightbox-img" src="">
+            <div id="lightbox-text" class="lightbox-text"></div>
+        </div>
+
         <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #222; color: white; padding: 10px 20px; border-radius: 6px; display: none;"></div>
+    </main>
+
+    <footer style="margin-top: 2rem; color: #aaa; font-size: 0.9em;">
+        Active OpenAI Backend: <span id="activeBackend">Loading...</span><br>
+        Primary: <span id="primaryStatus">?</span> | Secondary: <span id="secondaryStatus">?</span>
     </footer>
+
 
     <script>
         let ws;
@@ -381,6 +390,19 @@
             }, 1000);
         }
 
+        function updateBackendStatus() {
+            fetch('/api/health')
+                .then(res => res.json())
+                .then(status => {
+                    document.getElementById("activeBackend").textContent = status.active_url;
+                    document.getElementById("primaryStatus").textContent = status.health[Object.keys(status.health)[0]] ? "✅" : "❌";
+                    document.getElementById("secondaryStatus").textContent = status.health[Object.keys(status.health)[1]] ? "✅" : "❌";
+                })
+                .catch(err => {
+                    console.warn("Failed to fetch OpenAI status", err);
+                });
+        }
+
         function renderHistory(data) {
             let historyHtml = '';
             data.forEach(item => {
@@ -417,6 +439,11 @@
         }
 
         connectWebSocket();
+
+        window.onload = () => {
+            updateBackendStatus();
+            setInterval(updateBackendStatus, 60000); // update every minute
+        };
     </script>
 </body>
 

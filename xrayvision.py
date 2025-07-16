@@ -38,8 +38,8 @@ logging.basicConfig(
 )
 
 # Configuration
-OPENAI_API_URL = 'http://127.0.0.1:8080/v1/chat/completions'
-#OPENAI_API_URL = 'http://192.168.3.239:8080/v1/chat/completions'
+OPENAI_URL_PRIMARY = os.getenv("OPENAI_URL_PRIMARY", "http://192.168.3.239:8080/v1/chat/completions")
+OPENAI_URL_SECONDARY = os.getenv("OPENAI_URL_SECONDARY", "http://127.0.0.1:8080/v1/chat/completions")
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')
 DASHBOARD_PORT = 8000
 AE_TITLE = 'XRAYVISION'
@@ -60,6 +60,12 @@ main_loop = None  # Global variable to hold the main event loop
 data_queue = asyncio.Queue()
 websocket_clients = set()
 next_query = None
+
+active_openai_url = OPENAI_URL_PRIMARY
+health_status = {
+    OPENAI_URL_PRIMARY: True,
+    OPENAI_URL_SECONDARY: True
+}
 
 # Dashboard state
 dashboard = {
@@ -183,26 +189,24 @@ def db_check_already_processed(uid):
         return result is not None
 
 async def db_stats_handler(request):
+    """ Get statistics from database """
     stats = {
         "total": 0,
         "positive": 0,
-        "flagged": 0,
+        "wrong": 0,
         "region": {}
     }
-
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-
         # Global totals
         stats["total"] = cursor.execute("SELECT COUNT(*) FROM history").fetchone()[0]
         stats["positive"] = cursor.execute("SELECT COUNT(*) FROM history WHERE LOWER(report) LIKE 'yes%'").fetchone()[0]
         stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM history WHERE isWrong = 1").fetchone()[0]
-
-        # Totals per anatomy part
+        # Totals per anatomic part
         cursor.execute("""
             SELECT stAnatomy, COUNT(*) AS total,
-                SUM(LOWER(report) LIKE 'yes%') AS positive,
-                SUM(isWrong = 1) AS wrong
+                   SUM(LOWER(report) LIKE 'yes%') AS positive,
+                   SUM(isWrong = 1) AS wrong
             FROM history
             GROUP BY stAnatomy
         """)
@@ -213,7 +217,7 @@ async def db_stats_handler(request):
                 "positive": row[2],
                 "wrong": row[3]
             }
-
+    # TODO return only stats and use a web function to return json
     return web.json_response(stats)
 
 
@@ -477,6 +481,16 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
             logging.error(f"Error sending update to WebSocket client: {e}")
             websocket_clients.remove(client)
 
+async def openai_health_handler(request):
+    """ Return which OpenAI backend is active and their health """
+    return web.json_response({
+        "active_url": active_openai_url,
+        "health": {
+            OPENAI_URL_PRIMARY:   health_status.get(OPENAI_URL_PRIMARY,  False),
+            OPENAI_URL_SECONDARY: health_status.get(OPENAI_URL_SECONDARY, False)
+        }
+    })
+
 
 # AI API operations
 def check_any(string, *words):
@@ -593,6 +607,39 @@ def get_age(metadata):
     # Return the age (string)
     return age, num
 
+async def send_to_openai_DIS(session, headers, payload):
+    """ Try both OpenAI API endpoints """
+    # Try primary
+    try:
+        async with session.post(OPENAI_URL_PRIMARY, headers = headers, json = payload, timeout = 20) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            logging.warning(f"Primary OpenAI URL failed with status {resp.status}")
+    except Exception as e:
+        logging.warning(f"Primary OpenAI request error: {e}")
+    # Try secondary
+    try:
+        async with session.post(OPENAI_URL_SECONDARY, headers = headers, json = payload, timeout = 20) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            logging.error(f"Secondary OpenAI URL also failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"Secondary OpenAI request error: {e}")
+    # Both failed
+    return None  
+
+async def send_to_openai(session, headers, payload):
+    """ Try the healty OpenAI API endpoint """
+    try:
+        async with session.post(active_openai_url, headers = headers, json = payload, timeout = 20) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            logging.warning(f"{active_openai_url} failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"{active_openai_url} request error: {e}")
+    # Failed
+    return None
+
 async def send_image_to_openai(uid, metadata, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
     # Read the PNG file
@@ -650,19 +697,18 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     while attempt <= max_retries:
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(OPENAI_API_URL, headers = headers, json = data) as response:
-                    result = await response.json()
-                    report = result["choices"][0]["message"]["content"]
-                    report = report.replace('\n', " ").replace("  ", " ").strip()
-                    logging.info(f"OpenAI API response for {uid}: {report}")
-                    # Update the dashboard
-                    dashboard['success_count'] += 1
-                    # Save to history database
-                    db_add_row(uid, metadata, report)
-                    # Notify the dashboard frontend to reload first page
-                    await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
-                    # Success
-                    return True
+                result = await send_to_openai(session, headers, data)
+                report = result["choices"][0]["message"]["content"]
+                report = report.replace('\n', " ").replace("  ", " ").strip()
+                logging.info(f"OpenAI API response for {uid}: {report}")
+                # Update the dashboard
+                dashboard['success_count'] += 1
+                # Save to history database
+                db_add_row(uid, metadata, report)
+                # Notify the dashboard frontend to reload first page
+                await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
+                # Success
+                return True
         except Exception as e:
             logging.warning(f"Error uploading {uid} (attempt {attempt}): {e}")
             # Exponential backoff
@@ -684,6 +730,7 @@ async def start_dashboard():
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/history', history_handler)
     app.router.add_get('/api/stats', db_stats_handler)
+    app.router.add_get('/api/health', openai_health_handler)
     app.router.add_post('/api/toggle_right_wrong', toggle_right_wrong)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
@@ -727,6 +774,30 @@ async def relay_to_openai_loop():
         else:
             logging.debug(f"Kept DICOM file: {dicom_file}")
 
+async def openai_health_check():
+    """ Health check coroutine """
+    global active_openai_url
+    while True:
+        for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url.replace("/chat/completions", "/models"), timeout = 5) as resp:
+                        health_status[url] = (resp.status == 200)
+                        logging.info(f"Health check {url} → {resp.status}")
+            except Exception as e:
+                health_status[url] = False
+                logging.warning(f"Health check failed for {url}: {e}")
+
+        if health_status.get(OPENAI_URL_PRIMARY):
+            active_openai_url = OPENAI_URL_PRIMARY
+        elif health_status.get(OPENAI_URL_SECONDARY):
+            active_openai_url = OPENAI_URL_SECONDARY
+        else:
+            logging.error("No OpenAI backend is currently healthy")
+        # Sleep for 5 minutes
+        await asyncio.sleep(300)
+
+
 async def query_retrieve_loop():
     """ Async thread to periodically poll the server for new studies """
     if NO_QUERY:
@@ -769,6 +840,7 @@ async def main():
 
     # Start the asynchronous tasks
     asyncio.create_task(start_dashboard())
+    asyncio.create_task(openai_health_check())
     asyncio.create_task(relay_to_openai_loop())
     asyncio.create_task(query_retrieve_loop())
     # Preload the existing dicom files
