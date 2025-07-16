@@ -172,7 +172,7 @@ def db_add_row(uid, metadata, report):
         conn.execute('''
             INSERT OR REPLACE INTO history (uid, patName, patId, patAge, stDateTime, stProtocol, stAnatomy, repDateTime, report, isPositive, isWrong)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT isWrong FROM history WHERE uid = ?), 0))
-        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], 0, stDateTime, metadata["series"]["desc"], metadata['exam']['anatomy'], now, report, poz, uid))
+        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], metadata["patient"]["age"], stDateTime, metadata["series"]["desc"], metadata['exam']['anatomy'], now, report, poz, uid))
 
 def db_check_already_processed(uid):
     """ Check if the file has already been processed """
@@ -589,6 +589,11 @@ def get_gender(metadata):
 def get_age(metadata):
     """ Try to get the age """
     age = metadata["patient"]["age"].lower().replace("y", "").strip()
+    try:
+        num = int(age)
+    except Exception as e:
+        logging.error(f"Cannot convert age to number: {e}")
+        num = 0
     if age:
         if age == "000":
             age = "newborn"
@@ -597,7 +602,7 @@ def get_age(metadata):
     else:
         age = ""
     # Return the age (string)
-    return age
+    return age, num
 
 async def send_image_to_openai(uid, metadata, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
@@ -608,16 +613,17 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     anatomy, question = get_anatomy(metadata)
     projection = get_projection(metadata)
     gender = get_gender(metadata)
-    age = get_age(metadata)
+    txtAge, intAge = get_age(metadata)
     # Store in metadata
     metadata['exam'] = {'anatomy': anatomy,
-                        'projection': projection}
+                        'projection': projection,}
+    metadata['patient']['age'] = intAge
     # Filter on specific anatomy
     if not anatomy in ANATOMY_LIST:
         logging.info(f"Ignoring {uid} with {anatomy} x-ray.")
         return False
     # Get the subject of the study and the studied region
-    subject = " ".join([age, gender])
+    subject = " ".join([txtAge, gender])
     if anatomy:
         region = " ".join([projection, anatomy])
     else:
