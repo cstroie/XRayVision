@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html data-theme="dark" lang="en">
+<!--
+  XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+  Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  any later version.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>XRayVision Statistics</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="container">
+    <header>
+        <h1>XRayVision Statistics</h1>
+        <ul>
+            <li>Total: <span id="total">0</span></li>
+            <li>Positive: <span id="positive">0</span></li>
+            <li>Wrong Reports: <span id="wrong">0</span></li>
+        </ul>
+    </header>
+
+    <main>
+        <h2>Breakdown by Anatomy</h2>
+        <div id="anatomyStats"></div>
+
+        <h2>Chart: Studies by Anatomy</h2>
+        <canvas id="anatomyChart" width="400" height="200"></canvas>
+
+        <h2>Chart: Global Summary</h2>
+        <canvas id="globalChart" width="400" height="200"></canvas>
+    </main>
+
+    <script>
+    fetch('/api/stats')
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById('total').textContent = data.total;
+        document.getElementById('positive').textContent = data.positive;
+        document.getElementById('wrong').textContent = data.wrong;
+
+        const div = document.getElementById('anatomyStats');
+        for (const [anatomy, counts] of Object.entries(data.anatomy)) {
+        div.innerHTML += `<strong>${anatomy}</strong>: ${counts.total} total, ${counts.positive} positive, ${counts.wrong} wrong<br>`;
+        }
+
+        // Chart: Anatomy breakdown
+        const anatomyLabels = [];
+        const totalData = [];
+        const positiveData = [];
+        const wrongData = [];
+
+        for (const [anatomy, counts] of Object.entries(data.anatomy)) {
+            anatomyLabels.push(anatomy);
+            totalData.push(counts.total);
+            positiveData.push(counts.positive);
+            wrongData.push(counts.wrong);
+        }
+
+        new Chart(document.getElementById("anatomyChart"), {
+        type: 'bar',
+        data: {
+            labels: anatomyLabels,
+            datasets: [
+                { label: 'Total', data: totalData, backgroundColor: '#4fc3f7' },
+                { label: 'Positive', data: positiveData, backgroundColor: '#4caf50' },
+                { label: 'Wrong', data: wrongData, backgroundColor: '#f44336' }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'top' }
+            }
+        }
+        });
+
+        // Chart: Global summary
+        new Chart(document.getElementById("globalChart"), {
+        type: 'bar',
+        data: {
+            labels: ['Total', 'Positive', 'Wrong'],
+            datasets: [{
+                label: 'Counts',
+                data: [data.total, data.positive, data.wrong],
+                backgroundColor: ['#4fc3f7', '#4caf50', '#f44336']
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+        });
+    });
+    </script>
+</body>
+
+</html>

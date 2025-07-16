@@ -247,7 +247,6 @@
                         }
                     }
                 }
-                //renderHistory(data.history)
             };
 
             ws.onclose = function () {
@@ -262,7 +261,7 @@
         }
 
         function toggleRightWrong(uid) {
-            fetch('/toggle_right_wrong', {
+            fetch('/api/toggle_right_wrong', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid })
@@ -278,7 +277,7 @@
 
         function triggerQuery() {
             const hours = document.getElementById('queryInterval').value;
-            fetch('/trigger_query', {
+            fetch('/api/trigger_query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ hours: hours })
@@ -315,7 +314,7 @@
 
         function loadPage(page) {
             const filter = document.getElementById("filterSelect").value;
-            fetch(`/history?page=${page}&filter=${filter}`)
+            fetch(`/api/history?page=${page}&filter=${filter}`)
                 .then(res => res.json())
                 .then(data => {
                     const history = data.history || [];
