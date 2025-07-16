@@ -607,31 +607,10 @@ def get_age(metadata):
     # Return the age (string)
     return age, num
 
-async def send_to_openai_DIS(session, headers, payload):
-    """ Try both OpenAI API endpoints """
-    # Try primary
-    try:
-        async with session.post(OPENAI_URL_PRIMARY, headers = headers, json = payload, timeout = 20) as resp:
-            if resp.status == 200:
-                return await resp.json()
-            logging.warning(f"Primary OpenAI URL failed with status {resp.status}")
-    except Exception as e:
-        logging.warning(f"Primary OpenAI request error: {e}")
-    # Try secondary
-    try:
-        async with session.post(OPENAI_URL_SECONDARY, headers = headers, json = payload, timeout = 20) as resp:
-            if resp.status == 200:
-                return await resp.json()
-            logging.error(f"Secondary OpenAI URL also failed with status {resp.status}")
-    except Exception as e:
-        logging.error(f"Secondary OpenAI request error: {e}")
-    # Both failed
-    return None  
-
 async def send_to_openai(session, headers, payload):
     """ Try the healty OpenAI API endpoint """
     try:
-        async with session.post(active_openai_url, headers = headers, json = payload, timeout = 20) as resp:
+        async with session.post(active_openai_url, headers = headers, json = payload) as resp:
             if resp.status == 200:
                 return await resp.json()
             logging.warning(f"{active_openai_url} failed with status {resp.status}")
