@@ -40,10 +40,10 @@
     </header>
 
     <main>
-        <h2>Breakdown by Anatomy</h2>
+        <h2>Breakdown by Anatomical Region</h2>
         <div id="anatomyStats"></div>
 
-        <h2>Chart: Studies by Anatomy</h2>
+        <h2>Chart: Studies by Anatomic Region</h2>
         <canvas id="anatomyChart" width="400" height="200"></canvas>
 
         <h2>Chart: Global Summary</h2>
@@ -59,8 +59,8 @@
         document.getElementById('wrong').textContent = data.wrong;
 
         const div = document.getElementById('anatomyStats');
-        for (const [anatomy, counts] of Object.entries(data.anatomy)) {
-        div.innerHTML += `<strong>${anatomy}</strong>: ${counts.total} total, ${counts.positive} positive, ${counts.wrong} wrong<br>`;
+        for (const [region, counts] of Object.entries(data.region)) {
+        div.innerHTML += `<strong>${region}</strong>: ${counts.total} total, ${counts.positive} positive, ${counts.wrong} wrong<br>`;
         }
 
         // Chart: Anatomy breakdown
@@ -69,8 +69,8 @@
         const positiveData = [];
         const wrongData = [];
 
-        for (const [anatomy, counts] of Object.entries(data.anatomy)) {
-            anatomyLabels.push(anatomy);
+        for (const [region, counts] of Object.entries(data.region)) {
+            anatomyLabels.push(region);
             totalData.push(counts.total);
             positiveData.push(counts.positive);
             wrongData.push(counts.wrong);

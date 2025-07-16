@@ -82,8 +82,10 @@ def init_database():
                 uid TEXT PRIMARY KEY,
                 patName TEXT,
                 patId TEXT,
+                patAge INTEGER,
                 stDateTime TIMESTAMP,
                 stProtocol TEXT,
+                stAnatomy TEXT,
                 repDateTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 report TEXT,
                 isPositive INTEGER DEFAULT 0,
@@ -112,20 +114,21 @@ def db_load_history(limit = PAGE_SIZE, offset = 0, filter = None):
     with sqlite3.connect(DB_FILE) as conn:
         rows = conn.execute(query, params)
         for row in rows:
-            dt = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
+            dt = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
             history.append({
                 'uid': row[0],
                 'meta': {
-                    'patient': {'name': row[1], 'id': row[2]},
+                    'patient': {'name': row[1], 'id': row[2], 'age': row[3]},
                     'series': {
                         'date': dt.strftime('%Y%m%d'),
                         'time': dt.strftime('%H%M%S'),
-                        'protocol': row[4]
+                        'protocol': row[5],
+                        'anatomy': row[6],
                     }
                 },
-                'report': row[6],
-                'positive': bool(row[7]),
-                'isWrong': bool(row[8])
+                'report': row[8],
+                'positive': bool(row[9]),
+                'isWrong': bool(row[10])
             })
         # Get the total for pagination
         count_query = 'SELECT COUNT(*) FROM history'
@@ -167,9 +170,9 @@ def db_add_row(uid, metadata, report):
         stDateTime = now
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
-            INSERT OR REPLACE INTO history (uid, patName, patId, stDateTime, stProtocol, repDateTime, report, isPositive, isWrong)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT isWrong FROM history WHERE uid = ?), 0))
-        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], stDateTime, metadata["series"]["desc"], now, report, poz, uid))
+            INSERT OR REPLACE INTO history (uid, patName, patId, patAge, stDateTime, stProtocol, stAnatomy, repDateTime, report, isPositive, isWrong)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT isWrong FROM history WHERE uid = ?), 0))
+        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], 0, stDateTime, metadata["series"]["desc"], metadata['exam']['anatomy'], now, report, poz, uid))
 
 def db_check_already_processed(uid):
     """ Check if the file has already been processed """
@@ -196,33 +199,31 @@ async def db_stats_handler(request):
         stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM history WHERE isWrong = 1").fetchone()[0]
 
         # Drilled-down by anatomy (naive: look for body part in file name)
-        rows = cursor.execute("SELECT stProtocol, report FROM history").fetchall()
-        for protocol, report in rows:
-            anatomy = "unknown"
-            name_lower = protocol.lower()
+        rows = cursor.execute("SELECT stAnatomy, report FROM history").fetchall()
+        for anatomy, report in rows:
+            region = "unknown"
             for part in ["chest", "abdomen", "head", "knee", "pelvis", "spine", "sinus"]:
-                if part in name_lower:
-                    anatomy = part
+                if part in anatomy:
+                    region = part
                     break
-            if anatomy not in stats["anatomy"]:
-                stats["anatomy"][anatomy] = {"total": 0, "positive": 0, "wrong": 0}
-            stats["anatomy"][anatomy]["total"] += 1
+            if region not in stats["region"]:
+                stats["region"][region] = {"total": 0, "positive": 0, "wrong": 0}
+            stats["region"][region]["total"] += 1
             if str(report).lower().startswith("yes"):
-                stats["anatomy"][anatomy]["positive"] += 1
+                stats["region"][region]["positive"] += 1
             # You may need to join for flagged separately, or pass from prior query
-        # optional: anatomy["flagged"] based on file in flagged list
+        # optional: region["flagged"] based on file in flagged list
         wrong_reports = {
-            row[0] for row in cursor.execute("SELECT stProtocol FROM history WHERE isWrong = 1")
+            row[0] for row in cursor.execute("SELECT stAnatomy FROM history WHERE isWrong = 1")
         }
-        for protocol in wrong_reports:
-            name_lower = protocol.lower()
-            anatomy = "unknown"
+        for anatomy in wrong_reports:
+            region = "unknown"
             for part in ["chest", "abdomen", "head", "knee", "pelvis", "spine", "sinus"]:
-                if part in name_lower:
-                    anatomy = part
+                if part in anatomy:
+                    region = part
                     break
-            if anatomy in stats["anatomy"]:
-                stats["anatomy"][anatomy]["wrong"] += 1
+            if region in stats["region"]:
+                stats["region"][region]["wrong"] += 1
 
     return web.json_response(stats)
 
@@ -608,6 +609,9 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     projection = get_projection(metadata)
     gender = get_gender(metadata)
     age = get_age(metadata)
+    # Store in metadata
+    metadata['exam'] = {'anatomy': anatomy,
+                        'projection': projection}
     # Filter on specific anatomy
     if not anatomy in ANATOMY_LIST:
         logging.info(f"Ignoring {uid} with {anatomy} x-ray.")
