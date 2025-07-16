@@ -92,11 +92,26 @@ def init_database():
         ''')
         logging.info("Initialized SQLite database.")
 
-def db_load_history(limit = PAGE_SIZE, offset = 0):
-    """ Load the history from the database """
+def db_load_history(limit = PAGE_SIZE, offset = 0, filter = None):
+    """ Load the history from the database, with filters and pagination """
+    query = 'SELECT * FROM history'
+    conditions = []
+    params = []
+    # Update the conditions
+    if filter == "wrong":
+        conditions.append("isWrong = 1")
+    elif filter == "positive":
+        conditions.append("LOWER(report) LIKE 'yes%'")
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    # Apply the limits (pagination)
+    query += " ORDER BY stDateTime DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    # Get the history
     history = []
     with sqlite3.connect(DB_FILE) as conn:
-        for row in conn.execute('SELECT * FROM history ORDER BY stDateTime DESC LIMIT ? OFFSET ?', (limit, offset)):
+        rows = conn.execute(query, params)
+        for row in rows:
             dt = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
             history.append({
                 'uid': row[0],
@@ -112,7 +127,12 @@ def db_load_history(limit = PAGE_SIZE, offset = 0):
                 'positive': bool(row[7]),
                 'isWrong': bool(row[8])
             })
-    return history
+        # Get the total for pagination
+        count_query = 'SELECT COUNT(*) FROM history'
+        if conditions:
+            count_query += ' WHERE ' + " AND ".join(conditions)
+        total = conn.execute(count_query).fetchone()[0]
+    return history, total
 
 def db_get_history_count():
     """ Get total row count """
@@ -357,9 +377,9 @@ async def history_handler(request):
     """ Provide a page of history """
     try:
         page = int(request.query.get("page", "1"))
+        filter = request.query.get("filter", "all")
         offset = (page - 1) * PAGE_SIZE
-        data = db_load_history(limit = PAGE_SIZE, offset = offset)
-        total = db_get_history_count()
+        data, total = db_load_history(limit = PAGE_SIZE, offset = offset, filter = filter)
         return web.json_response({
             "history": data,
             "total": total
@@ -693,8 +713,8 @@ async def main():
     else:
         logging.info("SQLite history database found.")
     # Load history
-    history = db_load_history()
-    logging.info(f"Loaded {len(history)} history items.")
+    history, total = db_load_history()
+    logging.info(f"Loaded {len(history)} history items from a total of {total}.")
 
     # Start the asynchronous tasks
     asyncio.create_task(start_dashboard())

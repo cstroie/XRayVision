@@ -157,12 +157,20 @@
 
     <main>
         <h2>Last Processed Files</h2>
-
-        <select id="filterSelect" onchange="applyFilters()">
-            <option value="all">Show All</option>
-            <option value="flagged">Only Wrong</option>
-            <option value="positive">Only Positive</option>
-        </select>
+        <div id="pagination" role="group" style="margin-bottom: 1rem;">
+            <select id="filterSelect" onchange="loadPage(1)">
+                <option value="all">Show All</option>
+                <option value="wrong">Only Wrong</option>
+                <option value="positive">Only Positive</option>
+            </select>
+            <button onclick="jumpToPage(1)">First</button>
+            <button onclick="prevPage()">Prev</button>
+            <select id="pageSelect" onchange="jumpToPage(this.value)">
+                <!-- filled dynamically -->
+            </select>
+            <button onclick="nextPage()">Next</button>
+            <button onclick="jumpToPage(totalPages)">Last</button>
+        </div>
 
         <div id="history"></div>
 
@@ -176,10 +184,7 @@
         <div id="pagination" role="group" style="margin-bottom: 1rem;">
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
-            <div role="button" id="pageNumber" class="secondary" style="width: 20em;">Page 1 of 1</div>
-            <select id="pageSelect" onchange="jumpToPage(this.value)">
-                <!-- filled dynamically -->
-            </select>
+            <div role="button" id="pageNumber" class="secondary" style="width: 30em;">Page 1 of 1</div>
             <button onclick="nextPage()">Next</button>
             <button onclick="jumpToPage(totalPages)">Last</button>
         </div>
@@ -309,22 +314,25 @@
         });
 
         function loadPage(page) {
-            fetch(`/history?page=${page}`)
+            const filter = document.getElementById("filterSelect").value;
+            fetch(`/history?page=${page}&filter=${filter}`)
                 .then(res => res.json())
                 .then(data => {
                     const history = data.history || [];
                     const totalCount = data.total || 0;
                     totalPages = Math.ceil(totalCount / 10);
 
-		    document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
+		            document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
                     document.getElementById('pageSelect').innerHTML = '';
 
+                    const select = document.getElementById("pageSelect");
+                    select.innerHTML = "";
                     for (let i = 1; i <= totalPages; i++) {
                         const option = document.createElement('option');
                         option.value = i;
                         option.text = `Page ${i}`;
                         if (i === page) option.selected = true;
-                        document.getElementById('pageSelect').appendChild(option);
+                        select.appendChild(option);
                     }
 
                     currentPage = page;
