@@ -187,7 +187,7 @@ async def db_stats_handler(request):
         "total": 0,
         "positive": 0,
         "flagged": 0,
-        "anatomy": {}
+        "region": {}
     }
 
     with sqlite3.connect(DB_FILE) as conn:
@@ -198,32 +198,21 @@ async def db_stats_handler(request):
         stats["positive"] = cursor.execute("SELECT COUNT(*) FROM history WHERE LOWER(report) LIKE 'yes%'").fetchone()[0]
         stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM history WHERE isWrong = 1").fetchone()[0]
 
-        # Drilled-down by anatomy (naive: look for body part in file name)
-        rows = cursor.execute("SELECT stAnatomy, report FROM history").fetchall()
-        for anatomy, report in rows:
-            region = "unknown"
-            for part in ["chest", "abdomen", "head", "knee", "pelvis", "spine", "sinus"]:
-                if part in anatomy:
-                    region = part
-                    break
-            if region not in stats["region"]:
-                stats["region"][region] = {"total": 0, "positive": 0, "wrong": 0}
-            stats["region"][region]["total"] += 1
-            if str(report).lower().startswith("yes"):
-                stats["region"][region]["positive"] += 1
-            # You may need to join for flagged separately, or pass from prior query
-        # optional: region["flagged"] based on file in flagged list
-        wrong_reports = {
-            row[0] for row in cursor.execute("SELECT stAnatomy FROM history WHERE isWrong = 1")
-        }
-        for anatomy in wrong_reports:
-            region = "unknown"
-            for part in ["chest", "abdomen", "head", "knee", "pelvis", "spine", "sinus"]:
-                if part in anatomy:
-                    region = part
-                    break
-            if region in stats["region"]:
-                stats["region"][region]["wrong"] += 1
+        # Totals per anatomy part
+        cursor.execute("""
+            SELECT stAnatomy, COUNT(*) AS total,
+                SUM(LOWER(response) LIKE 'yes%') AS positive,
+                SUM(flagged = 1) AS flagged
+            FROM history
+            GROUP BY stAnatomy
+        """)
+        for row in cursor.fetchall():
+            region = row[0] or 'unknown'
+            stats["region"][region] = {
+                "total": row[1],
+                "positive": row[2],
+                "wrong": row[3]
+            }
 
     return web.json_response(stats)
 
