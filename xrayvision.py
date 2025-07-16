@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# 
+# XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+# Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# any later version.
 
 import asyncio
 import os
@@ -50,6 +59,7 @@ os.makedirs(IMAGES_DIR, exist_ok = True)
 main_loop = None  # Global variable to hold the main event loop
 data_queue = asyncio.Queue()
 websocket_clients = set()
+next_query = None
 
 # Dashboard state
 dashboard = {
@@ -333,7 +343,7 @@ async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     websocket_clients.add(ws)
-    await broadcast_dashboard_update(event = "new_item", payload = "", client = ws)
+    await broadcast_dashboard_update(event = "connected", payload = {'address': request.remote}, client = ws)
     logging.info(f"Dashboard connected via WebSocket from {request.remote}")
     try:
         async for msg in ws:
@@ -377,8 +387,8 @@ async def toggle_right_wrong(request):
     data = await request.json()
     uid = data.get('uid')
     wrong = db_toggle_right_wrong(uid)
-    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'wrong': wrong})
-    return web.json_response({'status': 'success', 'uid': uid, 'wrong': wrong})
+    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'is_wrong': wrong})
+    return web.json_response({'status': 'success', 'uid': uid, 'is_wrong': wrong})
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """ Update the dashboard for all clients """
@@ -394,6 +404,8 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
         clients = websocket_clients.copy()
     # Create the json object
     data = {'dashboard': dashboard}
+    if next_query:
+        data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
     if event:
         data['event'] = {'name': event, 'payload': payload}
     # Send the update to all clients
@@ -579,7 +591,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     # Save to history database
                     db_add_row(uid, metadata, report)
                     # Notify the dashboard frontend to reload first page
-                    await broadcast_dashboard_update(event = "new_item", payload = uid)
+                    await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
                     # Success
                     return True
         except Exception as e:
@@ -646,8 +658,14 @@ async def relay_to_openai_loop():
 
 async def query_retrieve_loop():
     """ Async thread to periodically poll the server for new studies """
+    if NO_QUERY:
+        logging.warning(f"Automatic Query/Retrieve disabled.")
     while not NO_QUERY:
         await query_and_retrieve()
+        current_time = datetime.now()
+        global next_query
+        next_query = current_time + timedelta(seconds = 3600)
+        logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
         await asyncio.sleep(3600)
 
 def start_dicom_server():
