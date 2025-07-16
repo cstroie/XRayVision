@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# 
-# XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
-# Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
-# 
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# any later version.
 
 import asyncio
 import os
@@ -125,7 +116,6 @@ def db_toggle_right_wrong(uid):
         result = conn.execute(
             "SELECT isWrong FROM history WHERE uid = ?", (uid,)
         ).fetchone()
-        print(result)
         isWrong = not bool(result[0])
         conn.execute('''
             UPDATE history SET isWrong = NOT isWrong WHERE uid = ?
@@ -388,7 +378,7 @@ async def toggle_right_wrong(request):
     uid = data.get('uid')
     wrong = db_toggle_right_wrong(uid)
     await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'wrong': wrong})
-    return web.json_response({'status': 'success', 'uid': uid})
+    return web.json_response({'status': 'success', 'uid': uid, 'wrong': wrong})
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """ Update the dashboard for all clients """

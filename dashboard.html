@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html data-theme="dark" lang="en">
 <!--
   XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
   Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
@@ -139,15 +139,15 @@
 
         <form>
             <fieldset role="group">
-                <label for="queryInterval">Query Time Span (hours):</label>
                 <select id="queryInterval">
+		    <option selected disabled value="">Select the time interval</option>
                     <option value="1">1</option>
-                    <option value="3" selected>3</option>
+                    <option value="3">3</option>
                     <option value="6">6</option>
                     <option value="12">12</option>
                     <option value="24">24</option>
                 </select>
-                <button onclick="triggerQuery()">Trigger QueryRetrieve Now</button>
+                <button onclick="triggerQuery()">Query/Retrieve</button>
             </fieldset>
         </form>
     </header>
@@ -165,13 +165,14 @@
 
     <footer>
         <div id="pagination" role="group" style="margin-bottom: 1rem;">
-            <button onclick="prevPage()">⬅ Prev</button>
-            <span id="pageNumber">Page 1</span>
-            <span id="totalPages">?</span>
-            <button onclick="nextPage()">Next ➡</button>
+            <button onclick="jumpToPage(1)">First</button>
+            <button onclick="prevPage()">Prev</button>
+            <div role="button" id="pageNumber" class="secondary" style="width: 20em;">Page 1 of 1</div>
             <select id="pageSelect" onchange="jumpToPage(this.value)">
                 <!-- filled dynamically -->
             </select>
+            <button onclick="nextPage()">Next</button>
+            <button onclick="jumpToPage(totalPages)">Last</button>
         </div>
     </footer>
 
@@ -298,8 +299,7 @@
                     const totalCount = data.total || 0;
                     totalPages = Math.ceil(totalCount / 10);
 
-                    document.getElementById('pageNumber').innerText = `Page ${page}`;
-                    document.getElementById('totalPages').innerText = totalPages;
+		    document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
                     document.getElementById('pageSelect').innerHTML = '';
 
                     for (let i = 1; i <= totalPages; i++) {
