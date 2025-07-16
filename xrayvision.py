@@ -395,12 +395,13 @@ def dicom_to_png(dicom_file, max_size = 800):
 
 # WebSocket and WebServer operations
 async def serve_dashboard_page(request):
-    with open('dashboard.html', 'r') as f:
-        content = f.read()
-    return web.Response(text = content, content_type = 'text/html')
+    return web.FileResponse(path = "dashboard.html")
 
 async def serve_stats_page(request):
     return web.FileResponse(path = "stats.html")
+
+async def serve_about_page(request):
+    return web.FileResponse(path = "about.html")
 
 async def websocket_handler(request):
     """ Handle each WebSocket client """
@@ -706,6 +707,7 @@ async def start_dashboard():
     app = web.Application()
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
+    app.router.add_get('/about', serve_about_page)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/history', history_handler)
     app.router.add_get('/api/stats', db_stats_handler)

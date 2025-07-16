@@ -21,7 +21,7 @@
 <body class="container">
     <nav>
         <ul>
-            <li><strong>XRayVision</strong></li>
+            <li><strong>XRayVision Statistics</strong></li>
         </ul>
         <ul>
             <li><a href="/">Dashboard</a></li>
@@ -31,23 +31,38 @@
     </nav>
 
     <header>
-        <h1>XRayVision Statistics</h1>
-        <ul>
-            <li>Total: <span id="total">0</span></li>
-            <li>Positive: <span id="positive">0</span></li>
-            <li>Wrong Reports: <span id="wrong">0</span></li>
-        </ul>
+        <div class="grid">
+            <article><strong>Total exams:</strong> <span id="total">0</span></article>
+            <article><strong>Positive reports:</strong> <span id="positive">0</span></article>
+            <article><strong>Wrong reports:</strong> <span id="wrong">0</span></article>
+        </div>
     </header>
 
     <main>
-        <h2>Breakdown by Anatomical Region</h2>
-        <div id="anatomyStats"></div>
-
-        <h2>Chart: Studies by Anatomic Region</h2>
-        <canvas id="anatomyChart" width="400" height="200"></canvas>
-
-        <h2>Chart: Global Summary</h2>
-        <canvas id="globalChart" width="400" height="200"></canvas>
+        <section>
+            <div><strong>Breakdown by anatomical region</strong></div>
+            <table id="anatomyStats" role="grid">
+                <thead>
+                    <tr>
+                        <th>Region</th>
+                        <th>Total</th>
+                        <th>Positive</th>
+                        <th>Wrong</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- dynamically populated -->
+                </tbody>
+            </table>
+        </section>
+        <section class="grid">
+            <article>
+                <canvas id="anatomyChart" width="400" height="200"></canvas>
+            </article>
+            <article>
+                <canvas id="globalChart" width="400" height="200"></canvas>
+            </article>
+        </section>
     </main>
 
     <script>
@@ -58,9 +73,18 @@
         document.getElementById('positive').textContent = data.positive;
         document.getElementById('wrong').textContent = data.wrong;
 
-        const div = document.getElementById('anatomyStats');
+        // Table
+        const tbody = document.querySelector('#anatomyStats tbody');
+        tbody.innerHTML = '';
         for (const [region, counts] of Object.entries(data.region)) {
-        div.innerHTML += `<strong>${region}</strong>: ${counts.total} total, ${counts.positive} positive, ${counts.wrong} wrong<br>`;
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${region}</td>
+                <td>${counts.total}</td>
+                <td>${counts.positive}</td>
+                <td>${counts.wrong}</td>
+            `;
+            tbody.appendChild(row);
         }
 
         // Chart: Anatomy breakdown
@@ -81,16 +105,29 @@
         data: {
             labels: anatomyLabels,
             datasets: [
-                { label: 'Total', data: totalData, backgroundColor: '#4fc3f7' },
-                { label: 'Positive', data: positiveData, backgroundColor: '#4caf50' },
-                { label: 'Wrong', data: wrongData, backgroundColor: '#f44336' }
+                { label: 'Total', data: totalData, backgroundColor: '#017FC0' },
+                { label: 'Positive', data: positiveData, backgroundColor: '#398712' },
+                { label: 'Wrong', data: wrongData, backgroundColor: '#D24317' }
             ]
         },
         options: {
             responsive: true,
             plugins: {
-                legend: { position: 'top' }
-            }
+                legend: { position: 'top' },
+                title: {
+                    display: true,
+                    text: 'Studies by anatomic region'
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true
+                },
+                y: {
+                    stacked: true
+                }
+            },
+            indexAxis: 'y'
         }
         });
 
@@ -102,13 +139,17 @@
             datasets: [{
                 label: 'Counts',
                 data: [data.total, data.positive, data.wrong],
-                backgroundColor: ['#4fc3f7', '#4caf50', '#f44336']
+                backgroundColor: ['#017FC0', '#398712', '#D24317']
             }]
         },
         options: {
             responsive: true,
             plugins: {
-                legend: { display: false }
+                legend: { display: false },
+                title: {
+                    display: true,
+                    text: 'Global summary'
+                }
             }
         }
         });

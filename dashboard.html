@@ -14,13 +14,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <title>XRayVision Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
     <style>
         .image-card {
             padding: 1rem;
-            border: 1px solid #0d6efd;
+            border: 1px solid var(--pico-color-azure-400);
             border-radius: 0.5rem;
-            background-color: #1e1e2f;
+            background-color: var(--pico-color-azure-900);
             margin-bottom: 1rem;
             display: flex;
             align-items: flex-start;
@@ -30,51 +31,53 @@
         .image-card img {
             cursor: pointer;
             max-width: 100px;
-            border: 1px solid #4fc3f7;
+            border: 1px solid var(--pico-color-azure-400);
         }
 
         .positive img {
-            border: 1px solid #00ff00;
+            border: 1px solid var(--pico-color-green-400);
         }
 
         .wrong img {
-            border: 1px solid #ff0000;
+            border: 1px solid var(--pico-color-orange-400);
         }
 
         .image-card .text {
             word-break: break-word;
         }
 
+        .report {
+            color: var(--pico-color-azure-50);
+        }
+
         .positive .report {
-            color: #4fc3f7;
-            font-weight: bold;
+            color: var(--pico-color-green-50);
         }
 
         .wrong .report {
-            color: #3b0000;
-            font-weight: bold;
+            color: var(--pico-color-orange-50) !important;
         }
 
         .positive {
-            background-color: #003b00;
-            border: 1px solid #00ff00;
+            background-color: var(--pico-color-green-900);
+            border: 1px solid var(--pico-color-green-400);
         }
 
         .positive button {
-            background-color: #4caf50;
-            border-color: #00ff00;
-            color: white;
+            background-color: var(--pico-color-green-400);
+            border-color: var(--pico-color-green-200);
+            color: var(--pico-color-green-50);
         }
 
         .wrong {
-            background-color: #3b0000;
-            border: 1px solid #ff0000;
+            background-color: var(--pico-color-orange-900);
+            border: 1px solid var(--pico-color-orange-400);
         }
 
         .wrong button {
-            background-color: #ff4c4c;
-            border-color: #ff0000;
-            color: white;
+            background-color: var(--pico-color-orange-400);
+            border-color: var(--pico-color-orange-200);
+            color: var(--pico-color-orange-50);
         }
 
         .lightbox {
@@ -85,38 +88,38 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(0, 0, 0, 0.9);
+            background-color: rgba(6, 30, 47, 0.9);
             text-align: center;
             padding-top: 60px;
             color: white;
         }
 
         .lightbox.wrong {
-            background-color: rgba(128, 0, 0, 0.9);
+            background-color: rgba(45, 21, 9, 0.9) !important;
         }
 
         .lightbox.positive {
-            background-color: rgba(0, 128, 0, 0.9);
+            background-color: rgba(5, 32, 20, 0.9);
         }
 
         .lightbox img {
             max-width: 90%;
             max-height: 80%;
             margin-bottom: 1rem;
-            border: 1px solid #4fc3f7;
+            border: 1px solid var(--pico-color-azure-400);
             border-radius: 0.5rem;
         }
 
         .lightbox.wrong img {
-            border: 1px solid #ff0000;
+            border: 1px solid var(--pico-color-orange-400) !important;
         }
 
         .lightbox.positive img {
-            border: 1px solid #00ff00;
+            border: 1px solid var(--pico-color-green-400);
         }
 
         .lightbox .lightbox-text {
-            font-size: 1.2rem;
+            font-size: 1rem;
         }
     </style>
 </head>
@@ -124,7 +127,7 @@
 <body class="container">
     <nav>
         <ul>
-            <li><strong>XRayVision</strong></li>
+            <li><strong>XRayVision Dashboard</strong></li>
         </ul>
         <ul>
             <li><a href="/">Dashboard</a></li>
@@ -134,8 +137,6 @@
     </nav>
 
     <header>
-        <h1>📊 XRayVision Processing Dashboard</h1>
-
         <div class="grid">
             <article><strong>Queue Size:</strong><br><span id="queue">0</span></article>
             <article><strong>Currently Processing:</strong><br><span id="processing">Idle</span></article>
@@ -153,17 +154,14 @@
                     <option value="12">12</option>
                     <option value="24">24</option>
                 </select>
-                <button onclick="triggerQuery()">Query/Retrieve</button>
+                <button style="width: 15rem;" onclick="triggerQuery()">Query/Retrieve</button>
+                <div role="button" style="min-width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
             </fieldset>
-            <div style="margin-top: 10px; color: #4fc3f7;">
-                Next Query/Retrieve <span id="nextQueryTime">unknown</span>
-            </div>
         </form>
     </header>
 
     <main>
-        <h2>Last Processed Files</h2>
-        <div id="pagination" role="group" style="margin-bottom: 1rem;">
+        <section id="top-pagination" role="group">
             <select id="filterSelect" onchange="loadPage(1)">
                 <option value="all">Show All</option>
                 <option value="wrong">Only Wrong</option>
@@ -176,29 +174,30 @@
             </select>
             <button onclick="nextPage()">Next</button>
             <button onclick="jumpToPage(totalPages)">Last</button>
-        </div>
+        </section>
 
-        <div id="history"></div>
+        <section id="history"><article aria-busy="true"></article></section>
 
-        <div id="pagination" role="group" style="margin-bottom: 1rem;">
+        <section id="bottom-pagination" role="group">
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
-            <div role="button" id="pageNumber" class="secondary" style="width: 30em;">Page 1 of 1</div>
+            <div role="button" id="pageNumber" class="secondary" style="width: 30em;" disabled>Page 1 of 1</div>
             <button onclick="nextPage()">Next</button>
             <button onclick="jumpToPage(totalPages)">Last</button>
-        </div>
+        </section>
 
         <div id="lightbox" class="lightbox">
             <img id="lightbox-img" src="">
             <div id="lightbox-text" class="lightbox-text"></div>
         </div>
 
-        <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #222; color: white; padding: 10px 20px; border-radius: 6px; display: none;"></div>
+        <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
     </main>
 
-    <footer style="margin-top: 2rem; color: #aaa; font-size: 0.9em;">
-        Active OpenAI Backend: <span id="activeBackend">Loading...</span><br>
-        Primary: <span id="primaryStatus">?</span> | Secondary: <span id="secondaryStatus">?</span>
+    <footer>
+        <hr>
+        <small>Active OpenAI Backend: <span id="activeBackend">Loading...</span></small><br>
+        <small>Primary: <span id="primaryStatus">?</span> | Secondary: <span id="secondaryStatus">?</span></small>
     </footer>
 
 
@@ -249,7 +248,6 @@
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
-                            //loadPage(currentPage); // simplest approach
                             card.classList.remove('wrong');
                             if (data.event.payload.is_wrong) {
                                 card.classList.add('wrong');
@@ -261,11 +259,13 @@
 
             ws.onclose = function () {
                 console.warn("WebSocket closed. Attempting reconnect in 5 seconds...");
+                showToast("WebSocket closed");
                 setTimeout(connectWebSocket, 3000);
             };
 
             ws.onerror = function (error) {
                 console.error("WebSocket error: ", error);
+                showToast("WebSocket error");
                 ws.close();
             };
         }
@@ -295,6 +295,7 @@
             .then(response => response.json())
             .then(data => {
                 console.log('Query triggered:', data);
+                showToast("Query triggered");
             })
             .catch(error => {
                 console.error('Error triggering query:', error);
@@ -426,9 +427,9 @@
                         <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
                         <div class="text">
                             <strong>${formattedPatientName}</strong><br>
-                            <span>${item.meta.patient.id}</span><br>
-                            <span>${formattedDate} ${formattedTime}</span><br>
-                            <span>${item.meta.series.protocol}</span><br>
+                            <small>${item.meta.patient.id}</small><br>
+                            <small>${formattedDate} ${formattedTime}</small><br>
+                            <small>${item.meta.series.protocol}</small><br>
                             <span class="report">${item.report}</span><br>
                             <button onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
                         </div>
