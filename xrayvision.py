@@ -179,6 +179,53 @@ def db_check_already_processed(uid):
         ).fetchone()
         return result is not None
 
+async def db_stats_handler(request):
+    stats = {
+        "total": 0,
+        "positive": 0,
+        "flagged": 0,
+        "anatomy": {}
+    }
+
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+
+        # Global totals
+        stats["total"] = cursor.execute("SELECT COUNT(*) FROM history").fetchone()[0]
+        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM history WHERE LOWER(report) LIKE 'yes%'").fetchone()[0]
+        stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM history WHERE isWrong = 1").fetchone()[0]
+
+        # Drilled-down by anatomy (naive: look for body part in file name)
+        rows = cursor.execute("SELECT stProtocol, report FROM history").fetchall()
+        for protocol, report in rows:
+            anatomy = "unknown"
+            name_lower = protocol.lower()
+            for part in ["chest", "abdomen", "head", "knee", "pelvis", "spine", "sinus"]:
+                if part in name_lower:
+                    anatomy = part
+                    break
+            if anatomy not in stats["anatomy"]:
+                stats["anatomy"][anatomy] = {"total": 0, "positive": 0, "wrong": 0}
+            stats["anatomy"][anatomy]["total"] += 1
+            if str(report).lower().startswith("yes"):
+                stats["anatomy"][anatomy]["positive"] += 1
+            # You may need to join for flagged separately, or pass from prior query
+        # optional: anatomy["flagged"] based on file in flagged list
+        wrong_reports = {
+            row[0] for row in cursor.execute("SELECT stProtocol FROM history WHERE isWrong = 1")
+        }
+        for protocol in wrong_reports:
+            name_lower = protocol.lower()
+            anatomy = "unknown"
+            for part in ["chest", "abdomen", "head", "knee", "pelvis", "spine", "sinus"]:
+                if part in name_lower:
+                    anatomy = part
+                    break
+            if anatomy in stats["anatomy"]:
+                stats["anatomy"][anatomy]["wrong"] += 1
+
+    return web.json_response(stats)
+
 
 # DICOM network operations
 async def query_and_retrieve(hours = 1):
@@ -353,10 +400,13 @@ def dicom_to_png(dicom_file, max_size = 800):
 
 
 # WebSocket and WebServer operations
-async def dashboard_handler(request):
+async def serve_dashboard_page(request):
     with open('dashboard.html', 'r') as f:
         content = f.read()
     return web.Response(text = content, content_type = 'text/html')
+
+async def serve_stats_page(request):
+    return web.FileResponse(path = "stats.html")
 
 async def websocket_handler(request):
     """ Handle each WebSocket client """
@@ -630,9 +680,11 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
 async def start_dashboard():
     """ Start the dashboard web server """
     app = web.Application()
-    app.router.add_get('/', dashboard_handler)
+    app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/history', history_handler)
+    app.router.add_get('/stats', serve_stats_page)
+    app.router.add_get('/api/stats', db_stats_handler)
     app.router.add_post('/toggle_right_wrong', toggle_right_wrong)
     app.router.add_post('/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
