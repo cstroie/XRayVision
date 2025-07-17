@@ -155,7 +155,7 @@
                     <option value="24">24</option>
                 </select>
                 <button style="width: 15rem;" onclick="triggerQuery()">Query/Retrieve</button>
-                <div role="button" style="min-width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
+                <div role="button" style="width: 15rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
             </fieldset>
         </form>
     </header>
@@ -176,7 +176,7 @@
             <button onclick="jumpToPage(totalPages)">Last</button>
         </section>
 
-        <section id="history"><article aria-busy="true"></article></section>
+        <section id="exams"><article aria-busy="true"></article></section>
 
         <section id="bottom-pagination" role="group">
             <button onclick="jumpToPage(1)">First</button>
@@ -207,6 +207,7 @@
         let totalPages = 1;
 
         function sanitize(text) {
+            return text;
             return text.replace(/&/g, "\&amp;")
                        .replace(/</g, "\&lt;")
                        .replace(/>/g, "\&gt;")
@@ -325,10 +326,10 @@
 
         function loadPage(page) {
             const filter = document.getElementById("filterSelect").value;
-            fetch(`/api/history?page=${page}&filter=${filter}`)
+            fetch(`/api/exams?page=${page}&filter=${filter}`)
                 .then(res => res.json())
                 .then(data => {
-                    const history = data.history || [];
+                    const exams = data.exams || [];
                     const totalCount = data.total || 0;
                     totalPages = Math.ceil(totalCount / 10);
 
@@ -346,10 +347,10 @@
                     }
 
                     currentPage = page;
-                    renderHistory(history);
+                    renderExams(exams);
                 })
                 .catch(err => {
-                    console.error("Failed to fetch history:", err);
+                    console.error("Failed to fetch exams:", err);
                 });
         }
 
@@ -404,13 +405,15 @@
                 });
         }
 
-        function renderHistory(data) {
-            let historyHtml = '';
+        function renderExams(data) {
+            let examsHtml = '';
             data.forEach(item => {
-                let isPositive = item.report.trim().toLowerCase().startsWith('yes');
-
-                let date = item.meta.series.date;
-                let time = item.meta.series.time;
+                let isPositive = false;
+                if (item.report.text) {
+                    isPositive = item.report.text.trim().toLowerCase().startsWith('yes');
+                }
+                let date = item.meta.exam.date;
+                let time = item.meta.exam.time;
                 let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
                 let formattedTime = `${time.substring(0,2)}:${time.substring(2,4)}:${time.substring(4,6)}`;
 
@@ -422,21 +425,27 @@
                 let positiveClass = isPositive ? 'positive' : '';
                 let buttonLabel = isWrong ? 'Wrong' : 'Correct';
 
-                historyHtml += `
+                examsHtml += `
                     <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
                         <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
                         <div class="text">
                             <strong>${formattedPatientName}</strong><br>
                             <small>${item.meta.patient.id}</small><br>
                             <small>${formattedDate} ${formattedTime}</small><br>
-                            <small>${item.meta.series.protocol}</small><br>
-                            <span class="report">${item.report}</span><br>
+                            <small>${item.meta.exam.protocol}</small><br>
+                            `;
+                            if (item.report.text) {
+                                examsHtml += `
+                            <span class="report">${item.report.text}</span><br>
                             <button onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
+                            `;
+                            };
+                            examsHtml += `
                         </div>
                     </div>
                 `;
             });
-            document.getElementById('history').innerHTML = historyHtml;
+            document.getElementById('exams').innerHTML = examsHtml;
         }
 
         connectWebSocket();
