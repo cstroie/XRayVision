@@ -84,36 +84,38 @@ def init_database():
     """ Initialize the database """
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
-            CREATE TABLE IF NOT EXISTS history (
+            CREATE TABLE IF NOT EXISTS exams (
                 uid TEXT PRIMARY KEY,
-                patName TEXT,
-                patId TEXT,
-                patAge INTEGER,
-                stDateTime TIMESTAMP,
-                stProtocol TEXT,
-                stAnatomy TEXT,
-                repDateTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                name TEXT,
+                id TEXT,
+                age INTEGER,
+                created TIMESTAMP,
+                protocol TEXT,
+                region TEXT,
+                analyzed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 report TEXT,
-                isPositive INTEGER DEFAULT 0,
-                isWrong INTEGER DEFAULT 0
+                positive INTEGER DEFAULT 0,
+                iswrong INTEGER DEFAULT 0,
+                reviewed INTEGER DEFAULT 0,
+                status TEXT DEFAULT 'none'
             )
         ''')
         logging.info("Initialized SQLite database.")
 
 def db_load_history(limit = PAGE_SIZE, offset = 0, filter = None):
     """ Load the history from the database, with filters and pagination """
-    query = 'SELECT * FROM history'
+    query = 'SELECT * FROM exams'
     conditions = []
     params = []
     # Update the conditions
     if filter == "wrong":
-        conditions.append("isWrong = 1")
+        conditions.append("iswrong = 1")
     elif filter == "positive":
         conditions.append("LOWER(report) LIKE 'yes%'")
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     # Apply the limits (pagination)
-    query += " ORDER BY stDateTime DESC LIMIT ? OFFSET ?"
+    query += " ORDER BY created DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     # Get the history
     history = []
@@ -134,10 +136,12 @@ def db_load_history(limit = PAGE_SIZE, offset = 0, filter = None):
                 },
                 'report': row[8],
                 'positive': bool(row[9]),
-                'isWrong': bool(row[10])
+                'isWrong': bool(row[10]),
+                'revied': bool(row[11]),
+                'status': row[12]
             })
         # Get the total for pagination
-        count_query = 'SELECT COUNT(*) FROM history'
+        count_query = 'SELECT COUNT(*) FROM exams'
         if conditions:
             count_query += ' WHERE ' + " AND ".join(conditions)
         total = conn.execute(count_query).fetchone()[0]
@@ -146,18 +150,18 @@ def db_load_history(limit = PAGE_SIZE, offset = 0, filter = None):
 def db_get_history_count():
     """ Get total row count """
     with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT COUNT(*) FROM history').fetchone()
+        result = conn.execute('SELECT COUNT(*) FROM exams').fetchone()
         return result[0] if result else 0
 
 def db_toggle_right_wrong(uid):
     """ Toggle the right/wrong flag of a study """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute(
-            "SELECT isWrong FROM history WHERE uid = ?", (uid,)
+            "SELECT iswrong FROM exams WHERE uid = ?", (uid,)
         ).fetchone()
         isWrong = not bool(result[0])
         conn.execute('''
-            UPDATE history SET isWrong = NOT isWrong WHERE uid = ?
+            UPDATE exams SET iswrong = NOT iswrong WHERE uid = ?
         ''', (uid,))
     return isWrong
 
@@ -169,22 +173,22 @@ def db_add_row(uid, metadata, report):
         len(metadata["study"]["date"]) == 8 and len(metadata["study"]["time"]) >= 6:
         try:
             dt = datetime.strptime(f'{metadata["study"]["date"]} {metadata["study"]["time"][:6]}', "%Y%m%d %H%M%S")
-            stDateTime = dt.strftime("%Y-%m-%d %H:%M:%S")
+            created = dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
-            stDateTime = now
+            created = now
     else:
-        stDateTime = now
+        created = now
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
-            INSERT OR REPLACE INTO history (uid, patName, patId, patAge, stDateTime, stProtocol, stAnatomy, repDateTime, report, isPositive, isWrong)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT isWrong FROM history WHERE uid = ?), 0))
-        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], metadata["patient"]["age"], stDateTime, metadata["series"]["desc"], metadata['exam']['anatomy'], now, report, poz, uid))
+            INSERT OR REPLACE INTO exams (uid, name, id, age, created, protocol, region, repDateTime, report, positive, iswrong, reviewed, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT iswrong FROM exams WHERE uid = ?), 0))
+        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], metadata["patient"]["age"], created, metadata["series"]["desc"], metadata['exam']['anatomy'], now, report, poz, 0, 'done', uid))
 
 def db_check_already_processed(uid):
     """ Check if the file has already been processed """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute(
-            "SELECT 1 FROM history WHERE uid = ?", (uid,)
+            "SELECT 1 FROM exams WHERE uid = ?", (uid,)
         ).fetchone()
         return result is not None
 
@@ -199,16 +203,16 @@ async def db_stats_handler(request):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         # Global totals
-        stats["total"] = cursor.execute("SELECT COUNT(*) FROM history").fetchone()[0]
-        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM history WHERE LOWER(report) LIKE 'yes%'").fetchone()[0]
-        stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM history WHERE isWrong = 1").fetchone()[0]
+        stats["total"] = cursor.execute("SELECT COUNT(*) FROM exams").fetchone()[0]
+        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE LOWER(report) LIKE 'yes%'").fetchone()[0]
+        stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE iswrong = 1").fetchone()[0]
         # Totals per anatomic part
         cursor.execute("""
-            SELECT stAnatomy, COUNT(*) AS total,
+            SELECT region, COUNT(*) AS total,
                    SUM(LOWER(report) LIKE 'yes%') AS positive,
-                   SUM(isWrong = 1) AS wrong
-            FROM history
-            GROUP BY stAnatomy
+                   SUM(iswrong = 1) AS wrong
+            FROM exams
+            GROUP BY region
         """)
         for row in cursor.fetchall():
             region = row[0] or 'unknown'
