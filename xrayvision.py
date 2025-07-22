@@ -48,7 +48,7 @@ REMOTE_AE_TITLE = '3DNETCLOUD'
 REMOTE_AE_IP = '192.168.3.50'
 REMOTE_AE_PORT = 104
 IMAGES_DIR = 'images'
-DB_FILE = os.path.join(IMAGES_DIR, "history.db")
+DB_FILE = os.path.join(IMAGES_DIR, "xrayvision.db")
 
 SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
@@ -57,8 +57,8 @@ ANATOMY_LIST = ["chest", "sternum", "abdominal", "nasal bones", "maxilar and fro
 os.makedirs(IMAGES_DIR, exist_ok = True)
 
 main_loop = None  # Global variable to hold the main event loop
-data_queue = asyncio.Queue()
 websocket_clients = set()
+queue_event = asyncio.Event()
 next_query = None
 
 active_openai_url = OPENAI_URL_SECONDARY
@@ -77,6 +77,7 @@ dashboard = {
 
 PAGE_SIZE = 10
 KEEP_DICOM = False
+LOAD_DICOM = False
 NO_QUERY = False
 
 # Database operations
@@ -102,8 +103,8 @@ def init_database():
         ''')
         logging.info("Initialized SQLite database.")
 
-def db_load_history(limit = PAGE_SIZE, offset = 0, filter = None):
-    """ Load the history from the database, with filters and pagination """
+def db_load_exams(limit = PAGE_SIZE, offset = 0, filter = None, status = None):
+    """ Load the exams from the database, with filters and pagination """
     query = 'SELECT * FROM exams'
     conditions = []
     params = []
@@ -112,42 +113,46 @@ def db_load_history(limit = PAGE_SIZE, offset = 0, filter = None):
         conditions.append("iswrong = 1")
     elif filter == "positive":
         conditions.append("LOWER(report) LIKE 'yes%'")
+    elif status is not None:
+        conditions.append(f"status = '{status}'")
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     # Apply the limits (pagination)
     query += " ORDER BY created DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
-    # Get the history
-    history = []
+    # Get the exams
+    exams = []
     with sqlite3.connect(DB_FILE) as conn:
         rows = conn.execute(query, params)
         for row in rows:
             dt = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
-            history.append({
+            exams.append({
                 'uid': row[0],
                 'meta': {
                     'patient': {'name': row[1], 'id': row[2], 'age': row[3]},
-                    'series': {
+                    'exam': {
                         'date': dt.strftime('%Y%m%d'),
                         'time': dt.strftime('%H%M%S'),
                         'protocol': row[5],
                         'anatomy': row[6],
                     }
                 },
-                'report': row[8],
-                'positive': bool(row[9]),
-                'isWrong': bool(row[10]),
-                'revied': bool(row[11]),
-                'status': row[12]
+                'report': {
+                    'text': row[8],
+                    'positive': bool(row[9]),
+                    'iswrong': bool(row[10]),
+                    'reviewed': bool(row[11]),
+                },
+                'status': row[12],
             })
         # Get the total for pagination
         count_query = 'SELECT COUNT(*) FROM exams'
         if conditions:
             count_query += ' WHERE ' + " AND ".join(conditions)
         total = conn.execute(count_query).fetchone()[0]
-    return history, total
+    return exams, total
 
-def db_get_history_count():
+def db_get_exams_count():
     """ Get total row count """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute('SELECT COUNT(*) FROM exams').fetchone()
@@ -159,27 +164,34 @@ def db_toggle_right_wrong(uid):
         result = conn.execute(
             "SELECT iswrong FROM exams WHERE uid = ?", (uid,)
         ).fetchone()
-        isWrong = not bool(result[0])
+        iswrong = not bool(result[0])
         conn.execute('''
             UPDATE exams SET iswrong = ? WHERE uid = ?
         ''', (isWrong, uid,))
     return isWrong
 
-def db_add_row(uid, metadata, report):
+def db_add_exam(uid, metadata, report):
     """ Add one row to the database """
-    poz = report.lower().startswith("yes") and 1 or 0
+    # Check if we have a report or just enque an exam
+    if report:
+        poz = report.lower().startswith("yes") and 1 or 0
+        status = 'done'
+    else:
+        poz = 0
+        status = 'queued'
+    # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # Get the exam timestamp
-    if metadata["study"]["date"] and metadata["study"]["time"] and \
-        len(metadata["study"]["date"]) == 8 and len(metadata["study"]["time"]) >= 6:
+    if metadata["series"]["date"] and metadata["series"]["time"] and \
+        len(metadata["series"]["date"]) == 8 and len(metadata["series"]["time"]) >= 6:
         try:
-            dt = datetime.strptime(f'{metadata["study"]["date"]} {metadata["study"]["time"][:6]}',
-                                   "%Y%m%d %H%M%S")
+            dt = datetime.strptime(f'{metadata["series"]["date"]} {metadata["series"]["time"][:6]}', "%Y%m%d %H%M%S")
             created = dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             created = now
     else:
         created = now
+    # Insert into database
     with sqlite3.connect(DB_FILE) as conn:
         values = (
             uid,
@@ -221,15 +233,16 @@ async def db_stats_handler(request):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         # Global totals
-        stats["total"] = cursor.execute("SELECT COUNT(*) FROM exams").fetchone()[0]
-        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE LOWER(report) LIKE 'yes%'").fetchone()[0]
-        stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE iswrong = 1").fetchone()[0]
+        stats["total"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE status LIKE 'done'").fetchone()[0]
+        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE LOWER(report) LIKE 'yes%' AND status LIKE 'done'").fetchone()[0]
+        stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE iswrong = 1 AND status LIKE 'done'").fetchone()[0]
         # Totals per anatomic part
         cursor.execute("""
             SELECT region, COUNT(*) AS total,
                    SUM(LOWER(report) LIKE 'yes%') AS positive,
                    SUM(iswrong = 1) AS wrong
             FROM exams
+            WHERE status LIKE 'done'
             GROUP BY region
         """)
         for row in cursor.fetchall():
@@ -241,6 +254,25 @@ async def db_stats_handler(request):
             }
     # TODO return only stats and use a web function to return json
     return web.json_response(stats)
+
+def db_queue_get():
+    """ Get the next in queue exam to analyze """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute('SELECT uid, name, id FROM exams WHERE status = "queued" ORDER BY created LIMIT 1').fetchone()
+        return (result[0], result[1], result[2]) if result else (None, None, None)
+
+def db_queue_size():
+    """ Get the queue size """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute('SELECT COUNT(*) FROM exams WHERE status = "queued"').fetchone()
+        return result[0] if result else 0
+
+def db_set_status(uid, status):
+    """ Set the specified satatus for uid """
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute(f'UPDATE exams SET status = "{status}" WHERE uid = ?', (uid,))
+    # Return the status
+    return status
 
 
 # DICOM network operations
@@ -320,8 +352,29 @@ def dicom_store(event):
         # Save the DICOM file
         ds.save_as(dicom_file, enforce_file_format = True)
         logging.info(f"DICOM file saved to {dicom_file}")
+        # Get some metadata for queueing
+        metadata = {
+            'patient': {
+                'name':  str(ds.PatientName),
+                'id':    str(ds.PatientID),
+                'age':   0,
+            },
+            'series': {
+                'desc':  str(ds.SeriesDescription),
+                'proto': str(ds.ProtocolName),
+                'date':  str(ds.SeriesDate),
+                'time':  str(ds.SeriesTime),
+            },
+            'exam': {
+                'desc':  str(ds.SeriesDescription),
+                'proto': str(ds.ProtocolName),
+                'date':  str(ds.SeriesDate),
+                'time':  str(ds.SeriesTime),
+                'anatomy': "unknown"
+            },
+        }
         # Add to processing queue
-        main_loop.call_soon_threadsafe(data_queue.put_nowait, uid)
+        db_add_exam(uid, metadata, None)
         asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
     return 0x0000
@@ -333,12 +386,36 @@ async def load_existing_dicom_files():
     for file_name in os.listdir(IMAGES_DIR):
         uid, ext = os.path.splitext(os.path.basename(file_name.lower()))
         if ext == '.dcm':
-            # Check if already processed
             if db_check_already_processed(uid):
                 logging.info(f"Skipping already processed image {uid}")
             else:
-                asyncio.create_task(data_queue.put(uid))
                 logging.info(f"Adding {uid} into processing queue...")
+                # Get the dataset
+                ds = dcmread(os.path.join(IMAGES_DIR, file_name))
+                # Get some metadata for queueing
+                metadata = {
+                    'patient': {
+                        'name':  str(ds.PatientName),
+                        'id':    str(ds.PatientID),
+                        'age':   0,
+                    },
+                    'series': {
+                        'desc':  str(ds.SeriesDescription),
+                        'proto': str(ds.ProtocolName),
+                        'date':  str(ds.SeriesDate),
+                        'time':  str(ds.SeriesTime),
+                    },
+                    'exam': {
+                        'desc':  str(ds.SeriesDescription),
+                        'proto': str(ds.ProtocolName),
+                        'date':  str(ds.SeriesDate),
+                        'time':  str(ds.SeriesTime),
+                        'anatomy': "unknown"
+                    },
+                }
+                # Add to the processing queue
+                db_add_exam(uid, metadata, None)
+    # At the end, update the dashboard
     await broadcast_dashboard_update()
 
 
@@ -393,7 +470,7 @@ def dicom_to_png(dicom_file, max_size = 800):
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
     logging.info(f"Converted PNG saved to {png_file}")
-    # Return the PNG file name and DICOM metadata
+    # Keep the DICOM metadata
     metadata = {
         'patient': {
             'name':  str(ds.PatientName),
@@ -413,6 +490,10 @@ def dicom_to_png(dicom_file, max_size = 800):
             'uid':   str(ds.StudyInstanceUID),
             'date':  str(ds.StudyDate),
             'time':  str(ds.StudyTime),
+        },
+        'exam': {
+            'desc': str(ds.SeriesDescription),
+            'anatomy': str(ds.ProtocolName),
         }
     }
     # Return the PNG file name and metadata
@@ -444,19 +525,19 @@ async def websocket_handler(request):
         logging.info("Dashboard WebSocket disconnected.")
     return ws
 
-async def history_handler(request):
-    """ Provide a page of history """
+async def exams_handler(request):
+    """ Provide a page of exams """
     try:
         page = int(request.query.get("page", "1"))
         filter = request.query.get("filter", "all")
         offset = (page - 1) * PAGE_SIZE
-        data, total = db_load_history(limit = PAGE_SIZE, offset = offset, filter = filter)
+        data, total = db_load_exams(limit = PAGE_SIZE, offset = offset, filter = filter, status = None)
         return web.json_response({
-            "history": data,
+            "exams": data,
             "total": total
         })
     except Exception as e:
-        logging.error(f"History page error: {e}")
+        logging.error(f"Exams page error: {e}")
         return web.json_response([], status = 500)
 
 async def manual_query(request):
@@ -487,7 +568,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     if not (websocket_clients or client):
         return
     # Update the queue size
-    dashboard['queue_size'] = data_queue.qsize()
+    dashboard['queue_size'] = db_queue_size()
     # Create a list of clients
     if client:
         clients = [client,]
@@ -648,6 +729,7 @@ async def send_to_openai(session, headers, payload):
 
 async def send_image_to_openai(uid, metadata, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
+
     # Read the PNG file
     with open(os.path.join(IMAGES_DIR, f"{uid}.png"), 'rb') as f:
         image_bytes = f.read()
@@ -658,7 +740,8 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     txtAge, intAge = get_age(metadata)
     # Store in metadata
     metadata['exam'] = {'anatomy': anatomy,
-                        'projection': projection,}
+                        'projection': projection,
+                        'desc': metadata['series']['desc']}
     metadata['patient']['age'] = intAge
     # Filter on specific anatomy
     if not anatomy in ANATOMY_LIST:
@@ -673,6 +756,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Create the prompt
     prompt = USR_PROMPT.format(question, region, subject)
     logging.debug(f"Prompt: {prompt}")
+    logging.info(f"Sending {uid} for processing")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -709,8 +793,8 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 logging.info(f"OpenAI API response for {uid}: {report}")
                 # Update the dashboard
                 dashboard['success_count'] += 1
-                # Save to history database
-                db_add_row(uid, metadata, report)
+                # Save to exams database
+                db_add_exam(uid, metadata, report)
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
                 # Success
@@ -735,7 +819,7 @@ async def start_dashboard():
     app.router.add_get('/stats', serve_stats_page)
     app.router.add_get('/about', serve_about_page)
     app.router.add_get('/ws', websocket_handler)
-    app.router.add_get('/api/history', history_handler)
+    app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', db_stats_handler)
     app.router.add_get('/api/health', openai_health_handler)
     app.router.add_post('/api/toggle_right_wrong', toggle_right_wrong)
@@ -751,35 +835,57 @@ async def relay_to_openai_loop():
     """ Relay PNG files to OpenAI API with retries and dashboard update """
     while True:
         # Get one file from queue
-        uid = await data_queue.get()
+        (uid, name, id) = db_queue_get()
+        # Wait here if there are no items in queue
+        if not uid:
+            queue_event.clear()
+            await queue_event.wait()
+            continue
+        # Set the status
+        db_set_status(uid, "processing")
         # Update the dashboard
-        dashboard['processing_file'] = uid
+        dashboard['processing_file'] = name
         await broadcast_dashboard_update()
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
         # Try to convert to PNG
+        png_file = None
         try:
             png_file, metadata = dicom_to_png(dicom_file)
         except Exception as e:
             logging.error(f"Error converting DICOM file {dicom_file}: {e}")
+            png_file = None
+        # Check the result
+        if not png_file:
+            # Set the status
+            db_set_status(uid, "error")
+            return 
         # Try to send to AI
+        result = False
         try:
-            await send_image_to_openai(uid, metadata)
+            result = await send_image_to_openai(uid, metadata)
         except Exception as e:
             logging.error(f"Unhandled error processing {uid}: {e}")
+            db_set_status(uid, "error")
         finally:
             dashboard['processing_file'] = None
             await broadcast_dashboard_update()
-            data_queue.task_done()
-        # Remove the DICOM file
-        if not KEEP_DICOM:
-            try:
-                os.remove(dicom_file)
-                logging.info(f"DICOM file {dicom_file} deleted after processing.")
-            except Exception as e:
-                logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+        # Check the result
+        if result:
+            # Set the status
+            db_set_status(uid, "done")
+            # Remove the DICOM file
+            if not KEEP_DICOM:
+                try:
+                    os.remove(dicom_file)
+                    logging.info(f"DICOM file {dicom_file} deleted after processing.")
+                except Exception as e:
+                    logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+            else:
+                logging.debug(f"Kept DICOM file: {dicom_file}")
         else:
-            logging.debug(f"Kept DICOM file: {dicom_file}")
+            # Set the status
+            db_set_status(uid, "error")
 
 async def openai_health_check():
     """ Health check coroutine """
@@ -839,13 +945,13 @@ async def main():
     main_loop = asyncio.get_running_loop()
     # Init the database if not found
     if not os.path.exists(DB_FILE):
-        logging.info("SQLite history database not found. Creating a new one...")
+        logging.info("SQLite database not found. Creating a new one...")
         init_database()
     else:
-        logging.info("SQLite history database found.")
-    # Load history
-    history, total = db_load_history()
-    logging.info(f"Loaded {len(history)} history items from a total of {total}.")
+        logging.info("SQLite database found.")
+    # Load exams
+    exams, total = db_load_exams(status = 'done')
+    logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
 
     # Start the asynchronous tasks
     asyncio.create_task(start_dashboard())
@@ -853,7 +959,8 @@ async def main():
     asyncio.create_task(relay_to_openai_loop())
     asyncio.create_task(query_retrieve_loop())
     # Preload the existing dicom files
-    await load_existing_dicom_files()
+    if LOAD_DICOM:
+        await load_existing_dicom_files()
     # Start the DICOM server
     await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
 
@@ -864,10 +971,12 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description = "XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard")
     parser.add_argument("--keep-dicom", action = "store_true", help = "Do not delete .dcm files after conversion")
+    parser.add_argument("--load-dicom", action = "store_true", help = "Load existing .dcm files in queue")
     parser.add_argument("--no-query", action = "store_true", help = "Do not query the DICOM server automatically")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
+    LOAD_DICOM = args.load_dicom
     NO_QUERY = args.no_query
 
     # Run
