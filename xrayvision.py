@@ -333,8 +333,12 @@ async def load_existing_dicom_files():
     for file_name in os.listdir(IMAGES_DIR):
         uid, ext = os.path.splitext(os.path.basename(file_name.lower()))
         if ext == '.dcm':
-            asyncio.create_task(data_queue.put(uid))
-            logging.info(f"Adding {uid} into processing queue...")
+            # Check if already processed
+            if db_check_already_processed(uid):
+                logging.info(f"Skipping already processed image {uid}")
+            else:
+                asyncio.create_task(data_queue.put(uid))
+                logging.info(f"Adding {uid} into processing queue...")
     await broadcast_dashboard_update()
 
 
