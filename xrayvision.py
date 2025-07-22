@@ -61,10 +61,10 @@ data_queue = asyncio.Queue()
 websocket_clients = set()
 next_query = None
 
-active_openai_url = OPENAI_URL_PRIMARY
+active_openai_url = OPENAI_URL_SECONDARY
 health_status = {
-    OPENAI_URL_PRIMARY: True,
-    OPENAI_URL_SECONDARY: True
+    OPENAI_URL_PRIMARY: False,
+    OPENAI_URL_SECONDARY: False
 }
 
 # Dashboard state
@@ -92,7 +92,7 @@ def init_database():
                 created TIMESTAMP,
                 protocol TEXT,
                 region TEXT,
-                analyzed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reported TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 report TEXT,
                 positive INTEGER DEFAULT 0,
                 iswrong INTEGER DEFAULT 0,
@@ -161,28 +161,46 @@ def db_toggle_right_wrong(uid):
         ).fetchone()
         isWrong = not bool(result[0])
         conn.execute('''
-            UPDATE exams SET iswrong = NOT iswrong WHERE uid = ?
-        ''', (uid,))
+            UPDATE exams SET iswrong = ? WHERE uid = ?
+        ''', (isWrong, uid,))
     return isWrong
 
 def db_add_row(uid, metadata, report):
     """ Add one row to the database """
     poz = report.lower().startswith("yes") and 1 or 0
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Get the exam timestamp
     if metadata["study"]["date"] and metadata["study"]["time"] and \
         len(metadata["study"]["date"]) == 8 and len(metadata["study"]["time"]) >= 6:
         try:
-            dt = datetime.strptime(f'{metadata["study"]["date"]} {metadata["study"]["time"][:6]}', "%Y%m%d %H%M%S")
+            dt = datetime.strptime(f'{metadata["study"]["date"]} {metadata["study"]["time"][:6]}',
+                                   "%Y%m%d %H%M%S")
             created = dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             created = now
     else:
         created = now
     with sqlite3.connect(DB_FILE) as conn:
+        values = (
+            uid,
+            metadata["patient"]["name"],
+            metadata["patient"]["id"],
+            metadata["patient"]["age"],
+            created,
+            metadata["series"]["desc"],
+            metadata['exam']['anatomy'],
+            now,
+            report,
+            poz,
+            0,
+            0,
+            'done'
+        )
         conn.execute('''
-            INSERT OR REPLACE INTO exams (uid, name, id, age, created, protocol, region, repDateTime, report, positive, iswrong, reviewed, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT iswrong FROM exams WHERE uid = ?), 0))
-        ''', (uid, metadata["patient"]["name"], metadata["patient"]["id"], metadata["patient"]["age"], created, metadata["series"]["desc"], metadata['exam']['anatomy'], now, report, poz, 0, 'done', uid))
+            INSERT OR REPLACE INTO exams
+                (uid, name, id, age, created, protocol, region, reported, report, positive, iswrong, reviewed, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', values)
 
 def db_check_already_processed(uid):
     """ Check if the file has already been processed """
@@ -775,8 +793,10 @@ async def openai_health_check():
 
         if health_status.get(OPENAI_URL_PRIMARY):
             active_openai_url = OPENAI_URL_PRIMARY
+            logging.info("Using primry OpenAI backend.")
         elif health_status.get(OPENAI_URL_SECONDARY):
             active_openai_url = OPENAI_URL_SECONDARY
+            logging.info("Using secondary OpenAI backend.")
         else:
             logging.error("No OpenAI backend is currently healthy")
         # Sleep for 5 minutes
@@ -851,3 +871,5 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
+
+    logging.shutdown()
