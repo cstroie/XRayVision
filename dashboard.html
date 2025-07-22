@@ -336,7 +336,7 @@
 
         function loadPage(page) {
             const filter = document.getElementById("filterSelect").value;
-            fetch(`/api/exams?page=${page}&filter=${filter}&status=all`)
+            fetch(`/api/exams?page=${page}&filter=${filter}&status=done`)
                 .then(res => res.json())
                 .then(data => {
                     const exams = data.exams || [];

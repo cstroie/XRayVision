@@ -169,6 +169,12 @@ def db_toggle_right_wrong(uid):
             "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (iswrong, uid,))
     return iswrong
 
+def db_set_status(uid, status):
+    """ Set the status """
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute(
+            "UPDATE exams SET status = ? WHERE uid = ?", (status, uid,))
+
 def db_add_exam(uid, metadata, report):
     """ Add one row to the database """
     # Check if we have a report or just enqueue an exam
@@ -753,6 +759,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Filter on specific anatomy
     if not anatomy in ANATOMY_LIST:
         logging.info(f"Ignoring {uid} with {anatomy} x-ray.")
+        db_set_status(uid, 'ignore')
         return False
     # Get the subject of the study and the studied region
     subject = " ".join([txtAge, gender])
