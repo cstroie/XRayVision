@@ -166,6 +166,7 @@
                 <option value="all">Show All</option>
                 <option value="wrong">Only Wrong</option>
                 <option value="positive">Only Positive</option>
+                <option value="queued">Only Queued</option>
             </select>
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
@@ -196,8 +197,8 @@
 
     <footer>
         <hr>
-        <small>Active OpenAI Backend: <span id="activeBackend">Loading...</span></small><br>
-        <small>Primary: <span id="primaryStatus">?</span> | Secondary: <span id="secondaryStatus">?</span></small>
+        <small>Active OpenAI Backend: <span id="openaiUrl">Loading...</span></small><br>
+        <small>Primary: <span id="openaiPri">?</span> | Secondary: <span id="openaiSec">?</span></small>
     </footer>
 
 
@@ -251,10 +252,16 @@
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
                             card.classList.remove('wrong');
-                            if (data.event.payload.is_wrong) {
+                            if (data.event.payload.iswrong) {
                                 card.classList.add('wrong');
                             }
                         }
+                    } else if (data.event.name === "openai") {
+                        showToast("OpenAI health check");
+                        // Update the items
+                        document.getElementById("openaiUrl").textContent = data.event.payload.url;
+                        document.getElementById("openaiPri").textContent = data.event.payload.pri ? "✅" : "❌";
+                        document.getElementById("openaiSec").textContent = data.event.payload.sec ? "✅" : "❌";
                     }
                 }
             };
@@ -280,7 +287,9 @@
             })
             .then(response => response.json())
             .then(data => {
-                console.log('Status update:', data.isWrong ? 'wrong' : 'correct');
+                var btn = document.getElementById(`rwb-${uid}`);
+                btn.innerText = data.iswrong ? 'Wrong' : 'Correct';
+                console.log('Status update:', data.iswrong ? 'wrong' : 'correct');
             })
             .catch(error => {
                 console.error('Error toggling right/wrong:', error);
@@ -327,7 +336,7 @@
 
         function loadPage(page) {
             const filter = document.getElementById("filterSelect").value;
-            fetch(`/api/exams?page=${page}&filter=${filter}`)
+            fetch(`/api/exams?page=${page}&filter=${filter}&status=all`)
                 .then(res => res.json())
                 .then(data => {
                     const exams = data.exams || [];
@@ -393,19 +402,6 @@
             }, 1000);
         }
 
-        function updateBackendStatus() {
-            fetch('/api/health')
-                .then(res => res.json())
-                .then(status => {
-                    document.getElementById("activeBackend").textContent = status.active_url;
-                    document.getElementById("primaryStatus").textContent = status.health[Object.keys(status.health)[0]] ? "✅" : "❌";
-                    document.getElementById("secondaryStatus").textContent = status.health[Object.keys(status.health)[1]] ? "✅" : "❌";
-                })
-                .catch(err => {
-                    console.warn("Failed to fetch OpenAI status", err);
-                });
-        }
-
         function renderExams(data) {
             let examsHtml = '';
             data.forEach(item => {
@@ -421,7 +417,7 @@
                 let patientNameParts = item.meta.patient.name.split('^');
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
 
-                let isWrong = item.isWrong;
+                let isWrong = item.report.iswrong;
                 let wrongClass = isWrong ? 'wrong' : '';
                 let positiveClass = isPositive ? 'positive' : '';
                 let buttonLabel = isWrong ? 'Wrong' : 'Correct';
@@ -438,7 +434,7 @@
                             if (item.report.text) {
                                 examsHtml += `
                             <span class="report">${item.report.text}</span><br>
-                            <button onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
+                            <button id="rwb-${item.uid}" onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
                             `;
                             };
                             examsHtml += `
@@ -450,11 +446,6 @@
         }
 
         connectWebSocket();
-
-        window.onload = () => {
-            updateBackendStatus();
-            setInterval(updateBackendStatus, 60000); // update every minute
-        };
     </script>
 </body>
 

@@ -61,7 +61,7 @@ websocket_clients = set()
 queue_event = asyncio.Event()
 next_query = None
 
-active_openai_url = OPENAI_URL_SECONDARY
+active_openai_url = None
 health_status = {
     OPENAI_URL_PRIMARY: False,
     OPENAI_URL_SECONDARY: False
@@ -113,7 +113,7 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, filter = None, status = None):
         conditions.append("iswrong = 1")
     elif filter == "positive":
         conditions.append("LOWER(report) LIKE 'yes%'")
-    elif status is not None:
+    elif status is not None and status != "all":
         conditions.append(f"status = '{status}'")
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -165,19 +165,22 @@ def db_toggle_right_wrong(uid):
             "SELECT iswrong FROM exams WHERE uid = ?", (uid,)
         ).fetchone()
         iswrong = not bool(result[0])
-        conn.execute('''
-            UPDATE exams SET iswrong = ? WHERE uid = ?
-        ''', (isWrong, uid,))
-    return isWrong
+        conn.execute(
+            "UPDATE exams SET iswrong = ? WHERE uid = ?", (iswrong, uid,))
+    return iswrong
 
 def db_add_exam(uid, metadata, report):
     """ Add one row to the database """
-    # Check if we have a report or just enque an exam
+    # Check if we have a report or just enqueue an exam
     if report:
-        poz = report.lower().startswith("yes") and 1 or 0
+        poz = report.lower().startswith("yes")
+        iswrong = False
+        reviewed = False
         status = 'done'
     else:
-        poz = 0
+        poz = False
+        iswrong = False
+        reviewed = False
         status = 'queued'
     # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -204,9 +207,9 @@ def db_add_exam(uid, metadata, report):
             now,
             report,
             poz,
-            0,
-            0,
-            'done'
+            iswrong,
+            reviewed,
+            status
         )
         conn.execute('''
             INSERT OR REPLACE INTO exams
@@ -258,7 +261,7 @@ async def db_stats_handler(request):
 def db_queue_get():
     """ Get the next in queue exam to analyze """
     with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT uid, name, id FROM exams WHERE status = "queued" ORDER BY created LIMIT 1').fetchone()
+        result = conn.execute('SELECT uid, name, id FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
         return (result[0], result[1], result[2]) if result else (None, None, None)
 
 def db_queue_size():
@@ -375,6 +378,7 @@ def dicom_store(event):
         }
         # Add to processing queue
         db_add_exam(uid, metadata, None)
+        queue_event.set()
         asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
     return 0x0000
@@ -415,6 +419,8 @@ async def load_existing_dicom_files():
                 }
                 # Add to the processing queue
                 db_add_exam(uid, metadata, None)
+    # Notify the queue
+    queue_event.set()
     # At the end, update the dashboard
     await broadcast_dashboard_update()
 
@@ -530,8 +536,9 @@ async def exams_handler(request):
     try:
         page = int(request.query.get("page", "1"))
         filter = request.query.get("filter", "all")
+        status = request.query.get("status", None)
         offset = (page - 1) * PAGE_SIZE
-        data, total = db_load_exams(limit = PAGE_SIZE, offset = offset, filter = filter, status = None)
+        data, total = db_load_exams(limit = PAGE_SIZE, offset = offset, filter = filter, status = status)
         return web.json_response({
             "exams": data,
             "total": total
@@ -559,8 +566,8 @@ async def toggle_right_wrong(request):
     data = await request.json()
     uid = data.get('uid')
     wrong = db_toggle_right_wrong(uid)
-    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'is_wrong': wrong})
-    return web.json_response({'status': 'success', 'uid': uid, 'is_wrong': wrong})
+    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'iswrong': wrong})
+    return web.json_response({'status': 'success', 'uid': uid, 'iswrong': wrong})
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """ Update the dashboard for all clients """
@@ -836,8 +843,8 @@ async def relay_to_openai_loop():
     while True:
         # Get one file from queue
         (uid, name, id) = db_queue_get()
-        # Wait here if there are no items in queue
-        if not uid:
+        # Wait here if there are no items in queue or there is no OpenAI server
+        if not uid or active_openai_url is None:
             queue_event.clear()
             await queue_event.wait()
             continue
@@ -903,12 +910,19 @@ async def openai_health_check():
 
         if health_status.get(OPENAI_URL_PRIMARY):
             active_openai_url = OPENAI_URL_PRIMARY
+            queue_event.set()
             logging.info("Using primry OpenAI backend.")
         elif health_status.get(OPENAI_URL_SECONDARY):
             active_openai_url = OPENAI_URL_SECONDARY
+            queue_event.set()
             logging.info("Using secondary OpenAI backend.")
         else:
+            active_openai_url = None
             logging.error("No OpenAI backend is currently healthy")
+        # WebSocket broadcast
+        await broadcast_dashboard_update(event = "openai", payload = {'url': active_openai_url,
+                                                                      'pri': health_status[OPENAI_URL_PRIMARY],
+                                                                      'sec': health_status[OPENAI_URL_SECONDARY]})
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 
