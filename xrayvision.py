@@ -166,7 +166,7 @@ def db_toggle_right_wrong(uid):
         ).fetchone()
         iswrong = not bool(result[0])
         conn.execute(
-            "UPDATE exams SET iswrong = ? WHERE uid = ?", (iswrong, uid,))
+            "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (iswrong, uid,))
     return iswrong
 
 def db_add_exam(uid, metadata, report):
