@@ -16,22 +16,41 @@
     <title>XRayVision Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
+    <link href="https://cdn.jsdelivr.net/css-toggle-switch/latest/toggle-switch.css" rel="stylesheet" />
+
     <style>
         .image-card {
-            padding: 1rem;
-            border: 1px solid var(--pico-color-azure-400);
+            --padding: 0.5rem;
+            --border: 1px solid var(--pico-color-azure-400);
             border-radius: 0.5rem;
             background-color: var(--pico-color-azure-900);
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: flex-start;
-            gap: 1rem;
+            grid-template-columns: 1fr 4fr;
+            grid-gap: 0.5rem;
+        }
+
+        .image-card .xray {
+            background-color: black;
+            padding: 0.5rem;
+        }
+
+        .image-card .xray div {
+            margin-bottom: 0;
+        }
+
+        .image-card .xray div button {
+            padding: 0;
+            border-radius: 0;
+        }
+
+
+        .image-card .details {
+            padding: 0.5rem;
         }
 
         .image-card img {
             cursor: pointer;
-            max-width: 100px;
-            border: 1px solid var(--pico-color-azure-400);
+            --border: 1px solid var(--pico-color-azure-400);
+            --padding: 1px;
         }
 
         .positive img {
@@ -130,7 +149,7 @@
             <li><strong>XRayVision Dashboard</strong></li>
         </ul>
         <ul>
-            <li><a href="/">Dashboard</a></li>
+            <li><a href="/" class="contrast">Dashboard</a></li>
             <li><a href="/stats">Statistics</a></li>
             <li><a href="/about">About</a></li>
         </ul>
@@ -161,6 +180,11 @@
     </header>
 
     <main>
+<form role="search">
+  <input name="search" type="search" placeholder="Search" />
+  <input type="submit" value="Search" />
+</form>
+
         <section id="top-pagination" role="group">
             <select id="filterSelect" onchange="loadPage(1)">
                 <option value="all">Show All</option>
@@ -176,6 +200,29 @@
             <button onclick="nextPage()">Next</button>
             <button onclick="jumpToPage(totalPages)">Last</button>
         </section>
+
+        <fieldset>
+  <legend>Language preferences:</legend>
+  <input type="checkbox" id="positive" name="positivr" />
+  <label htmlFor="positive">Positive</label>
+  <input type="checkbox" id="wrong" name="wrong" />
+  <label htmlFor="wrong">Wrong</label>
+  <input type="checkbox" id="queued" name="queued" />
+  <label htmlFor="queued">Queued</label>
+</fieldset>
+
+<fieldset>
+  <label>
+    Wrong
+    <input name="2fa" type="checkbox" role="switch" aria-invalid="false" />
+    Right
+  </label>
+  <label>
+    <input name="subscription" type="checkbox" role="switch" aria-invalid="true" />
+    Automatic subscription renewal
+  </label>
+
+</fieldset>
 
         <section id="exams"><article aria-busy="true"></article></section>
 
@@ -434,27 +481,38 @@
                 let buttonLabel = isWrong ? 'Wrong' : 'Correct';
 
                 examsHtml += `
-                    <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
-                        <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
-                        <div class="text">
-                            <strong>${formattedPatientName}</strong><br>
+                    <section class="grid image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
+                        <div class="xray">
+                            <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
+                            <div role="group">
+                                <button disabled>+</button>
+                                <button onclick="toggleRightWrong('${item.uid}', false)">&#x1F44E;</button>
+                                <button onclick="toggleRightWrong('${item.uid}', true)">&#128077;</button>
+                            </div>
+                        </div>
+                        <div class="details">
+                            <details>
+                            <summary><strong>${formattedPatientName}</strong></summary>
+                            <p>
                             <small>${item.meta.patient.id}</small><br>
                             <small>${formattedDate} ${formattedTime}</small><br>
                             <small>${item.meta.exam.protocol}</small><br>
+                            </p>
+                            </details>
                             `;
                             if (item.report.text) {
                                 examsHtml += `
-                            <span class="report">${item.report.text}</span><br>
-                            <div role="group">
-                            <button onclick="toggleRightWrong('${item.uid}', false)">Wrong</button>
-                            <div role="button" class="secondary" style="width: 20em;" disabled>${lblPozNeg}</div>
-                            <button onclick="toggleRightWrong('${item.uid}', true)">Right</button>
-                            </div>
+                            <p class="report">${item.report.text}</p>
+                            <!--<div role="group">
+                                <button onclick="toggleRightWrong('${item.uid}', false)">Wrong</button>
+                                <div role="button" class="secondary" style="width: 20em;" disabled>${lblPozNeg}</div>
+                                <button onclick="toggleRightWrong('${item.uid}', true)">Right</button>
+                            </div>-->
                             `;
                             };
                             examsHtml += `
                         </div>
-                    </div>
+                    </section>
                 `;
             });
             document.getElementById('exams').innerHTML = examsHtml;
