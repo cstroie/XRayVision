@@ -620,7 +620,8 @@ def check_any(string, *words):
 def get_anatomy(metadata):
     """ Try to identify the anatomy. Return the anatomy and the question. """
     desc = metadata["series"]["desc"].lower()
-    if check_any(desc, 'torace', 'pulmon', "thorax"):
+    if check_any(desc, 'torace', 'pulmon',
+                 'thorax'):
         anatomy = 'chest'
         question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
     elif check_any(desc, 'grilaj', 'coaste'):
@@ -632,47 +633,61 @@ def get_anatomy(metadata):
     elif check_any(desc, 'abdomen'):
         anatomy = 'abdominal'
         question = "Are there any hydroaeric levels or pneumoperitoneum"
-    elif check_any(desc, 'cap', 'craniu', 'occiput'):
+    elif check_any(desc, 'cap', 'craniu', 'occiput',
+                   'skull'):
         anatomy = 'skull'
         question = "Are there any fractures"
     elif check_any(desc, 'mandibula'):
         anatomy = 'mandible'
         question = "Are there any fractures"
-    elif check_any(desc, 'nazal'):
+    elif check_any(desc, 'nazal', 'piramida'):
         anatomy = 'nasal bones'
         question = "Are there any fractures"
     elif check_any(desc, 'sinus'):
         anatomy = 'maxilar and frontal sinus'
         question = "Are there any changes in transparency of the sinuses"
-    elif check_any(desc, 'col.'):
+    elif check_any(desc, 'col.',
+                   'spine', 'dens', 'sacrat'):
         anatomy = 'spine'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'bazin'):
+    elif check_any(desc, 'bazin', 'pelvis'):
         anatomy = 'pelvis'
         question = "Are there any fractures"
-    elif check_any(desc, 'clavicul'):
+    elif check_any(desc, 'clavicula',
+                   'clavicle'):
         anatomy = 'clavicle'
         question = "Are there any fractures"
-    elif check_any(desc, 'humerus', 'antebrat'):
+    elif check_any(desc, 'humerus', 'antebrat',
+                   'forearm'):
         anatomy = 'upper limb'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif check_any(desc, 'pumn', 'mana', 'deget'):
+    elif check_any(desc, 'pumn', 'mana', 'deget',
+                   'hand', 'finger'):
         anatomy = 'hand'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif check_any(desc, 'umar'):
+    elif check_any(desc, 'umar',
+                   'shoulder'):
         anatomy = 'shoulder'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'cot'):
+    elif check_any(desc, 'cot',
+                   'elbow'):
         anatomy = 'elbow'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'sold'):
+    elif check_any(desc, 'sold',
+                   'hip'):
         anatomy = 'hip'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'femur', 'tibie', 'glezna', 'picior', 'gamba', 'calcai'):
+    elif check_any(desc, 'femur', 'tibie', 'picior', 'gamba', 'calcai',
+                   'leg', 'foot'):
         anatomy = 'lower limb'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif check_any(desc, 'genunchi', 'patella'):
+    elif check_any(desc, 'genunchi', 'patella',
+                   'knee'):
         anatomy = 'knee'
+        question = "Are there any fractures or dislocations"
+    elif check_any(desc, 'glezna', 'calcaneu',
+                   'ankle'):
+        anatomy = 'ankle'
         question = "Are there any fractures or dislocations"
     else:
         # Fallback
@@ -684,9 +699,9 @@ def get_anatomy(metadata):
 def get_projection(metadata):
     """ Try to identify the projection """
     desc = metadata["series"]["desc"].lower()
-    if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d."):
+    if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
         projection = "frontal"
-    elif check_any(desc, "lat."):
+    elif check_any(desc, "lat.", "pr."):
         projection = "lateral"
     elif check_any(desc, "oblic"):
         projection = "oblique"
