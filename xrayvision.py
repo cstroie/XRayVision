@@ -158,16 +158,21 @@ def db_get_exams_count():
         result = conn.execute('SELECT COUNT(*) FROM exams').fetchone()
         return result[0] if result else 0
 
-def db_toggle_right_wrong(uid):
+def db_toggle_right_wrong(uid, correct = None):
     """ Toggle the right/wrong flag of a study """
     with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute(
-            "SELECT iswrong FROM exams WHERE uid = ?", (uid,)
-        ).fetchone()
-        iswrong = not bool(result[0])
+        # Check database value, if not provided
+        if correct is None:
+            result = conn.execute(
+                "SELECT iswrong FROM exams WHERE uid = ?", (uid,)
+            ).fetchone()
+            wrong = not bool(result[0])
+        else:
+            wrong = not correct
+        # Update the entry
         conn.execute(
-            "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (iswrong, uid,))
-    return iswrong
+            "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (wrong, uid,))
+    return wrong
 
 def db_set_status(uid, status):
     """ Set the status """
@@ -570,7 +575,9 @@ async def toggle_right_wrong(request):
     """ Toggle the right/wrong flag of a study """
     data = await request.json()
     uid = data.get('uid')
-    wrong = db_toggle_right_wrong(uid)
+    correct = data.get('correct', None)
+    print(correct)
+    wrong = db_toggle_right_wrong(uid, correct)
     await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'iswrong': wrong})
     return web.json_response({'status': 'success', 'uid': uid, 'iswrong': wrong})
 

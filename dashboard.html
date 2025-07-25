@@ -279,16 +279,16 @@
             };
         }
 
-        function toggleRightWrong(uid) {
+        function toggleRightWrong(uid, correct) {
             fetch('/api/toggle_right_wrong', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: uid })
+                body: JSON.stringify({ uid: uid, correct: correct })
             })
             .then(response => response.json())
             .then(data => {
-                var btn = document.getElementById(`rwb-${uid}`);
-                btn.innerText = data.iswrong ? 'Wrong' : 'Correct';
+                //var btn = document.getElementById(`rwb-${uid}`);
+                //btn.innerText = data.iswrong ? 'Wrong' : 'Correct';
                 console.log('Status update:', data.iswrong ? 'wrong' : 'correct');
             })
             .catch(error => {
@@ -417,9 +417,20 @@
                 let patientNameParts = item.meta.patient.name.split('^');
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
 
+                let isReviewed = item.report.reviewed;
                 let isWrong = item.report.iswrong;
                 let wrongClass = isWrong ? 'wrong' : '';
                 let positiveClass = isPositive ? 'positive' : '';
+                let lblPozNeg = "";
+                if (isReviewed) {
+                    if (isWrong) {
+                        lblPozNeg = isPositive ? 'False positive' : 'False negative';
+                    } else {
+                        lblPozNeg = isPositive ? 'Positive' : 'Negative';
+                    }
+                } else {
+                    lblPozNeg = isPositive ? 'Positive' : 'Negative';
+                }
                 let buttonLabel = isWrong ? 'Wrong' : 'Correct';
 
                 examsHtml += `
@@ -434,7 +445,11 @@
                             if (item.report.text) {
                                 examsHtml += `
                             <span class="report">${item.report.text}</span><br>
-                            <button id="rwb-${item.uid}" onclick="toggleRightWrong('${item.uid}')">${buttonLabel}</button>
+                            <div role="group">
+                            <button onclick="toggleRightWrong('${item.uid}', false)">Wrong</button>
+                            <div role="button" class="secondary" style="width: 20em;" disabled>${lblPozNeg}</div>
+                            <button onclick="toggleRightWrong('${item.uid}', true)">Right</button>
+                            </div>
                             `;
                             };
                             examsHtml += `
