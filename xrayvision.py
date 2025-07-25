@@ -285,7 +285,7 @@ def db_set_status(uid, status):
 
 
 # DICOM network operations
-async def query_and_retrieve(hours = 1):
+async def query_and_retrieve(minutes = 15):
     """ Query and Retrieve new studies """
     ae = AE(ae_title = AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
@@ -293,11 +293,10 @@ async def query_and_retrieve(hours = 1):
     # Create the association
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
     if assoc.is_established:
-        logging.info(f"QueryRetrieve association established. Asking for studies in the last {hours} hours.")
+        logging.info(f"QueryRetrieve association established. Asking for studies in the last {minutes} minutes.")
         # Prepare the timespan
-        # FIXME take care of the midnight
         current_time = datetime.now()
-        past_time = current_time - timedelta(hours = hours)
+        past_time = current_time - timedelta(minutes = minutes)
         # Check if the time span crosses midnight, split into two queries
         if past_time.date() < current_time.date():
             date_yesterday = past_time.strftime('%Y%m%d')
@@ -559,7 +558,7 @@ async def manual_query(request):
         data = await request.json()
         hours = int(data.get('hours', 3))
         logging.info(f"Manual QueryRetrieve triggered for the last {hours} hours.")
-        await query_and_retrieve(hours)
+        await query_and_retrieve(hours * 60)
         return web.json_response({'status': 'success',
                                   'message': f'Query triggered for the last {hours} hours.'})
     except Exception as e:
@@ -731,7 +730,7 @@ def get_age(metadata):
 async def send_to_openai(session, headers, payload):
     """ Try the healty OpenAI API endpoint """
     try:
-        async with session.post(active_openai_url, headers = headers, json = payload) as resp:
+        async with session.post(active_openai_url, headers = headers, json = payload, timeout = 300) as resp:
             if resp.status == 200:
                 return await resp.json()
             logging.warning(f"{active_openai_url} failed with status {resp.status}")
@@ -873,7 +872,7 @@ async def relay_to_openai_loop():
         if not png_file:
             # Set the status
             db_set_status(uid, "error")
-            return 
+            continue 
         # Try to send to AI
         result = False
         try:
@@ -918,7 +917,7 @@ async def openai_health_check():
         if health_status.get(OPENAI_URL_PRIMARY):
             active_openai_url = OPENAI_URL_PRIMARY
             queue_event.set()
-            logging.info("Using primry OpenAI backend.")
+            logging.info("Using primary OpenAI backend.")
         elif health_status.get(OPENAI_URL_SECONDARY):
             active_openai_url = OPENAI_URL_SECONDARY
             queue_event.set()
@@ -942,9 +941,9 @@ async def query_retrieve_loop():
         await query_and_retrieve()
         current_time = datetime.now()
         global next_query
-        next_query = current_time + timedelta(seconds = 3600)
+        next_query = current_time + timedelta(seconds = 900)
         logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
-        await asyncio.sleep(3600)
+        await asyncio.sleep(900)
 
 def start_dicom_server():
     """ Start the DICOM Storage SCP """
