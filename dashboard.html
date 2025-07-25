@@ -154,8 +154,8 @@
                     <option value="12">12</option>
                     <option value="24">24</option>
                 </select>
-                <button style="width: 15rem;" onclick="triggerQuery()">Query/Retrieve</button>
-                <div role="button" style="width: 15rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
+                <button style="width: 20rem;" onclick="triggerQuery()">Query/Retrieve</button>
+                <div role="button" style="width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
             </fieldset>
         </form>
     </header>
@@ -182,7 +182,7 @@
         <section id="bottom-pagination" role="group">
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
-            <div role="button" id="pageNumber" class="secondary" style="width: 30em;" disabled>Page 1 of 1</div>
+            <div role="button" id="pageNumber" class="secondary" style="width: 20em;" disabled>Page 1 of 1</div>
             <button onclick="nextPage()">Next</button>
             <button onclick="jumpToPage(totalPages)">Last</button>
         </section>
@@ -424,7 +424,7 @@
 
                 examsHtml += `
                     <div class="image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
-                        <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report)}', ${isWrong}, ${isPositive})">
+                        <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
                         <div class="text">
                             <strong>${formattedPatientName}</strong><br>
                             <small>${item.meta.patient.id}</small><br>
