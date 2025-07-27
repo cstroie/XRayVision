@@ -75,7 +75,7 @@ dashboard = {
     'failure_count': 0
 }
 
-PAGE_SIZE = 10
+PAGE_SIZE = 50
 KEEP_DICOM = False
 LOAD_DICOM = False
 NO_QUERY = False
