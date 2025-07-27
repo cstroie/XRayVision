@@ -113,6 +113,8 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, filter = None, status = None):
         conditions.append("iswrong = 1")
     elif filter == "positive":
         conditions.append("LOWER(report) LIKE 'yes%'")
+    elif filter == "notreviewed":
+        conditions.append("reviewed = 0")
     elif status is not None and status != "all":
         conditions.append(f"status = '{status}'")
     if conditions:
