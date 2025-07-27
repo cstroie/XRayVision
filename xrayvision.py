@@ -52,7 +52,7 @@ DB_FILE = os.path.join(IMAGES_DIR, "xrayvision.db")
 
 SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
-ANATOMY_LIST = ["chest", "sternum", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle", "knee", "spine"]
+ANATOMY_LIST = ["chest", "sternum", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
 
 os.makedirs(IMAGES_DIR, exist_ok = True)
 
@@ -158,7 +158,7 @@ def db_get_exams_count():
         result = conn.execute('SELECT COUNT(*) FROM exams').fetchone()
         return result[0] if result else 0
 
-def db_toggle_right_wrong(uid, correct = None):
+def db_review(uid, correct = None):
     """ Toggle the right/wrong flag of a study """
     with sqlite3.connect(DB_FILE) as conn:
         # Check database value, if not provided
@@ -166,6 +166,7 @@ def db_toggle_right_wrong(uid, correct = None):
             result = conn.execute(
                 "SELECT iswrong FROM exams WHERE uid = ?", (uid,)
             ).fetchone()
+            # Just toggle
             wrong = not bool(result[0])
         else:
             wrong = not correct
@@ -571,14 +572,13 @@ async def manual_query(request):
         return web.json_response({'status': 'error',
                                   'message': str(e)})
 
-async def toggle_right_wrong(request):
+async def review(request):
     """ Toggle the right/wrong flag of a study """
     data = await request.json()
     uid = data.get('uid')
     correct = data.get('correct', None)
-    print(correct)
-    wrong = db_toggle_right_wrong(uid, correct)
-    await broadcast_dashboard_update(event = "toggle_right_wrong", payload = {'uid': uid, 'iswrong': wrong})
+    wrong = db_review(uid, correct)
+    await broadcast_dashboard_update(event = "review", payload = {'uid': uid, 'iswrong': wrong})
     return web.json_response({'status': 'success', 'uid': uid, 'iswrong': wrong})
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
@@ -594,7 +594,15 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     else:
         clients = websocket_clients.copy()
     # Create the json object
-    data = {'dashboard': dashboard}
+    data = {'dashboard': dashboard,
+            'openai': {
+                "url": active_openai_url,
+                "health": {
+                    'pri': health_status.get(OPENAI_URL_PRIMARY,  False),
+                    'sec': health_status.get(OPENAI_URL_SECONDARY, False)
+                }
+            },
+    }
     if next_query:
         data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
     if event:
@@ -607,16 +615,6 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
         except Exception as e:
             logging.error(f"Error sending update to WebSocket client: {e}")
             websocket_clients.remove(client)
-
-async def openai_health_handler(request):
-    """ Return which OpenAI backend is active and their health """
-    return web.json_response({
-        "active_url": active_openai_url,
-        "health": {
-            OPENAI_URL_PRIMARY:   health_status.get(OPENAI_URL_PRIMARY,  False),
-            OPENAI_URL_SECONDARY: health_status.get(OPENAI_URL_SECONDARY, False)
-        }
-    })
 
 
 # AI API operations
@@ -841,8 +839,7 @@ async def start_dashboard():
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', db_stats_handler)
-    app.router.add_get('/api/health', openai_health_handler)
-    app.router.add_post('/api/toggle_right_wrong', toggle_right_wrong)
+    app.router.add_post('/api/review', review)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
     runner = web.AppRunner(app)
@@ -933,9 +930,7 @@ async def openai_health_check():
             active_openai_url = None
             logging.error("No OpenAI backend is currently healthy")
         # WebSocket broadcast
-        await broadcast_dashboard_update(event = "openai", payload = {'url': active_openai_url,
-                                                                      'pri': health_status[OPENAI_URL_PRIMARY],
-                                                                      'sec': health_status[OPENAI_URL_SECONDARY]})
+        await broadcast_dashboard_update()
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 

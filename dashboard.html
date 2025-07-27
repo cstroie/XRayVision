@@ -16,16 +16,26 @@
     <title>XRayVision Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
-    <link href="https://cdn.jsdelivr.net/css-toggle-switch/latest/toggle-switch.css" rel="stylesheet" />
 
     <style>
         .image-card {
-            --padding: 0.5rem;
-            --border: 1px solid var(--pico-color-azure-400);
             border-radius: 0.5rem;
-            background-color: var(--pico-color-azure-900);
+            background-color: var(--pico-color-slate-900);
             grid-template-columns: 1fr 4fr;
             grid-gap: 0.5rem;
+        }
+
+        .image-card.reviewed {
+             background-color: var(--pico-color-azure-800);
+        }
+        .image-card.positive {
+             background-color: var(--pico-color-green-700);
+        }
+        .image-card.reviewed.positive {
+             background-color: var(--pico-color-green-800);
+        }
+        .image-card.reviewed.wrong {
+             background-color: var(--pico-color-red-900);
         }
 
         .image-card .xray {
@@ -49,16 +59,6 @@
 
         .image-card img {
             cursor: pointer;
-            --border: 1px solid var(--pico-color-azure-400);
-            --padding: 1px;
-        }
-
-        .positive img {
-            border: 1px solid var(--pico-color-green-400);
-        }
-
-        .wrong img {
-            border: 1px solid var(--pico-color-orange-400);
         }
 
         .image-card .text {
@@ -69,34 +69,12 @@
             color: var(--pico-color-azure-50);
         }
 
-        .positive .report {
-            color: var(--pico-color-green-50);
+        .positive .sign {
+            background-color: var(--pico-color-jade-400);
         }
 
-        .wrong .report {
-            color: var(--pico-color-orange-50) !important;
-        }
-
-        .positive {
-            background-color: var(--pico-color-green-900);
-            border: 1px solid var(--pico-color-green-400);
-        }
-
-        .positive button {
-            background-color: var(--pico-color-green-400);
-            border-color: var(--pico-color-green-200);
-            color: var(--pico-color-green-50);
-        }
-
-        .wrong {
-            background-color: var(--pico-color-orange-900);
-            border: 1px solid var(--pico-color-orange-400);
-        }
-
-        .wrong button {
-            background-color: var(--pico-color-orange-400);
-            border-color: var(--pico-color-orange-200);
-            color: var(--pico-color-orange-50);
+        .wrong .sign {
+            background-color: var(--pico-color-red-400);
         }
 
         .lightbox {
@@ -201,28 +179,7 @@
             <button onclick="jumpToPage(totalPages)">Last</button>
         </section>
 
-        <fieldset>
-  <legend>Language preferences:</legend>
-  <input type="checkbox" id="positive" name="positivr" />
-  <label htmlFor="positive">Positive</label>
-  <input type="checkbox" id="wrong" name="wrong" />
-  <label htmlFor="wrong">Wrong</label>
-  <input type="checkbox" id="queued" name="queued" />
-  <label htmlFor="queued">Queued</label>
-</fieldset>
 
-<fieldset>
-  <label>
-    Wrong
-    <input name="2fa" type="checkbox" role="switch" aria-invalid="false" />
-    Right
-  </label>
-  <label>
-    <input name="subscription" type="checkbox" role="switch" aria-invalid="true" />
-    Automatic subscription renewal
-  </label>
-
-</fieldset>
 
         <section id="exams"><article aria-busy="true"></article></section>
 
@@ -279,6 +236,11 @@
                     document.getElementById('success').innerHTML = data.dashboard.success_count;
                     document.getElementById('failure').innerHTML = data.dashboard.failure_count;
                 }
+                if (data.openai !== undefined) {
+                    document.getElementById("openaiUrl").textContent = data.openai.url;
+                    document.getElementById("openaiPri").textContent = data.openai.health.pri ? "✅" : "❌";
+                    document.getElementById("openaiSec").textContent = data.openai.health.sec ? "✅" : "❌";
+                }
                 if (data.next_query !== undefined) {
                     updateQueryCountdown(data.next_query);
                 }
@@ -293,8 +255,8 @@
                         showToast("WebSocket connected");
                         // Load page 1
                         loadPage(1);
-                    } else if (data.event.name === "toggle_right_wrong") {
-                        showToast("Flag state updated");
+                    } else if (data.event.name === "review") {
+                        showToast("Review updated");
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
@@ -303,12 +265,6 @@
                                 card.classList.add('wrong');
                             }
                         }
-                    } else if (data.event.name === "openai") {
-                        showToast("OpenAI health check");
-                        // Update the items
-                        document.getElementById("openaiUrl").textContent = data.event.payload.url;
-                        document.getElementById("openaiPri").textContent = data.event.payload.pri ? "✅" : "❌";
-                        document.getElementById("openaiSec").textContent = data.event.payload.sec ? "✅" : "❌";
                     }
                 }
             };
@@ -326,17 +282,18 @@
             };
         }
 
-        function toggleRightWrong(uid, correct) {
-            fetch('/api/toggle_right_wrong', {
+        function review(uid, correct) {
+            fetch('/api/review', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid, correct: correct })
             })
             .then(response => response.json())
             .then(data => {
+                loadPage(currentPage);
                 //var btn = document.getElementById(`rwb-${uid}`);
                 //btn.innerText = data.iswrong ? 'Wrong' : 'Correct';
-                console.log('Status update:', data.iswrong ? 'wrong' : 'correct');
+                console.log('Status update:', data.iswrong ? 'wrong' : 'right');
             })
             .catch(error => {
                 console.error('Error toggling right/wrong:', error);
@@ -452,9 +409,14 @@
         function renderExams(data) {
             let examsHtml = '';
             data.forEach(item => {
-                let isPositive = false;
+                let isPositive = item.report.positive;
+                let isReviewed = item.report.reviewed;
+                let isWrong = item.report.iswrong;
                 if (item.report.text) {
-                    isPositive = item.report.text.trim().toLowerCase().startsWith('yes');
+                    //isPositive = item.report.text.trim().toLowerCase().startsWith('yes');
+                    text = item.report.text;
+                } else {
+                    text = "";
                 }
                 let date = item.meta.exam.date;
                 let time = item.meta.exam.time;
@@ -464,30 +426,19 @@
                 let patientNameParts = item.meta.patient.name.split('^');
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
 
-                let isReviewed = item.report.reviewed;
-                let isWrong = item.report.iswrong;
-                let wrongClass = isWrong ? 'wrong' : '';
-                let positiveClass = isPositive ? 'positive' : '';
-                let lblPozNeg = "";
-                if (isReviewed) {
-                    if (isWrong) {
-                        lblPozNeg = isPositive ? 'False positive' : 'False negative';
-                    } else {
-                        lblPozNeg = isPositive ? 'Positive' : 'Negative';
-                    }
-                } else {
-                    lblPozNeg = isPositive ? 'Positive' : 'Negative';
-                }
-                let buttonLabel = isWrong ? 'Wrong' : 'Correct';
+                let clsReviewed = isReviewed ? 'reviewed' : '';
+                let clsWrong = isWrong ? 'wrong' : '';
+                let clsPositive = isPositive ? 'positive' : '';
+                let signPozNeg = isPositive ? '&#x2795;' : '&#x2796;'
 
                 examsHtml += `
-                    <section class="grid image-card ${positiveClass} ${wrongClass}" id="card-${item.uid}">
+                    <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsWrong}" id="card-${item.uid}">
                         <div class="xray">
                             <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
                             <div role="group">
-                                <button disabled>+</button>
-                                <button onclick="toggleRightWrong('${item.uid}', false)">&#x1F44E;</button>
-                                <button onclick="toggleRightWrong('${item.uid}', true)">&#128077;</button>
+                                <button class="sign" disabled>${signPozNeg}</button>
+                                <button onclick="review('${item.uid}', false)">&#x1F44E;</button>
+                                <button onclick="review('${item.uid}', true)">&#128077;</button>
                             </div>
                         </div>
                         <div class="details">
@@ -499,18 +450,7 @@
                             <small>${item.meta.exam.protocol}</small><br>
                             </p>
                             </details>
-                            `;
-                            if (item.report.text) {
-                                examsHtml += `
-                            <p class="report">${item.report.text}</p>
-                            <!--<div role="group">
-                                <button onclick="toggleRightWrong('${item.uid}', false)">Wrong</button>
-                                <div role="button" class="secondary" style="width: 20em;" disabled>${lblPozNeg}</div>
-                                <button onclick="toggleRightWrong('${item.uid}', true)">Right</button>
-                            </div>-->
-                            `;
-                            };
-                            examsHtml += `
+                            <p class="report">${text}</p>
                         </div>
                     </section>
                 `;
