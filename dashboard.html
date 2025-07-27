@@ -16,9 +16,11 @@
     <title>XRayVision Dashboard</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
-
+    
     <style>
         .image-card {
+            position: relative;
+
             border-radius: 0.5rem;
             background-color: var(--pico-color-slate-900);
             grid-template-columns: 1fr 4fr;
@@ -34,6 +36,36 @@
         .image-card.reviewed.positive {
              background-color: var(--pico-color-green-600);
         }
+
+        .image-card.reviewed::after {
+            content: "✔"; /* or ✖ */
+            position: absolute;
+            bottom: 0.5rem;
+            right: 0.5rem;
+            transform: translateY(25%);
+            font-size: 8rem;
+            font-weight: 200;
+            vertical-align: baseline;
+            color: var(--pico-color-azure-100);
+            opacity: 0.2;
+            pointer-events: none;
+            z-index: 0;    
+        }
+
+        .image-card.reviewed.positive::after {
+            color: var(--pico-color-green-100);
+        }
+
+        .image-card.reviewed.wrong::after {
+            content: "✖";
+            color: var(--pico-color-red-100);
+        }
+
+        .image-card > * {
+            position: relative;
+            z-index: 1;
+        }
+
         .image-card.reviewed.wrong {
              background-color: var(--pico-color-red-900);
         }
@@ -436,9 +468,9 @@
                         <div class="xray">
                             <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
                             <div role="group">
-                                <button class="sign" disabled>${signPozNeg}</button>
-                                <button onclick="review('${item.uid}', false)">&#x1F44E;</button>
-                                <button onclick="review('${item.uid}', true)">&#128077;</button>
+                                <!--<button class="sign" disabled>${signPozNeg}</button>-->
+                                <button onclick="review('${item.uid}', false)">✖</button>
+                                <button onclick="review('${item.uid}', true)">✔</button>
                             </div>
                         </div>
                         <div class="details">
