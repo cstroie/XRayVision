@@ -552,7 +552,8 @@ async def exams_handler(request):
         data, total = db_load_exams(limit = PAGE_SIZE, offset = offset, filter = filter, status = status)
         return web.json_response({
             "exams": data,
-            "total": total
+            "total": total,
+            "pages": int(total / PAGE_SIZE) + 1,
         })
     except Exception as e:
         logging.error(f"Exams page error: {e}")
