@@ -237,10 +237,11 @@ def db_check_already_processed(uid):
         ).fetchone()
         return result is not None
 
-async def db_stats_handler(request):
+async def db_stats():
     """ Get statistics from database """
     stats = {
         "total": 0,
+        "reviewed": 0,
         "positive": 0,
         "wrong": 0,
         "region": {}
@@ -249,13 +250,19 @@ async def db_stats_handler(request):
         cursor = conn.cursor()
         # Global totals
         stats["total"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE status LIKE 'done'").fetchone()[0]
+        stats["reviewed"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE reviewed = 1 AND status LIKE 'done'").fetchone()[0]
         stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE LOWER(report) LIKE 'yes%' AND status LIKE 'done'").fetchone()[0]
         stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE iswrong = 1 AND status LIKE 'done'").fetchone()[0]
         # Totals per anatomic part
         cursor.execute("""
             SELECT region, COUNT(*) AS total,
-                   SUM(LOWER(report) LIKE 'yes%') AS positive,
-                   SUM(iswrong = 1) AS wrong
+                    SUM(reviewed = 1) AS reviewed,
+                    SUM(LOWER(report) LIKE 'yes%') AS positive,
+                    SUM(iswrong = 1) AS wrong,
+                    SUM(reviewed = 1 AND positive = 1 AND iswrong = 0) AS tpos,
+                    SUM(reviewed = 1 AND positive = 0 AND iswrong = 0) AS tneg,
+                    SUM(reviewed = 1 AND positive = 1 AND iswrong = 1) AS fpos,
+                    SUM(reviewed = 1 AND positive = 0 AND iswrong = 1) AS fneg
             FROM exams
             WHERE status LIKE 'done'
             GROUP BY region
@@ -264,11 +271,21 @@ async def db_stats_handler(request):
             region = row[0] or 'unknown'
             stats["region"][region] = {
                 "total": row[1],
-                "positive": row[2],
-                "wrong": row[3]
+                "reviewed": row[2],
+                "positive": row[3],
+                "wrong": row[4],
+                "tpos": row[5],
+                "tneg": row[6],
+                "fpos": row[7],
+                "fneg": row[8],
+                "ppv": 100 * int(row[5] / (row[5] + row[7])),
+                "pnv": 100 * int(row[6] / (row[6] + row[8])),
+                "snsi": 100 * int(row[5] / (row[5] + row[8])),
+                "spci": 100 * int(row[6] / (row[6] + row[7])),
             }
-    # TODO return only stats and use a web function to return json
-    return web.json_response(stats)
+            print(region, stats["region"][region])
+    # Return stats
+    return stats
 
 def db_queue_get():
     """ Get the next in queue exam to analyze """
@@ -555,6 +572,14 @@ async def exams_handler(request):
             "total": total,
             "pages": int(total / PAGE_SIZE) + 1,
         })
+    except Exception as e:
+        logging.error(f"Exams page error: {e}")
+        return web.json_response([], status = 500)
+
+async def stats_handler(request):
+    """ Provide a page of statistics """
+    try:
+        return web.json_response(await db_stats())
     except Exception as e:
         logging.error(f"Exams page error: {e}")
         return web.json_response([], status = 500)
@@ -854,7 +879,7 @@ async def start_dashboard():
     app.router.add_get('/about', serve_about_page)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/exams', exams_handler)
-    app.router.add_get('/api/stats', db_stats_handler)
+    app.router.add_get('/api/stats', stats_handler)
     app.router.add_post('/api/review', review)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')

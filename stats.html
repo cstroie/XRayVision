@@ -33,6 +33,7 @@
     <header>
         <div class="grid">
             <article><strong>Total exams:</strong> <span id="total">0</span></article>
+            <article><strong>Reviewed:</strong> <span id="reviewed">0</span></article>
             <article><strong>Positive reports:</strong> <span id="positive">0</span></article>
             <article><strong>Wrong reports:</strong> <span id="wrong">0</span></article>
         </div>
@@ -46,13 +47,21 @@
                     <tr>
                         <th>Region</th>
                         <th>Total</th>
+                        <th>Reviewed</th>
                         <th>Positive</th>
                         <th>Wrong</th>
+                        <th>PPV</th>
+                        <th>PNV</th>
+                        <th>Sensitivity</th>
+                        <th>Specificity</th>
                     </tr>
                 </thead>
                 <tbody>
                     <!-- dynamically populated -->
                 </tbody>
+                <tfoot>
+                    <!-- dynamically populated -->
+                </tfoot>
             </table>
         </section>
         <section class="grid">
@@ -70,6 +79,7 @@
     .then(res => res.json())
     .then(data => {
         document.getElementById('total').textContent = data.total;
+        document.getElementById('reviewed').textContent = data.reviewed;
         document.getElementById('positive').textContent = data.positive;
         document.getElementById('wrong').textContent = data.wrong;
 
@@ -81,11 +91,23 @@
             row.innerHTML = `
                 <th scope="row">${region}</th>
                 <td>${counts.total}</td>
+                <td>${counts.reviewed}</td>
                 <td>${counts.positive}</td>
                 <td>${counts.wrong}</td>
+                <td>${counts.ppv}%</td>
+                <td>${counts.pnv}%</td>
+                <td>${counts.snsi}%</td>
+                <td>${counts.spci}%</td>
             `;
             tbody.appendChild(row);
         }
+        const tfoot = document.querySelector('#anatomyStats tfoot');
+        tfoot.innerHTML = `
+        <tr>
+            <th scope="row">Total</th>
+            <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.wrong}</td>
+            <td>-</td><td>-</td><td>-</td><td>-</td>
+        </tr>`;
 
         // Chart: Anatomy breakdown
         const anatomyLabels = [];
