@@ -160,18 +160,16 @@ def db_get_exams_count():
         result = conn.execute('SELECT COUNT(*) FROM exams').fetchone()
         return result[0] if result else 0
 
-def db_review(uid, correct = None):
-    """ Toggle the right/wrong flag of a study """
+def db_review(uid, normal = True):
+    """ Mark the entry as right or wrong according to normal review """
+    wrong = None
     with sqlite3.connect(DB_FILE) as conn:
-        # Check database value, if not provided
-        if correct is None:
-            result = conn.execute(
-                "SELECT iswrong FROM exams WHERE uid = ?", (uid,)
-            ).fetchone()
-            # Just toggle
-            wrong = not bool(result[0])
-        else:
-            wrong = not correct
+        # Check if the report is positive database
+        result = conn.execute(
+            "SELECT positive FROM exams WHERE uid = ?", (uid,)
+        ).fetchone()
+        # XOR
+        wrong = bool(not normal) ^ bool(result[0])
         # Update the entry
         conn.execute(
             "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (wrong, uid,))
@@ -579,8 +577,8 @@ async def review(request):
     """ Toggle the right/wrong flag of a study """
     data = await request.json()
     uid = data.get('uid')
-    correct = data.get('correct', None)
-    wrong = db_review(uid, correct)
+    normal = data.get('normal', None)
+    wrong = db_review(uid, normal)
     await broadcast_dashboard_update(event = "review", payload = {'uid': uid, 'iswrong': wrong})
     return web.json_response({'status': 'success', 'uid': uid, 'iswrong': wrong})
 

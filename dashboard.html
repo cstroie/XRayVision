@@ -38,7 +38,7 @@
         }
 
         .image-card.reviewed::after {
-            content: "✔"; /* or ✖ */
+            content: "✓"; /* or ✖ */
             position: absolute;
             bottom: 0.5rem;
             right: 0.5rem;
@@ -57,7 +57,7 @@
         }
 
         .image-card.reviewed.wrong::after {
-            content: "✖";
+            content: "✗";
             color: var(--pico-color-red-100);
         }
 
@@ -82,6 +82,15 @@
         .image-card .xray div button {
             padding: 0;
             border-radius: 0;
+            font-size: 1.0rem;
+        }
+        button.normal {
+            background-color: var(--pico-color-azure-800);
+            border: 1px solid var(--pico-color-azure-900);
+        }
+        button.abnormal {
+            background-color: var(--pico-color-red-800);
+            border: 1px solid var(--pico-color-red-900);
         }
 
 
@@ -314,11 +323,11 @@
             };
         }
 
-        function review(uid, correct) {
+        function review(uid, normal) {
             fetch('/api/review', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: uid, correct: correct })
+                body: JSON.stringify({ uid: uid, normal: normal })
             })
             .then(response => response.json())
             .then(data => {
@@ -328,7 +337,7 @@
                 console.log('Status update:', data.iswrong ? 'wrong' : 'right');
             })
             .catch(error => {
-                console.error('Error toggling right/wrong:', error);
+                console.error('Error sending review:', error);
             });
         }
 
@@ -469,17 +478,18 @@
                             <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
                             <div role="group">
                                 <!--<button class="sign" disabled>${signPozNeg}</button>-->
-                                <button onclick="review('${item.uid}', false)">✖</button>
-                                <button onclick="review('${item.uid}', true)">✔</button>
+                                <button class="abnormal" onclick="review('${item.uid}', false)">👎︎ NotOk</button>
+                                <button class="normal" onclick="review('${item.uid}', true)">👍︎ Ok</button>
                             </div>
                         </div>
                         <div class="details">
                             <details>
                             <summary><strong>${formattedPatientName}</strong></summary>
                             <p>
-                            <small>${item.meta.patient.id}</small><br>
-                            <small>${formattedDate} ${formattedTime}</small><br>
-                            <small>${item.meta.exam.protocol}</small><br>
+                            <small><strong>ID:</strong> ${item.meta.patient.id}</small><br>
+                            <small><strong>Time:</strong> ${formattedDate} ${formattedTime}</small><br>
+                            <small><strong>Protocol:</strong> ${item.meta.exam.protocol}</small><br>
+                            <small><strong>Region:</strong> ${item.meta.exam.anatomy}</small><br>
                             </p>
                             </details>
                             <p class="report">${text}</p>
