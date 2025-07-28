@@ -278,10 +278,10 @@ async def db_stats():
                 "tneg": row[6],
                 "fpos": row[7],
                 "fneg": row[8],
-                "ppv": (row[5] + row[7]) and 100 * int(row[5] / (row[5] + row[7])) or '-',
-                "pnv": (row[6] + row[8]) and 100 * int(row[6] / (row[6] + row[8])) or '-',
-                "snsi": (row[5] + row[8]) and 100 * int(row[5] / (row[5] + row[8])) or '-',
-                "spci": (row[6] + row[7]) and 100 * int(row[6] / (row[6] + row[7])) or '-',
+                "ppv": (row[5] + row[7]) == 0 and 100 * int(row[5] / (row[5] + row[7])) or '-',
+                "pnv": (row[6] + row[8]) == 0 and 100 * int(row[6] / (row[6] + row[8])) or '-',
+                "snsi": (row[5] + row[8]) == 0 and 100 * int(row[5] / (row[5] + row[8])) or '-',
+                "spci": (row[6] + row[7]) == 0 and 100 * int(row[6] / (row[6] + row[7])) or '-',
             }
             print(region, stats["region"][region])
     # Return stats
