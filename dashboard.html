@@ -18,12 +18,91 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
     
     <style>
+        :root {
+            --pico-font-family-sans-serif: Inter, system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, Arial, "Helvetica Neue", sans-serif, var(--pico-font-family-emoji);
+            --pico-font-size: 87.5%;
+            /* Original: 100% */
+            --pico-line-height: 1.25;
+            /* Original: 1.5 */
+            --pico-form-element-spacing-vertical: 0.5rem;
+            /* Original: 1rem */
+            --pico-form-element-spacing-horizontal: 1.0rem;
+            /* Original: 1.25rem */
+            --pico-border-radius: 0.375rem;
+            /* Original: 0.25rem */
+        }
+
+        @media (min-width: 576px) {
+            :root {
+                --pico-font-size: 100%;
+                /* Original: 106.25% */
+            }
+        }
+
+        @media (min-width: 768px) {
+            :root {
+                --pico-font-size: 106.25%;
+                /* Original: 112.5% */
+            }
+            .image-card {
+                grid-template-columns: 300px 1fr;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            :root {
+                --pico-font-size: 112.5%;
+                /* Original: 118.75% */
+            .image-card {
+                grid-template-columns: 350px 1fr;
+            }
+            }
+        }
+
+        @media (min-width: 1280px) {
+            :root {
+                --pico-font-size: 118.75%;
+                /* Original: 125% */
+            .image-card {
+                grid-template-columns: 400px 1fr;
+            }
+            }
+        }
+
+        @media (min-width: 1536px) {
+            :root {
+                --pico-font-size: 125%;
+                /* Original: 131.25% */
+            .image-card {
+                grid-template-columns: 500px 1fr;
+            }
+            }
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            --pico-font-weight: 600;
+            /* Original: 700 */
+        }
+
+        article {
+            border: 1px solid var(--pico-muted-border-color);
+            /* Original doesn't have a border */
+            border-radius: calc(var(--pico-border-radius) * 2);
+            /* Original: var(--pico-border-radius) */
+        }
+
+        article>footer {
+            border-radius: calc(var(--pico-border-radius) * 2);
+            /* Original: var(--pico-border-radius) */
+        }
+
+
+    
         .image-card {
             position: relative;
-
             border-radius: 0.5rem;
             background-color: var(--pico-color-slate-900);
-            grid-template-columns: 1fr 4fr;
+            /*grid-template-columns: 1fr 4fr;*/
             grid-gap: 0.5rem;
         }
 
@@ -80,7 +159,7 @@
         }
 
         .image-card .xray div button {
-            padding: 0;
+            /*padding: 0;*/
             border-radius: 0;
             font-size: 1.0rem;
         }
@@ -185,7 +264,7 @@
         <form>
             <fieldset role="group">
                 <select id="queryInterval">
-		            <option selected disabled value="">Select the time interval</option>
+                    <option selected disabled value="">Select the time interval</option>
                     <option value="1">1</option>
                     <option value="3">3</option>
                     <option value="6">6</option>
@@ -193,24 +272,55 @@
                     <option value="24">24</option>
                 </select>
                 <button style="width: 20rem;" onclick="triggerQuery()">Query/Retrieve</button>
-                <div role="button" style="width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
+                <!--<div role="button" style="width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>-->
             </fieldset>
         </form>
     </header>
 
     <main>
-<form role="search">
-  <input name="search" type="search" placeholder="Search" />
-  <input type="submit" value="Search" />
-</form>
+        <form id="search-form" role="search">
+            <input id="search-input" name="search" type="search" onchange="loadPage(1)" placeholder="Search">
+            <input type="submit" value="Search">
+        </form>
+        
+        <section id="filters" role="group">
+            <select id="filter-reviewed" onchange="loadPage(1)" aria-label="Select reviewed or not reviewed studies">
+                <option selected disabled value="">Review</option>
+                <option value="any">Any</option>
+                <option value="yes">Reviewed</option>
+                <option value="no">Not reviewed</option>
+            </select>
+            <select id="filter-positive" onchange="loadPage(1)" aria-label="Select positive or negative studies">
+                <option selected disabled value="">Result</option>
+                <option value="any">Any</option>
+                <option value="yes">Positive</option>
+                <option value="no">Negative</option>
+            </select>
+            <select id="filter-wrong" onchange="loadPage(1)" aria-label="Select wrong studies">
+                <option selected disabled value="">Valid</option>
+                <option value="any">Any</option>
+                <option value="yes">Wrong</option>
+                <option value="no">Right</option>
+            </select>
+            <select id="filter-region" onchange="loadPage(1)" aria-label="Select the anatomic region">
+                <option selected disabled value="">Region</option>
+                <option value="any">Any</option>
+                <option value="chest">Chest</option>
+                <option value="abdominal">Abdomen</option>
+                <option value="sinus">Sinuses</option>
+                <option value="clavicle">Clavicle</option>
+            </select>
+            <select id="filter-status" onchange="loadPage(1)" aria-label="Select the study status">
+                <option selected disabled value="">Status</option>
+                <option value="any">Any</option>
+                <option value="done">Done</option>
+                <option value="queued">Queued</option>
+                <option value="processing">Processing</option>
+                <option value="error">Error</option>
+            </select>
+        </section>
 
         <section id="top-pagination" role="group">
-            <select id="filterSelect" onchange="loadPage(1)">
-                <option value="all">Show All</option>
-                <option value="wrong">Only Wrong</option>
-                <option value="positive">Only Positive</option>
-                <option value="notreviewed">Not reviewed</option>
-            </select>
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
             <select id="pageSelect" onchange="jumpToPage(this.value)">
@@ -379,9 +489,27 @@
             this.style.display = 'none';
         });
 
-        function loadPage(page) {
-            const filter = document.getElementById("filterSelect").value;
-            fetch(`/api/exams?page=${page}&filter=${filter}&status=done`)
+        function loadPage(page, search = '') {
+            const reviewed = document.getElementById("filter-reviewed").value;
+            const positive = document.getElementById("filter-positive").value;
+            const wrong = document.getElementById("filter-wrong").value;
+            const region = document.getElementById("filter-region").value;
+            const status = document.getElementById("filter-status").value;
+            const params = new URLSearchParams();
+            params.append('page', page);
+            if (reviewed) params.append('reviewed', reviewed);
+            if (positive) params.append('positive', positive);
+            if (wrong)    params.append('wrong', wrong);
+            if (region)   params.append('region', region);
+            if (status)   params.append('status', status)
+            else          params.append('status', 'done');
+            if (search === '') {
+                search = document.getElementById("search-input").value.trim();
+            };
+            if (search)   params.append('search', encodeURIComponent(search));
+            const queryString = params.toString();
+            const url = `/api/exams?${queryString}`;
+            fetch(url)
                 .then(res => res.json())
                 .then(data => {
                     const exams = data.exams || [];
@@ -441,10 +569,13 @@
 
         function updateQueryCountdown(targetTime) {
             if (queryTimerInterval) clearInterval(queryTimerInterval);
-            document.getElementById("nextQueryTime").innerText = formatCountdown(targetTime);
-            queryTimerInterval = setInterval(() => {
-                document.getElementById("nextQueryTime").innerText = formatCountdown(targetTime);
-            }, 1000);
+            const nextQuery = document.getElementById("nextQueryTime");
+            if (nextQuery) {
+                nextQuery.innerText = formatCountdown(targetTime);
+                queryTimerInterval = setInterval(() => {
+                    nextQuery.innerText = formatCountdown(targetTime);
+                }, 1000);
+            };
         }
 
         function renderExams(data) {
@@ -474,16 +605,16 @@
 
                 examsHtml += `
                     <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsWrong}" id="card-${item.uid}">
-                        <div class="xray">
+                        <figure class="xray">
                             <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
                             <div role="group">
                                 <!--<button class="sign" disabled>${signPozNeg}</button>-->
                                 <button class="abnormal" onclick="review('${item.uid}', false)">👎︎ NotOk</button>
                                 <button class="normal" onclick="review('${item.uid}', true)">👍︎ Ok</button>
                             </div>
-                        </div>
-                        <div class="details">
-                            <details>
+                        </figure>
+                        <aside class="details">
+                            <details open>
                             <summary><strong>${formattedPatientName}</strong></summary>
                             <p>
                             <small><strong>ID:</strong> ${item.meta.patient.id}</small><br>
@@ -493,7 +624,7 @@
                             </p>
                             </details>
                             <p class="report">${text}</p>
-                        </div>
+                        </aside>
                     </section>
                 `;
             });
@@ -501,6 +632,23 @@
         }
 
         connectWebSocket();
+        // Search handle
+        document.getElementById("search-form").addEventListener("submit", function (e) {
+            e.preventDefault();
+            const q = document.getElementById("search-input").value.trim();
+            loadPage(1, q);
+        });
+        
+        var docWidth = document.documentElement.offsetWidth;
+
+[].forEach.call(
+  document.querySelectorAll('*'),
+  function(el) {
+    if (el.offsetWidth > docWidth) {
+      console.warn(el);
+    }
+  }
+);
     </script>
 </body>
 

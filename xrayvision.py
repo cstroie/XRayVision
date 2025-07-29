@@ -75,7 +75,7 @@ dashboard = {
     'failure_count': 0
 }
 
-PAGE_SIZE = 50
+PAGE_SIZE = 10
 KEEP_DICOM = False
 LOAD_DICOM = False
 NO_QUERY = False
@@ -103,25 +103,31 @@ def init_database():
         ''')
         logging.info("Initialized SQLite database.")
 
-def db_load_exams(limit = PAGE_SIZE, offset = 0, filter = None, status = None):
+def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
     """ Load the exams from the database, with filters and pagination """
-    query = 'SELECT * FROM exams'
     conditions = []
     params = []
+    where = ""
     # Update the conditions
-    if filter == "wrong":
-        conditions.append("iswrong = 1")
-    elif filter == "positive":
-        conditions.append("LOWER(report) LIKE 'yes%'")
-    elif filter == "notreviewed":
-        conditions.append("reviewed = 0")
-    elif status is not None and status != "all":
-        conditions.append(f"status = '{status}'")
+    if 'reviewed' in filters:
+        conditions.append(f"reviewed = {filters['reviewed']}")
+    if 'positive' in filters:
+        conditions.append(f"positive = {filters['positive']}")
+    if 'wrong' in filters:
+        conditions.append(f"iswrong = {filters['wrong']}")
+    if 'region' in filters:
+        conditions.append(f"LOWER(region) LIKE '%{filters['region'].lower()}%'")
+    if 'status' in filters:
+        conditions.append(f"LOWER(status) = '{filters['status'].lower()}'")
+    else:
+        conditions.append("status = 'done'")
+    if 'search' in filters:
+        #conditions.append(f"(LOWER(uid) LIKE '%{filters['search']}%' OR LOWER(name) LIKE '%{filters['search']}%' OR LOWER(report) LIKE '%{filters['search']}%')")
+        conditions.append(f"LOWER(name) LIKE '%{filters['search']}%'")
     if conditions:
-        query += " WHERE " + " AND ".join(conditions)
+        where = "WHERE " + " AND ".join(conditions)
     # Apply the limits (pagination)
-    query += " ORDER BY created DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+    query = f"SELECT * FROM exams {where} ORDER BY created DESC LIMIT {limit} OFFSET {offset}"
     # Get the exams
     exams = []
     with sqlite3.connect(DB_FILE) as conn:
@@ -291,7 +297,7 @@ async def db_stats():
                 stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
-            print(region, stats["region"][region])
+            #print(region, stats["region"][region])
     # Return stats
     return stats
 
@@ -571,14 +577,22 @@ async def exams_handler(request):
     """ Provide a page of exams """
     try:
         page = int(request.query.get("page", "1"))
-        filter = request.query.get("filter", "all")
-        status = request.query.get("status", None)
+        filters = {}
+        for filter in ['reviewed', 'positive', 'wrong']:
+            value = request.query.get(filter, 'any')
+            if value != 'any':
+                filters[filter] = value[0].lower() == 'y' and 1 or 0
+        for filter in ['region', 'status', 'search']:
+            value = request.query.get(filter, 'any')
+            if value != 'any':
+                filters[filter] = value
         offset = (page - 1) * PAGE_SIZE
-        data, total = db_load_exams(limit = PAGE_SIZE, offset = offset, filter = filter, status = status)
+        data, total = db_load_exams(limit = PAGE_SIZE, offset = offset, **filters)
         return web.json_response({
             "exams": data,
             "total": total,
             "pages": int(total / PAGE_SIZE) + 1,
+            "filters": filters,
         })
     except Exception as e:
         logging.error(f"Exams page error: {e}")
