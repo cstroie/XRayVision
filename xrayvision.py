@@ -27,7 +27,7 @@ from pynetdicom import AE, evt, StoragePresentationContexts, QueryRetrievePresen
 from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayImageStorageForPresentation, PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
 from datetime import datetime, timedelta
 
-
+# Logger config
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)8s | %(message)s',
@@ -52,11 +52,13 @@ DB_FILE = os.path.join(IMAGES_DIR, "xrayvision.db")
 
 SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
-ANATOMY_LIST = ["chest", "sternum", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
+REGIONS = ["chest", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
 
+# Images directory
 os.makedirs(IMAGES_DIR, exist_ok = True)
 
-main_loop = None  # Global variable to hold the main event loop
+# Global variables
+main_loop = None
 websocket_clients = set()
 queue_event = asyncio.Event()
 next_query = None
@@ -67,6 +69,12 @@ health_status = {
     OPENAI_URL_SECONDARY: False
 }
 
+# Global paramters
+PAGE_SIZE = 10
+KEEP_DICOM = False
+LOAD_DICOM = False
+NO_QUERY = False
+
 # Dashboard state
 dashboard = {
     'queue_size': 0,
@@ -74,11 +82,6 @@ dashboard = {
     'success_count': 0,
     'failure_count': 0
 }
-
-PAGE_SIZE = 10
-KEEP_DICOM = False
-LOAD_DICOM = False
-NO_QUERY = False
 
 # Database operations
 def init_database():
@@ -136,14 +139,17 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
             dt = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
             exams.append({
                 'uid': row[0],
-                'meta': {
-                    'patient': {'name': row[1], 'id': row[2], 'age': row[3]},
-                    'exam': {
-                        'date': dt.strftime('%Y%m%d'),
-                        'time': dt.strftime('%H%M%S'),
-                        'protocol': row[5],
-                        'anatomy': row[6],
-                    }
+                'patient': {
+                    'name': row[1],
+                    'id': row[2], 
+                    'age': row[3],
+                    'sex': int(row[2][0]) % 2 == 0 and 'F' or 'M',
+                },
+                'exam': {
+                    'date': dt.strftime('%Y%m%d'),
+                    'time': dt.strftime('%H%M%S'),
+                    'protocol': row[5],
+                    'region': row[6],
                 },
                 'report': {
                     'text': row[8],
@@ -200,18 +206,8 @@ def db_add_exam(uid, metadata, report):
         iswrong = False
         reviewed = False
         status = 'queued'
-    # Get the reported timestamp (now)
+    # Timestamp
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    # Get the exam timestamp
-    if metadata["series"]["date"] and metadata["series"]["time"] and \
-        len(metadata["series"]["date"]) == 8 and len(metadata["series"]["time"]) >= 6:
-        try:
-            dt = datetime.strptime(f'{metadata["series"]["date"]} {metadata["series"]["time"][:6]}', "%Y%m%d %H%M%S")
-            created = dt.strftime("%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            created = now
-    else:
-        created = now
     # Insert into database
     with sqlite3.connect(DB_FILE) as conn:
         values = (
@@ -219,9 +215,9 @@ def db_add_exam(uid, metadata, report):
             metadata["patient"]["name"],
             metadata["patient"]["id"],
             metadata["patient"]["age"],
-            created,
-            metadata["series"]["desc"],
-            metadata['exam']['anatomy'],
+            metadata["exam"]['created'],
+            metadata["exam"]["proto"],
+            metadata['exam']['region'],
             now,
             report,
             poz,
@@ -239,7 +235,7 @@ def db_check_already_processed(uid):
     """ Check if the file has already been processed """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute(
-            "SELECT 1 FROM exams WHERE uid = ?", (uid,)
+            "SELECT 1 FROM exams WHERE uid = ? AND status = 'done'", (uid,)
         ).fetchone()
         return result is not None
 
@@ -304,8 +300,8 @@ async def db_stats():
 def db_queue_get():
     """ Get the next in queue exam to analyze """
     with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT uid, name, id FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
-        return (result[0], result[1], result[2]) if result else (None, None, None)
+        result = conn.execute('SELECT uid, name, id, age, created, protocol, region, report FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
+        return (result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7]) if result else (None,) * 8
 
 def db_queue_size():
     """ Get the queue size """
@@ -398,30 +394,24 @@ def dicom_store(event):
         ds.save_as(dicom_file, enforce_file_format = True)
         logging.info(f"DICOM file saved to {dicom_file}")
         # Get some metadata for queueing
-        metadata = {
-            'patient': {
-                'name':  str(ds.PatientName),
-                'id':    str(ds.PatientID),
-                'age':   0,
-            },
-            'series': {
-                'desc':  str(ds.SeriesDescription),
-                'proto': str(ds.ProtocolName),
-                'date':  str(ds.SeriesDate),
-                'time':  str(ds.SeriesTime),
-            },
-            'exam': {
-                'desc':  str(ds.SeriesDescription),
-                'proto': str(ds.ProtocolName),
-                'date':  str(ds.SeriesDate),
-                'time':  str(ds.SeriesTime),
-                'anatomy': "unknown"
-            },
-        }
-        # Add to processing queue
-        db_add_exam(uid, metadata, None)
-        queue_event.set()
-        asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
+        try:
+            metadata = get_dicom_metadata(ds)
+        except Exception as e:
+            logging.error(f"Error getting metadata {dicom_file}: {e}")
+            return 0x0000
+        # Try to convert to PNG
+        png_file = None
+        try:
+            png_file = dicom_to_png(dicom_file)
+        except Exception as e:
+            logging.error(f"Error converting DICOM file {dicom_file}: {e}")
+        # Check the result
+        if png_file:
+            # Add to processing queue
+            db_add_exam(uid, metadata, None)
+            # Notify the queue
+            queue_event.set()
+            asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
     return 0x0000
 
@@ -429,43 +419,73 @@ def dicom_store(event):
 # DICOM files operations
 async def load_existing_dicom_files():
     """ Load existing .dcm files into queue """
-    for file_name in os.listdir(IMAGES_DIR):
-        uid, ext = os.path.splitext(os.path.basename(file_name.lower()))
+    for dicom_file in os.listdir(IMAGES_DIR):
+        uid, ext = os.path.splitext(os.path.basename(dicom_file.lower()))
         if ext == '.dcm':
             if db_check_already_processed(uid):
                 logging.info(f"Skipping already processed image {uid}")
             else:
                 logging.info(f"Adding {uid} into processing queue...")
                 # Get the dataset
-                ds = dcmread(os.path.join(IMAGES_DIR, file_name))
+                ds = dcmread(os.path.join(IMAGES_DIR, dicom_file))
                 # Get some metadata for queueing
-                metadata = {
-                    'patient': {
-                        'name':  str(ds.PatientName),
-                        'id':    str(ds.PatientID),
-                        'age':   0,
-                    },
-                    'series': {
-                        'desc':  str(ds.SeriesDescription),
-                        'proto': str(ds.ProtocolName),
-                        'date':  str(ds.SeriesDate),
-                        'time':  str(ds.SeriesTime),
-                    },
-                    'exam': {
-                        'desc':  str(ds.SeriesDescription),
-                        'proto': str(ds.ProtocolName),
-                        'date':  str(ds.SeriesDate),
-                        'time':  str(ds.SeriesTime),
-                        'anatomy': "unknown"
-                    },
-                }
-                # Add to the processing queue
-                db_add_exam(uid, metadata, None)
-    # Notify the queue
-    queue_event.set()
+                try:
+                    metadata = get_dicom_metadata(ds)
+                except Exception as e:
+                    logging.error(f"Error getting metadata {dicom_file}: {e}")
+                    continue
+                # Try to convert to PNG
+                png_file = None
+                try:
+                    png_file = dicom_to_png(dicom_file)
+                except Exception as e:
+                    logging.error(f"Error converting DICOM file {dicom_file}: {e}")
+                # Check the result
+                if png_file:
+                    # Add to processing queue
+                    db_add_exam(uid, metadata, None)
+                    # Notify the queue
+                    queue_event.set()
     # At the end, update the dashboard
     await broadcast_dashboard_update()
 
+def get_dicom_metadata(ds):
+    """ Read and return the metadata from a DICOM file """
+    age = -1
+    if 'PatientAge' in ds:
+        age = str(ds.PatientAge).lower().replace("y", "").strip()
+        try:
+            age = int(age)
+        except Exception as e:
+            logging.error(f"Cannot convert age to number: {e}")
+    # Get the reported timestamp (now)
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Get the exam timestamp
+    if str(ds.SeriesDate) and str(ds.SeriesTime) and \
+        len(str(ds.SeriesDate)) == 8 and len(str(ds.SeriesTime)) >= 6:
+        try:
+            dt = datetime.strptime(f'{str(ds.SeriesDate)} {str(ds.SeriesTime)[:6]}', "%Y%m%d %H%M%S")
+            created = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            created = now
+    else:
+        created = now
+
+    metadata = {
+        'patient': {
+            'name':  str(ds.PatientName),
+            'id':    str(ds.PatientID),
+            'age':   age,
+            'sex':   str(ds.PatientSex),
+            'bdate': str(ds.PatientBirthDate),
+        },
+        'exam': {
+            'proto': str(ds.ProtocolName),
+            'created': created,
+            'region': str(ds.ProtocolName),
+        }
+    }
+    return metadata
 
 # Image processing operations
 def adjust_gamma(image, gamma = 1.2):
@@ -493,16 +513,8 @@ def dicom_to_png(dicom_file, max_size = 800):
     # Check for PixelData
     if 'PixelData' not in ds:
         raise ValueError(f"DICOM file {dicom_file} has no pixel data!")
-    # Normalize image to 0-255
-    # TODO consider 5 as mininum and 250 as maximum
+    # Convert to float
     image = ds.pixel_array.astype(np.float32)
-    image -= image.min()
-    if image.max() != 0:
-        image /= image.max()
-    image *= 255.0
-    image = image.astype(np.uint8)
-    # Adjust gamma
-    image = adjust_gamma(image, None)
     # Resize while maintaining aspect ratio
     height, width = image.shape[:2]
     if max(height, width) > max_size:
@@ -513,39 +525,26 @@ def dicom_to_png(dicom_file, max_size = 800):
             new_width = max_size
             new_height = int(height * (max_size / width))
         image = cv2.resize(image, (new_width, new_height), interpolation = cv2.INTER_AREA)
+    # Clip to 1..99 percentiles
+    minval = np.percentile(image, 1)
+    maxval = np.percentile(image, 99)
+    image = np.clip(image, minval, maxval)
+    # Normalize image to 0-255
+    image -= image.min()
+    if image.max() != 0:
+        image /= image.max()
+    image *= 255.0
+    # Save as 8 bit
+    image = image.astype(np.uint8)
+    # Auto adjust gamma
+    image = adjust_gamma(image, None)
     # Save the PNG file
     base_name = os.path.splitext(os.path.basename(dicom_file))[0]
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
     logging.info(f"Converted PNG saved to {png_file}")
-    # Keep the DICOM metadata
-    metadata = {
-        'patient': {
-            'name':  str(ds.PatientName),
-            'id':    str(ds.PatientID),
-            'age':   str(ds.PatientAge),
-            'sex':   str(ds.PatientSex),
-            'bdate': str(ds.PatientBirthDate),
-        },
-        'series': {
-            'uid':   str(ds.SeriesInstanceUID),
-            'desc':  str(ds.SeriesDescription),
-            'proto': str(ds.ProtocolName),
-            'date':  str(ds.SeriesDate),
-            'time':  str(ds.SeriesTime),
-        },
-        'study': {
-            'uid':   str(ds.StudyInstanceUID),
-            'date':  str(ds.StudyDate),
-            'time':  str(ds.StudyTime),
-        },
-        'exam': {
-            'desc': str(ds.SeriesDescription),
-            'anatomy': str(ds.ProtocolName),
-        }
-    }
     # Return the PNG file name and metadata
-    return png_file, metadata
+    return png_file
 
 
 # WebSocket and WebServer operations
@@ -670,88 +669,88 @@ def check_any(string, *words):
     """ Check if any of the words are present in the string """
     return any(i in string for i in words)
 
-def get_anatomy(metadata):
-    """ Try to identify the anatomy. Return the anatomy and the question. """
-    desc = metadata["series"]["desc"].lower()
+def get_region(metadata):
+    """ Try to identify the region. Return the region and the question. """
+    desc = metadata["exam"]["proto"].lower()
     if check_any(desc, 'torace', 'pulmon',
                  'thorax'):
-        anatomy = 'chest'
+        region = 'chest'
         question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
     elif check_any(desc, 'grilaj', 'coaste'):
-        anatomy = 'chest'
+        region = 'ribs'
         question = "Are there any ribs or clavicles fractures"
     elif check_any(desc, 'stern'):
-        anatomy = 'sternum'
+        region = 'sternum'
         question = "Are there any fractures"
     elif check_any(desc, 'abdomen'):
-        anatomy = 'abdominal'
-        question = "Are there any hydroaeric levels or pneumoperitoneum"
+        region = 'abdominal'
+        question = "Are there any fluid levels, distended bowel loops, free gas or metallic foreign bodies"
     elif check_any(desc, 'cap', 'craniu', 'occiput',
                    'skull'):
-        anatomy = 'skull'
+        region = 'skull'
         question = "Are there any fractures"
     elif check_any(desc, 'mandibula'):
-        anatomy = 'mandible'
+        region = 'mandible'
         question = "Are there any fractures"
     elif check_any(desc, 'nazal', 'piramida'):
-        anatomy = 'nasal bones'
+        region = 'nasal bones'
         question = "Are there any fractures"
     elif check_any(desc, 'sinus'):
-        anatomy = 'maxilar and frontal sinus'
+        region = 'maxilar and frontal sinus'
         question = "Are there any changes in transparency of the sinuses"
     elif check_any(desc, 'col.',
                    'spine', 'dens', 'sacrat'):
-        anatomy = 'spine'
+        region = 'spine'
         question = "Are there any fractures or dislocations"
     elif check_any(desc, 'bazin', 'pelvis'):
-        anatomy = 'pelvis'
+        region = 'pelvis'
         question = "Are there any fractures"
     elif check_any(desc, 'clavicula',
                    'clavicle'):
-        anatomy = 'clavicle'
+        region = 'clavicle'
         question = "Are there any fractures"
     elif check_any(desc, 'humerus', 'antebrat',
                    'forearm'):
-        anatomy = 'upper limb'
+        region = 'upper limb'
         question = "Are there any fractures, dislocations or bone tumors"
     elif check_any(desc, 'pumn', 'mana', 'deget',
                    'hand', 'finger'):
-        anatomy = 'hand'
+        region = 'hand'
         question = "Are there any fractures, dislocations or bone tumors"
     elif check_any(desc, 'umar',
                    'shoulder'):
-        anatomy = 'shoulder'
+        region = 'shoulder'
         question = "Are there any fractures or dislocations"
     elif check_any(desc, 'cot',
                    'elbow'):
-        anatomy = 'elbow'
+        region = 'elbow'
         question = "Are there any fractures or dislocations"
     elif check_any(desc, 'sold',
                    'hip'):
-        anatomy = 'hip'
+        region = 'hip'
         question = "Are there any fractures or dislocations"
     elif check_any(desc, 'femur', 'tibie', 'picior', 'gamba', 'calcai',
                    'leg', 'foot'):
-        anatomy = 'lower limb'
+        region = 'lower limb'
         question = "Are there any fractures, dislocations or bone tumors"
     elif check_any(desc, 'genunchi', 'patella',
                    'knee'):
-        anatomy = 'knee'
+        region = 'knee'
         question = "Are there any fractures or dislocations"
     elif check_any(desc, 'glezna', 'calcaneu',
                    'ankle'):
-        anatomy = 'ankle'
+        region = 'ankle'
         question = "Are there any fractures or dislocations"
     else:
         # Fallback
-        anatomy = desc
+        region = desc
         question = "Is there anything abnormal"
-    # Return the anatomy and the question
-    return anatomy, question
+    # Return the region and the question
+    return region, question
 
 def get_projection(metadata):
     """ Try to identify the projection """
-    desc = metadata["series"]["desc"].lower()
+    desc = metadata["exam"]["proto"].lower()
     if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
         projection = "frontal"
     elif check_any(desc, "lat.", "pr."):
@@ -777,24 +776,6 @@ def get_gender(metadata):
     # Return the gender
     return gender
 
-def get_age(metadata):
-    """ Try to get the age """
-    age = metadata["patient"]["age"].lower().replace("y", "").strip()
-    try:
-        num = int(age)
-    except Exception as e:
-        logging.error(f"Cannot convert age to number: {e}")
-        num = 0
-    if age:
-        if age == "000":
-            age = "newborn"
-        else:
-            age = age + " years old"
-    else:
-        age = ""
-    # Return the age (string)
-    return age, num
-
 async def send_to_openai(session, headers, payload):
     """ Try the healty OpenAI API endpoint """
     try:
@@ -809,33 +790,35 @@ async def send_to_openai(session, headers, payload):
 
 async def send_image_to_openai(uid, metadata, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
-
     # Read the PNG file
     with open(os.path.join(IMAGES_DIR, f"{uid}.png"), 'rb') as f:
         image_bytes = f.read()
     # Prepare the prompt
-    anatomy, question = get_anatomy(metadata)
+    region, question = get_region(metadata)
     projection = get_projection(metadata)
     gender = get_gender(metadata)
-    txtAge, intAge = get_age(metadata)
-    # Store in metadata
-    metadata['exam'] = {'anatomy': anatomy,
-                        'projection': projection,
-                        'desc': metadata['series']['desc']}
-    metadata['patient']['age'] = intAge
-    # Filter on specific anatomy
-    if not anatomy in ANATOMY_LIST:
-        logging.info(f"Ignoring {uid} with {anatomy} x-ray.")
+    age = metadata["patient"]["age"]
+    if age > 0:
+        txtAge = f"{age} years old"
+    elif age == 0:
+        txtAge = "newborn"
+    else:
+        txtAge = ""
+    # Update metadata
+    metadata['exam'].update({'region': region, 'projection': projection})
+    # Filter on specific region
+    if not region in REGIONS:
+        logging.info(f"Ignoring {uid} with {region} x-ray.")
         db_set_status(uid, 'ignore')
         return False
     # Get the subject of the study and the studied region
     subject = " ".join([txtAge, gender])
-    if anatomy:
-        region = " ".join([projection, anatomy])
+    if region:
+        anatomy = " ".join([projection, region])
     else:
-        region = ""
+        anatomy = ""
     # Create the prompt
-    prompt = USR_PROMPT.format(question, region, subject)
+    prompt = USR_PROMPT.format(question, anatomy, subject)
     logging.debug(f"Prompt: {prompt}")
     logging.info(f"Sending {uid} for processing")
     # Base64 encode the PNG to comply with OpenAI Vision API
@@ -849,6 +832,11 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Prepare the JSON data
     data = {
         "model": "medgemma-4b-it",
+        "timings_per_token": True,
+        "min_p": 0.05,
+        "top_k": 40,
+        "top_p": 0.95,
+        "temperature": 0.8,
         "messages": [
             {
                 "role": "system",
@@ -863,6 +851,9 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
             }
         ]
     }
+    if 'report' in metadata:
+        data['messages'].append({'role': 'assistant', 'content': metadata['report']})
+        data['messages'].append({'role': 'user', 'content': "Look again!"})
     # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
     attempt = 1
     while attempt <= max_retries:
@@ -886,6 +877,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
             await asyncio.sleep(2 ** attempt)
             attempt += 1
     # Failure after max_retries
+    queue_event.clear()
     logging.error(f"Failed to upload {uid} after {max_retries} attempts.")
     dashboard['failure_count'] += 1
     await broadcast_dashboard_update()
@@ -915,7 +907,7 @@ async def relay_to_openai_loop():
     """ Relay PNG files to OpenAI API with retries and dashboard update """
     while True:
         # Get one file from queue
-        (uid, name, id) = db_queue_get()
+        (uid, name, id, age, created, protocol, region, report) = db_queue_get()
         # Wait here if there are no items in queue or there is no OpenAI server
         if not uid or active_openai_url is None:
             queue_event.clear()
@@ -928,24 +920,28 @@ async def relay_to_openai_loop():
         await broadcast_dashboard_update()
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
-        # Try to convert to PNG
-        png_file = None
-        try:
-            png_file, metadata = dicom_to_png(dicom_file)
-        except Exception as e:
-            logging.error(f"Error converting DICOM file {dicom_file}: {e}")
-            png_file = None
-        # Check the result
-        if not png_file:
-            # Set the status
-            db_set_status(uid, "error")
-            continue 
+        # Compose a metadata
+        metadata = {
+            'patient': {
+                'name':  name,
+                'id':    id,
+                'age':   age,
+                'sex':   int(id[0]) % 2 == 0 and 'F' or 'M',
+            },
+            'exam': {
+                'proto': protocol,
+                'region': region,
+                'created': created,
+            }
+        }
+        if report.strip():
+            metadata['report'] = report
         # Try to send to AI
         result = False
         try:
             result = await send_image_to_openai(uid, metadata)
         except Exception as e:
-            logging.error(f"Unhandled error processing {uid}: {e}")
+            logging.error(f"OpenAI error processing {uid}: {e}")
             db_set_status(uid, "error")
         finally:
             dashboard['processing_file'] = None
@@ -962,7 +958,7 @@ async def relay_to_openai_loop():
                 except Exception as e:
                     logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
             else:
-                logging.debug(f"Kept DICOM file: {dicom_file}")
+                logging.debug(f"Keeping DICOM file: {dicom_file}")
         else:
             # Set the status
             db_set_status(uid, "error")
@@ -1034,6 +1030,10 @@ async def main():
         init_database()
     else:
         logging.info("SQLite database found.")
+    # Print some data
+    logging.info(f"Python SQLite version: {sqlite3.version}")
+    logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
+     
     # Load exams
     exams, total = db_load_exams(status = 'done')
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")

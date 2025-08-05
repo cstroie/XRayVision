@@ -42,7 +42,7 @@
     <main>
         <section>
             <div><strong>Breakdown by anatomical region</strong></div>
-            <table id="anatomyStats" role="grid">
+            <table id="regionStats" role="grid">
                 <thead>
                     <tr>
                         <th>Region</th>
@@ -66,7 +66,7 @@
         </section>
         <section class="grid">
             <article>
-                <canvas id="anatomyChart" width="400" height="200"></canvas>
+                <canvas id="regionChart" width="400" height="200"></canvas>
             </article>
             <article>
                 <canvas id="globalChart" width="400" height="200"></canvas>
@@ -84,7 +84,7 @@
         document.getElementById('wrong').textContent = data.wrong;
 
         // Table
-        const tbody = document.querySelector('#anatomyStats tbody');
+        const tbody = document.querySelector('#regionStats tbody');
         tbody.innerHTML = '';
         for (const [region, counts] of Object.entries(data.region)) {
             const row = document.createElement('tr');
@@ -101,7 +101,7 @@
             `;
             tbody.appendChild(row);
         }
-        const tfoot = document.querySelector('#anatomyStats tfoot');
+        const tfoot = document.querySelector('#regionStats tfoot');
         tfoot.innerHTML = `
         <tr>
             <th scope="row">Total</th>
@@ -109,27 +109,39 @@
             <td>-</td><td>-</td><td>-</td><td>-</td>
         </tr>`;
 
-        // Chart: Anatomy breakdown
-        const anatomyLabels = [];
+        // Chart: region breakdown
+        const regionLabels = [];
         const totalData = [];
         const positiveData = [];
         const wrongData = [];
+        const tposData = [];
+        const tnegData = [];
+        const fposData = [];
+        const fnegData = [];
 
         for (const [region, counts] of Object.entries(data.region)) {
-            anatomyLabels.push(region);
+            regionLabels.push(region);
             totalData.push(counts.total);
             positiveData.push(counts.positive);
             wrongData.push(counts.wrong);
+            tposData.push(counts.tpos);
+            tnegData.push(counts.tneg);
+            fposData.push(counts.fpos);
+            fnegData.push(counts.fneg);
         }
 
-        new Chart(document.getElementById("anatomyChart"), {
+        new Chart(document.getElementById("regionChart"), {
         type: 'bar',
         data: {
-            labels: anatomyLabels,
+            labels: regionLabels,
             datasets: [
-                { label: 'Total', data: totalData, backgroundColor: '#017FC0' },
+                /*{ label: 'Total', data: totalData, backgroundColor: '#017FC0' },
                 { label: 'Positive', data: positiveData, backgroundColor: '#398712' },
-                { label: 'Wrong', data: wrongData, backgroundColor: '#D24317' }
+                { label: 'Wrong', data: wrongData, backgroundColor: '#D24317' }*/
+                { label: 'Positive', data: tposData, backgroundColor: '#398712' },
+                { label: 'Negative', data: tnegData, backgroundColor: '#1343A0' },
+                { label: 'False positive', data: fposData, backgroundColor: '#394D00' },
+                { label: 'False negative', data: fnegData, backgroundColor: '#D24317' }
             ]
         },
         options: {

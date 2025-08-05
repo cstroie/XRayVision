@@ -272,7 +272,7 @@
                     <option value="24">24</option>
                 </select>
                 <button style="width: 20rem;" onclick="triggerQuery()">Query/Retrieve</button>
-                <!--<div role="button" style="width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>-->
+                <div role="button" style="width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
             </fieldset>
         </form>
     </header>
@@ -306,8 +306,10 @@
                 <option selected disabled value="">Region</option>
                 <option value="any">Any</option>
                 <option value="chest">Chest</option>
+                <option value="ribs">Ribs</option>
                 <option value="abdominal">Abdomen</option>
                 <option value="sinus">Sinuses</option>
+                <option value="nasal">Nasal bones</option>
                 <option value="clavicle">Clavicle</option>
             </select>
             <select id="filter-status" onchange="loadPage(1)" aria-label="Select the study status">
@@ -352,7 +354,6 @@
 
     <footer>
         <hr>
-        <small>Active OpenAI Backend: <span id="openaiUrl">Loading...</span></small><br>
         <small>Primary: <span id="openaiPri">?</span> | Secondary: <span id="openaiSec">?</span></small>
     </footer>
 
@@ -388,7 +389,7 @@
                     document.getElementById('failure').innerHTML = data.dashboard.failure_count;
                 }
                 if (data.openai !== undefined) {
-                    document.getElementById("openaiUrl").textContent = data.openai.url;
+                    /*document.getElementById("openaiUrl").textContent = data.openai.url;*/
                     document.getElementById("openaiPri").textContent = data.openai.health.pri ? "✅" : "❌";
                     document.getElementById("openaiSec").textContent = data.openai.health.sec ? "✅" : "❌";
                 }
@@ -448,6 +449,21 @@
             })
             .catch(error => {
                 console.error('Error sending review:', error);
+            });
+        }
+
+        function lookagain(uid, prompt = "Look again!") {
+            fetch('/api/lookagain', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: uid, prompt: prompt })
+            })
+            .then(response => response.json())
+            .then(data => {
+                loadPage(currentPage);
+            })
+            .catch(error => {
+                console.error('Error sending look again request:', error);
             });
         }
 
@@ -590,13 +606,13 @@
                 } else {
                     text = "";
                 }
-                let date = item.meta.exam.date;
-                let time = item.meta.exam.time;
+                let date = item.exam.date;
+                let time = item.exam.time;
                 let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
                 let formattedTime = `${time.substring(0,2)}:${time.substring(2,4)}:${time.substring(4,6)}`;
 
-                let patientNameParts = item.meta.patient.name.split('^');
-                let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]}, ${patientNameParts[1]}` : item.meta.patient.name;
+                let patientNameParts = item.patient.name.split('^');
+                let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : item.patient.name;
 
                 let clsReviewed = isReviewed ? 'reviewed' : '';
                 let clsWrong = isWrong ? 'wrong' : '';
@@ -615,15 +631,16 @@
                         </figure>
                         <aside class="details">
                             <details open>
-                            <summary><strong>${formattedPatientName}</strong></summary>
+                            <summary><strong>${formattedPatientName}, ${item.patient.age} years</strong></summary>
                             <p>
-                            <small><strong>ID:</strong> ${item.meta.patient.id}</small><br>
+                            <small><strong>ID:</strong>${item.patient.id}</small><br>
                             <small><strong>Time:</strong> ${formattedDate} ${formattedTime}</small><br>
-                            <small><strong>Protocol:</strong> ${item.meta.exam.protocol}</small><br>
-                            <small><strong>Region:</strong> ${item.meta.exam.anatomy}</small><br>
+                            <small><strong>Protocol:</strong> ${item.exam.protocol}</small><br>
+                            <small><strong>Region:</strong> ${item.exam.region}</small><br>
                             </p>
                             </details>
                             <p class="report">${text}</p>
+                            <button onclick="lookagain('${item.uid}')">Look again</button>
                         </aside>
                     </section>
                 `;
