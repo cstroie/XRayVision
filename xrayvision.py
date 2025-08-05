@@ -635,6 +635,8 @@ async def lookagain(request):
     uid = data.get('uid')
     prompt = data.get('prompt', None)
     status = db_set_status(uid, 'queued')
+    # Notify the queue
+    queue_event.set()
     await broadcast_dashboard_update(event = "lookagain", payload = {'uid': uid, 'status': status})
     return web.json_response({'status': 'success', 'uid': uid, 'status': status})
 
