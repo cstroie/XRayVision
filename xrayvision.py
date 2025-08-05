@@ -947,7 +947,7 @@ async def relay_to_openai_loop():
                 'created': created,
             }
         }
-        if report.strip():
+        if report:
             metadata['report'] = report
         # Try to send to AI
         result = False
