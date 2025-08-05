@@ -187,7 +187,8 @@ def db_review(uid, normal = True):
             "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (wrong, uid,))
     return wrong
 
-def db_set_status(uid, status):
+# FIXME Duplicate function
+def db_set_status_DIS(uid, status):
     """ Set the status """
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute(
@@ -628,6 +629,15 @@ async def review(request):
     await broadcast_dashboard_update(event = "review", payload = {'uid': uid, 'iswrong': wrong})
     return web.json_response({'status': 'success', 'uid': uid, 'iswrong': wrong})
 
+async def lookagain(request):
+    """ Send an exam back to queue """
+    data = await request.json()
+    uid = data.get('uid')
+    prompt = data.get('prompt', None)
+    status = db_set_status(uid, 'queued')
+    await broadcast_dashboard_update(event = "lookagain", payload = {'uid': uid, 'status': status})
+    return web.json_response({'status': 'success', 'uid': uid, 'status': status})
+
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """ Update the dashboard for all clients """
     # Check if there are any clients
@@ -895,6 +905,7 @@ async def start_dashboard():
     app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', stats_handler)
     app.router.add_post('/api/review', review)
+    app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
     runner = web.AppRunner(app)

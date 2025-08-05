@@ -149,6 +149,13 @@
              background-color: var(--pico-color-red-900);
         }
 
+        .image-card .lookagain {
+            display: none;
+        }
+        .image-card.reviewed.wrong .lookagain {
+            display: block;
+        }
+
         .image-card .xray {
             background-color: black;
             padding: 0.5rem;
@@ -640,7 +647,7 @@
                             </p>
                             </details>
                             <p class="report">${text}</p>
-                            <button onclick="lookagain('${item.uid}')">Look again</button>
+                            <button class="lookagain" onclick="lookagain('${item.uid}')">Look again</button>
                         </aside>
                     </section>
                 `;
