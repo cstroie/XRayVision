@@ -50,7 +50,13 @@ REMOTE_AE_PORT = 104
 IMAGES_DIR = 'images'
 DB_FILE = os.path.join(IMAGES_DIR, "xrayvision.db")
 
-SYS_PROMPT = "You are a smart radiologist working in ER. Respond in plaintext. Start with yes or no, then provide just one line description like a radiologist. Do not assume, stick to the facts, but look again if you are in doubt."
+SYS_PROMPT = """You are a smart radiologist working in ER. 
+You only output mandatory JSON to a RESTful API, in the following format: {'short': Y/N, 'report': REPORT} where Y/N is the short answer, only 'yes' and 'no' being allowed, and REPORT is the full description of the findings, like a radiologist would write.
+It is important to identify all lesions in the xray and respond with 'yes' if there is anything pathological and 'no' if there is nothing to report.
+If in doubt, do not assume, stick to the facts.
+Look again at the xray if you think there is something ambiguous.
+ONLY JSON IS ALLOWED as an answer.
+No explanation or other text is allowed."""
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
 REGIONS = ["chest", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
 
@@ -848,7 +854,9 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
         "min_p": 0.05,
         "top_k": 40,
         "top_p": 0.95,
-        "temperature": 0.8,
+        "temperature": 0.6,
+        "cache_prompt": True,
+        "stream": False,
         "messages": [
             {
                 "role": "system",
@@ -872,6 +880,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
         try:
             async with aiohttp.ClientSession() as session:
                 result = await send_to_openai(session, headers, data)
+                print(result)
                 report = result["choices"][0]["message"]["content"]
                 report = report.replace('\n', " ").replace("  ", " ").strip()
                 logging.info(f"OpenAI API response for {uid}: {report}")
