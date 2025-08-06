@@ -905,8 +905,8 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 db_add_exam(uid, metadata, report = report, positive = short == "yes")
                 # Get some timing statistics
                 global timings
-                timings['prompt'] = int(result['usage']['timings']['prompt_ms'])
-                timings['predicted'] = int(result['usage']['timings']['predicted_ms'])
+                timings['prompt'] = int(result['timings']['prompt_ms'])
+                timings['predicted'] = int(result['timings']['predicted_ms'])
                 timings['total'] = timings['prompt'] + timings['predicted']
                 timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
                 # Notify the dashboard frontend to reload first page
