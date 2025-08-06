@@ -47,6 +47,11 @@
             .image-card {
                 grid-template-columns: 300px 1fr;
             }
+
+            .pagination button,
+            .pagination [role=button] {
+                padding: 0.5rem 2rem;
+            }
         }
 
         @media (min-width: 1024px) {
@@ -96,6 +101,10 @@
             /* Original: var(--pico-border-radius) */
         }
 
+        .pagination button,
+        .pagination [role=button] {
+            padding: 0.5rem 1rem;
+        }
 
     
         .image-card {
@@ -149,13 +158,6 @@
              background-color: var(--pico-color-red-900);
         }
 
-        .image-card .lookagain {
-            display: none;
-        }
-        .image-card.reviewed.wrong .lookagain {
-            display: block;
-        }
-
         .image-card .xray {
             background-color: black;
             padding: 0.5rem;
@@ -169,6 +171,7 @@
             /*padding: 0;*/
             border-radius: 0;
             font-size: 1.0rem;
+            width: 100%;
         }
         button.normal {
             background-color: var(--pico-color-azure-800);
@@ -261,27 +264,23 @@
     </nav>
 
     <header>
-        <div class="grid">
+        <hgroup class="grid">
             <article><strong>Queue Size:</strong><br><span id="queue">0</span></article>
             <article><strong>Currently Processing:</strong><br><span id="processing">Idle</span></article>
             <article><strong>Successful Uploads:</strong><br><span id="success">0</span></article>
             <article><strong>Failed Uploads:</strong><br><span id="failure">0</span></article>
-        </div>
-
-        <form>
-            <fieldset role="group">
-                <select id="queryInterval">
-                    <option selected disabled value="">Select the time interval</option>
-                    <option value="1">1</option>
-                    <option value="3">3</option>
-                    <option value="6">6</option>
-                    <option value="12">12</option>
-                    <option value="24">24</option>
-                </select>
-                <button style="width: 20rem;" onclick="triggerQuery()">Query/Retrieve</button>
-                <div role="button" style="width: 20rem;" disabled>Next <span id="nextQueryTime">unknown</span></div>
-            </fieldset>
-        </form>
+        </hgroup>
+        <fieldset role="group">
+            <select id="queryInterval">
+                <option selected disabled value="">Select the time interval</option>
+                <option value="1">1</option>
+                <option value="3">3</option>
+                <option value="6">6</option>
+                <option value="12">12</option>
+                <option value="24">24</option>
+            </select>
+            <button onclick="triggerQuery()">Query/Retrieve</button>
+        </fieldset>
     </header>
 
     <main>
@@ -292,26 +291,22 @@
         
         <section id="filters" role="group">
             <select id="filter-reviewed" onchange="loadPage(1)" aria-label="Select reviewed or not reviewed studies">
-                <option selected disabled value="">Review</option>
-                <option value="any">Any</option>
+                <option value="any">Review: all</option>
                 <option value="yes">Reviewed</option>
                 <option value="no">Not reviewed</option>
             </select>
             <select id="filter-positive" onchange="loadPage(1)" aria-label="Select positive or negative studies">
-                <option selected disabled value="">Result</option>
-                <option value="any">Any</option>
+                <option value="any">Result: all</option>
                 <option value="yes">Positive</option>
                 <option value="no">Negative</option>
             </select>
             <select id="filter-wrong" onchange="loadPage(1)" aria-label="Select wrong studies">
-                <option selected disabled value="">Valid</option>
-                <option value="any">Any</option>
-                <option value="yes">Wrong</option>
-                <option value="no">Right</option>
+                <option value="any">Valid: all</option>
+                <option value="no">Valid</option>
+                <option value="yes">Invalid</option>
             </select>
             <select id="filter-region" onchange="loadPage(1)" aria-label="Select the anatomic region">
-                <option selected disabled value="">Region</option>
-                <option value="any">Any</option>
+                <option value="any">Region: any</option>
                 <option value="chest">Chest</option>
                 <option value="ribs">Ribs</option>
                 <option value="abdominal">Abdomen</option>
@@ -320,16 +315,15 @@
                 <option value="clavicle">Clavicle</option>
             </select>
             <select id="filter-status" onchange="loadPage(1)" aria-label="Select the study status">
-                <option selected disabled value="">Status</option>
-                <option value="any">Any</option>
                 <option value="done">Done</option>
                 <option value="queued">Queued</option>
                 <option value="processing">Processing</option>
                 <option value="error">Error</option>
+                <option value="any">Status: any</option>
             </select>
         </section>
 
-        <section id="top-pagination" role="group">
+        <section class="pagination" role="group">
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
             <select id="pageSelect" onchange="jumpToPage(this.value)">
@@ -343,17 +337,17 @@
 
         <section id="exams"><article aria-busy="true"></article></section>
 
-        <section id="bottom-pagination" role="group">
+        <section class="pagination" role="group">
             <button onclick="jumpToPage(1)">First</button>
             <button onclick="prevPage()">Prev</button>
-            <div role="button" id="pageNumber" class="secondary" style="width: 20em;" disabled>Page 1 of 1</div>
+            <div role="button" id="pageNumber" class="secondary" style="width: 100%;" disabled>Page 1 of 1</div>
             <button onclick="nextPage()">Next</button>
             <button onclick="jumpToPage(totalPages)">Last</button>
         </section>
 
         <div id="lightbox" class="lightbox">
-            <img id="lightbox-img" src="">
-            <div id="lightbox-text" class="lightbox-text"></div>
+            <main><img id="lightbox-img" src=""></main>
+            <footer id="lightbox-text" class="lightbox-text"></footer>
         </div>
 
         <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
@@ -361,7 +355,18 @@
 
     <footer>
         <hr>
-        <small>Primary: <span id="openaiPri">?</span> | Secondary: <span id="openaiSec">?</span></small>
+        <div class="grid">
+            <card>
+                <strong>OpenAI backend</strong> <span id="openai-backend"><i aria-busy="true"></i></span>
+            </card>
+            <card>
+                <strong>Average timing</strong> <span id="openai-timings"><i aria-busy="true"></i></span>
+            </card>
+            <card></card>
+            <card>
+                <strong>Next query</strong> <span id="next-query"><i aria-busy="true">unknown</i></span>
+            </card>
+        </div>
     </footer>
 
 
@@ -396,9 +401,18 @@
                     document.getElementById('failure').innerHTML = data.dashboard.failure_count;
                 }
                 if (data.openai !== undefined) {
-                    /*document.getElementById("openaiUrl").textContent = data.openai.url;*/
-                    document.getElementById("openaiPri").textContent = data.openai.health.pri ? "✅" : "❌";
-                    document.getElementById("openaiSec").textContent = data.openai.health.sec ? "✅" : "❌";
+                    if (data.openai.health.pri)
+                        oaiPri = "<ins>primary</ins>";
+                    else
+                        oaiPri = "<del>primary</del>";
+                    if (data.openai.health.sec)
+                        oaiSec = "<ins>secondary</ins>";
+                    else
+                        oaiSec = "<del>secondary</del>";
+                    document.getElementById("openai-backend").innerHTML = `${oaiPri}&nbsp;${oaiSec}`;
+                }
+                if (data.timings !== undefined) {
+                    document.getElementById("openai-timings").text = `${data.timings.average/1000} s`;
                 }
                 if (data.next_query !== undefined) {
                     updateQueryCountdown(data.next_query);
@@ -450,8 +464,6 @@
             .then(response => response.json())
             .then(data => {
                 loadPage(currentPage);
-                //var btn = document.getElementById(`rwb-${uid}`);
-                //btn.innerText = data.iswrong ? 'Wrong' : 'Correct';
                 console.log('Status update:', data.iswrong ? 'wrong' : 'right');
             })
             .catch(error => {
@@ -460,7 +472,7 @@
         }
 
         function lookagain(uid) {
-            const prompt = document.getElementById(`prompt-${uid}`).value.trim();
+            const prompt = "Look again"; /*document.getElementById(`prompt-${uid}`).value.trim();*/
             fetch('/api/lookagain', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -495,11 +507,10 @@
         function openLightbox(imageSrc, patientName, report, isWrong, isPositive) {
             const lightbox = document.getElementById('lightbox');
             const lightboxImg = document.getElementById('lightbox-img');
-            document.getElementById('lightbox-text').innerHTML = `<strong>${patientName}</strong><br>${report}`;
+            document.getElementById('lightbox-text').innerHTML = `<p>${report}</p>`;
             lightboxImg.src = imageSrc;
 
             lightbox.classList.remove('wrong', 'positive');
-
             if (isWrong) {
                 lightbox.classList.add('wrong');
             } else if (isPositive) {
@@ -593,7 +604,7 @@
 
         function updateQueryCountdown(targetTime) {
             if (queryTimerInterval) clearInterval(queryTimerInterval);
-            const nextQuery = document.getElementById("nextQueryTime");
+            const nextQuery = document.getElementById("next-query");
             if (nextQuery) {
                 nextQuery.innerText = formatCountdown(targetTime);
                 queryTimerInterval = setInterval(() => {
@@ -632,9 +643,11 @@
                         <figure class="xray">
                             <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
                             <div role="group">
-                                <!--<button class="sign" disabled>${signPozNeg}</button>-->
                                 <button class="abnormal" onclick="review('${item.uid}', false)">👎︎ NotOk</button>
                                 <button class="normal" onclick="review('${item.uid}', true)">👍︎ Ok</button>
+                            </div>
+                            <div role="group">
+                                <button class="secondary " onclick="lookagain('${item.uid}')">Look again</button>
                             </div>
                         </figure>
                         <aside class="details">
@@ -647,15 +660,7 @@
                             <small><strong>Region:</strong> ${item.exam.region}</small><br>
                             </p>
                             </details>
-                            <card>
                             <p class="report">${text}</p>
-                            <footer class="lookagain">
-                                <fieldset role="group">
-                                    <input type="text" name="prompt" id="prompt-${item.uid}" placeholder="Look again!">
-                                    <input type="submit" onclick="lookagain('${item.uid}')" value="Re-analyze">
-                                </fieldset>
-                            </footer>
-                            </card>
                         </aside>
                     </section>
                 `;
