@@ -904,6 +904,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 # Save to exams database
                 db_add_exam(uid, metadata, report = report, positive = short == "yes")
                 # Get some timing statistics
+                global timings
                 timings['prompt'] = int(result['usage']['timings']['prompt_ms'])
                 timings['predicted'] = int(result['usage']['timings']['predicted_ms'])
                 timings['total'] = timings['prompt'] + timings['predicted']
