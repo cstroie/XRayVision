@@ -11,13 +11,13 @@
 
 import asyncio
 import os
-import uuid
 import base64
 import aiohttp
 import cv2
 import numpy as np
 import math
 import json
+import re
 import sqlite3
 import logging
 from aiohttp import web
@@ -200,11 +200,11 @@ def db_set_status_DIS(uid, status):
         conn.execute(
             "UPDATE exams SET status = ? WHERE uid = ?", (status, uid,))
 
-def db_add_exam(uid, metadata, report):
+def db_add_exam(uid, metadata, report = None, positive = None):
     """ Add one row to the database """
     # Check if we have a report or just enqueue an exam
     if report:
-        poz = report.lower().startswith("yes")
+        poz = positive
         iswrong = False
         reviewed = False
         status = 'done'
@@ -415,7 +415,7 @@ def dicom_store(event):
         # Check the result
         if png_file:
             # Add to processing queue
-            db_add_exam(uid, metadata, None)
+            db_add_exam(uid, metadata)
             # Notify the queue
             queue_event.set()
             asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
@@ -450,7 +450,7 @@ async def load_existing_dicom_files():
                 # Check the result
                 if png_file:
                     # Add to processing queue
-                    db_add_exam(uid, metadata, None)
+                    db_add_exam(uid, metadata)
                     # Notify the queue
                     queue_event.set()
     # At the end, update the dashboard
@@ -881,13 +881,26 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
             async with aiohttp.ClientSession() as session:
                 result = await send_to_openai(session, headers, data)
                 print(result)
-                report = result["choices"][0]["message"]["content"]
-                report = report.replace('\n', " ").replace("  ", " ").strip()
+                response = result["choices"][0]["message"]["content"]
+                # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
+                response = re.sub(r"^```(?:json)?\s*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
+                response = re.sub(r"\s*```$", "", response.strip(), flags = re.MULTILINE)
+                # Normalize single quotes → double
+                response = response.replace("'", '"')
+                try:
+                    parsed = json.loads(response)
+                    short = parsed["short"].strip().lower()
+                    report = parsed["report"].strip()
+                    if short not in ("yes", "no") or not report:
+                        raise ValueError("Invalid json format in OpenAI response")
+                except Exception as e:
+                    logging.error(f"Rejected malformed OpenAI response: {e}")
+                    return False
                 logging.info(f"OpenAI API response for {uid}: {report}")
                 # Update the dashboard
                 dashboard['success_count'] += 1
                 # Save to exams database
-                db_add_exam(uid, metadata, report)
+                db_add_exam(uid, metadata, report = report, positive = short == "yes")
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
                 # Success
