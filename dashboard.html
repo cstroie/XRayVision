@@ -412,7 +412,7 @@
                     document.getElementById("openai-backend").innerHTML = `${oaiPri}&nbsp;${oaiSec}`;
                 }
                 if (data.timings !== undefined) {
-                    document.getElementById("openai-timings").text = `${data.timings.average/1000} s`;
+                    document.getElementById("openai-timings").innerHTML = `${data.timings.average/1000} s`;
                 }
                 if (data.next_query !== undefined) {
                     updateQueryCountdown(data.next_query);
