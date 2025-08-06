@@ -459,7 +459,8 @@
             });
         }
 
-        function lookagain(uid, prompt = "Look again!") {
+        function lookagain(uid) {
+            const prompt = document.getElementById(`prompt-${uid}`).value.trim();
             fetch('/api/lookagain', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -638,7 +639,7 @@
                         </figure>
                         <aside class="details">
                             <details open>
-                            <summary><strong>${formattedPatientName}, ${item.patient.age} years</strong></summary>
+                            <summary><strong>${formattedPatientName}, ${item.patient.sex}, ${item.patient.age} years</strong></summary>
                             <p>
                             <small><strong>ID:</strong>${item.patient.id}</small><br>
                             <small><strong>Time:</strong> ${formattedDate} ${formattedTime}</small><br>
@@ -646,8 +647,15 @@
                             <small><strong>Region:</strong> ${item.exam.region}</small><br>
                             </p>
                             </details>
+                            <card>
                             <p class="report">${text}</p>
-                            <button class="lookagain" onclick="lookagain('${item.uid}')">Look again</button>
+                            <footer class="lookagain">
+                                <fieldset role="group">
+                                    <input type="text" name="prompt" id="prompt-${item.uid}" placeholder="Look again!">
+                                    <input type="submit" onclick="lookagain('${item.uid}')" value="Re-analyze">
+                                </fieldset>
+                            </footer>
+                            </card>
                         </aside>
                     </section>
                 `;

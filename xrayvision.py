@@ -88,6 +88,8 @@ dashboard = {
     'success_count': 0,
     'failure_count': 0
 }
+# OpenAI timings
+timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
 
 # Database operations
 def init_database():
@@ -667,6 +669,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
                     'sec': health_status.get(OPENAI_URL_SECONDARY, False)
                 }
             },
+            'timings': timings,
     }
     if next_query:
         data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
@@ -880,7 +883,6 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
         try:
             async with aiohttp.ClientSession() as session:
                 result = await send_to_openai(session, headers, data)
-                print(result)
                 response = result["choices"][0]["message"]["content"]
                 # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
                 response = re.sub(r"^```(?:json)?\s*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
@@ -901,6 +903,11 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 dashboard['success_count'] += 1
                 # Save to exams database
                 db_add_exam(uid, metadata, report = report, positive = short == "yes")
+                # Get some timing statistics
+                timings['prompt'] = int(result['usage']['timings']['prompt_ms'])
+                timings['predicted'] = int(result['usage']['timings']['predicted_ms'])
+                timings['total'] = timings['prompt'] + timings['predicted']
+                timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
                 # Success
