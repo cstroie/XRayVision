@@ -916,6 +916,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
             await asyncio.sleep(2 ** attempt)
             attempt += 1
     # Failure after max_retries
+    db_set_status(uid, 'error')
     queue_event.clear()
     logging.error(f"Failed to upload {uid} after {max_retries} attempts.")
     dashboard['failure_count'] += 1
@@ -999,9 +1000,6 @@ async def relay_to_openai_loop():
                     logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
             else:
                 logging.debug(f"Keeping DICOM file: {dicom_file}")
-        else:
-            # Set the status
-            db_set_status(uid, "error")
 
 async def openai_health_check():
     """ Health check coroutine """
