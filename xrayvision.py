@@ -145,13 +145,17 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
         rows = conn.execute(query, params)
         for row in rows:
             dt = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
+            try:
+                sex = int(row[2][0]) % 2 == 0 and 'F' or 'M'
+            except:
+                sex = 'O'
             exams.append({
                 'uid': row[0],
                 'patient': {
                     'name': row[1],
                     'id': row[2], 
                     'age': row[3],
-                    'sex': int(row[2][0]) % 2 == 0 and 'F' or 'M',
+                    'sex': sex,
                 },
                 'exam': {
                     'date': dt.strftime('%Y%m%d'),
@@ -194,13 +198,6 @@ def db_review(uid, normal = True):
         conn.execute(
             "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (wrong, uid,))
     return wrong
-
-# FIXME Duplicate function
-def db_set_status_DIS(uid, status):
-    """ Set the status """
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute(
-            "UPDATE exams SET status = ? WHERE uid = ?", (status, uid,))
 
 def db_add_exam(uid, metadata, report = None, positive = None):
     """ Add one row to the database """
@@ -897,7 +894,8 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                         raise ValueError("Invalid json format in OpenAI response")
                 except Exception as e:
                     logging.error(f"Rejected malformed OpenAI response: {e}")
-                    return False
+                    logging.error(response)
+                    report = response.strip()
                 logging.info(f"OpenAI API response for {uid}: {report}")
                 # Update the dashboard
                 dashboard['success_count'] += 1
@@ -1022,15 +1020,16 @@ async def openai_health_check():
 
         if health_status.get(OPENAI_URL_PRIMARY):
             active_openai_url = OPENAI_URL_PRIMARY
-            queue_event.set()
             logging.info("Using primary OpenAI backend.")
         elif health_status.get(OPENAI_URL_SECONDARY):
             active_openai_url = OPENAI_URL_SECONDARY
-            queue_event.set()
             logging.info("Using secondary OpenAI backend.")
         else:
             active_openai_url = None
             logging.error("No OpenAI backend is currently healthy")
+        # Signal the queue
+        if active_openai_url:
+            queue_event.set()
         # WebSocket broadcast
         await broadcast_dashboard_update()
         # Sleep for 5 minutes
