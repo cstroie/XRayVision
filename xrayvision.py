@@ -837,7 +837,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Create the prompt
     prompt = USR_PROMPT.format(question, anatomy, subject)
     logging.debug(f"Prompt: {prompt}")
-    logging.info(f"Sending {uid} for processing")
+    logging.info(f"Processing {uid} with {region} x-ray.")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -881,7 +881,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 result = await send_to_openai(session, headers, data)
                 response = result["choices"][0]["message"]["content"]
                 # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
-                response = re.sub(r"^```(?:json)?\s*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
+                response = re.sub(r"^```(?:json)?\s*[^{]*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
                 response = re.sub(r"\s*```$", "", response.strip(), flags = re.MULTILINE)
                 # Normalize single quotes → double
                 response = response.replace("'", '"')
@@ -918,7 +918,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Failure after max_retries
     db_set_status(uid, 'error')
     queue_event.clear()
-    logging.error(f"Failed to upload {uid} after {max_retries} attempts.")
+    logging.error(f"Failed to upload {uid} after {attempt} attempts.")
     dashboard['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
