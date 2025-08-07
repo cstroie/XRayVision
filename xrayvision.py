@@ -299,7 +299,6 @@ async def db_stats():
                 stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
-            #print(region, stats["region"][region])
     # Return stats
     return stats
 
@@ -895,7 +894,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 except Exception as e:
                     logging.error(f"Rejected malformed OpenAI response: {e}")
                     logging.error(response)
-                    report = response.strip()
+                    break
                 logging.info(f"OpenAI API response for {uid}: {report}")
                 # Update the dashboard
                 dashboard['success_count'] += 1
