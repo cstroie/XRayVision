@@ -901,7 +901,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 response = re.sub(r"\s*```$", "", response, flags = re.MULTILINE)
                 print(response)
                 # Clean up any text before '{'
-                response = re.sub(r"^[^{]*", "", response, flags = re.IGNORECASE | re.MULTILINE)
+                response = re.sub(r"^[^{]*{", "{", response, flags = re.IGNORECASE | re.MULTILINE)
                 print(response)
                 # Normalize single quotes → double
                 response = response.replace("'", '"')
