@@ -41,8 +41,8 @@ logging.basicConfig(
 OPENAI_URL_PRIMARY = os.getenv("OPENAI_URL_PRIMARY", "http://192.168.3.239:8080/v1/chat/completions")
 OPENAI_URL_SECONDARY = os.getenv("OPENAI_URL_SECONDARY", "http://127.0.0.1:8080/v1/chat/completions")
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')
-AUTH_USERNAME = os.getenv('AUTH_USER', 'admin')
-AUTH_PASSWORD = os.getenv('AUTH_PASS', 'admin')
+XRAYVISION_USER = os.getenv('XRAYVISION_USER', 'admin')
+XRAYVISION_PASS = os.getenv('XRAYVISION_PASS', 'admin')
 DASHBOARD_PORT = 8000
 AE_TITLE = 'XRAYVISION'
 AE_PORT  = 4010
@@ -651,31 +651,28 @@ async def lookagain(request):
     await broadcast_dashboard_update(event = "lookagain", payload = {'uid': uid, 'status': status})
     return web.json_response({'status': 'success', 'uid': uid, 'status': status})
 
-def auth_middleware(app_handler):
+@web.middleware
+async def auth_middleware(request, handler):
     """ Basic authentication middleware """
-    async def middleware(request, handler):
-        # Skip auth for static files and OPTIONS requests
-        if request.path.startswith('/static/') or request.method == 'OPTIONS':
-            return await handler(request)
-            
-        auth_header = request.headers.get('Authorization', '')
-        if not auth_header.startswith('Basic '):
-            raise web.HTTPUnauthorized(
-                text="401: Missing credentials",
-                headers={'WWW-Authenticate': 'Basic realm="XRayVision"'})
-                
-        try:
-            credentials = base64.b64decode(auth_header[6:]).decode('utf-8')
-            username, password = credentials.split(':', 1)
-            if username != AUTH_USERNAME or password != AUTH_PASSWORD:
-                raise ValueError("Invalid credentials")
-        except (ValueError, UnicodeDecodeError) as e:
-            raise web.HTTPUnauthorized(
-                text="401: Invalid credentials",
-                headers={'WWW-Authenticate': 'Basic realm="XRayVision"'})
-                
-        return await app_handler(request)
-    return middleware
+    # Skip auth for static files and OPTIONS requests
+    if request.path.startswith('/static/') or request.method == 'OPTIONS':
+        return await handler(request)
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Basic '):
+        raise web.HTTPUnauthorized(
+            text = "401: Authentication required",
+            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
+    try:
+        credentials = base64.b64decode(auth_header[6:]).decode('utf-8')
+        username, password = credentials.split(':', 1)
+        if username != XRAYVISION_USER or password != XRAYVISION_PASS:
+            logging.warning("Invalid authentication")
+            raise ValueError("Invalid authentication")
+    except (ValueError, UnicodeDecodeError) as e:
+        raise web.HTTPUnauthorized(
+            text = "401: Invalid authentication",
+            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
+    return await handler(request)
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """ Update the dashboard for all clients """
@@ -974,7 +971,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
 # Threads
 async def start_dashboard():
     """ Start the dashboard web server """
-    app = web.Application(middlewares=[auth_middleware])
+    app = web.Application(middlewares = [auth_middleware])
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
     app.router.add_get('/about', serve_about_page)
