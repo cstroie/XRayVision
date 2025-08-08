@@ -36,9 +36,11 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-# Filter out aiohttp access logs
+# Filter out noisy module logs
 logging.getLogger('aiohttp').setLevel(logging.WARNING)
 logging.getLogger('asyncio').setLevel(logging.WARNING)
+logging.getLogger('pynetdicom').setLevel(logging.WARNING)  # DICOM network operations
+logging.getLogger('pydicom').setLevel(logging.WARNING)     # DICOM file operations
 
 # Configuration
 OPENAI_URL_PRIMARY = os.getenv("OPENAI_URL_PRIMARY", "http://192.168.3.239:8080/v1/chat/completions")
