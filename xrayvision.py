@@ -725,7 +725,7 @@ def get_region(metadata):
     if check_any(desc, 'torace', 'pulmon',
                  'thorax'):
         region = 'chest'
-        question = "Are there any lung consolidations, infitrates, opacities, pleural effusion or pneumothorax"
+        question = "Are there any lung consolidations, infitrates, opacities, pleural effusion, pneumothorax or pneumoperitoneum"
     elif check_any(desc, 'grilaj', 'coaste'):
         region = 'ribs'
         question = "Are there any ribs or clavicles fractures"
