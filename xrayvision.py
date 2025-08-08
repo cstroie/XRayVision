@@ -892,17 +892,11 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 if not result:
                     break
                 response = result["choices"][0]["message"]["content"].strip()
-                # FIXME
-                print(result)
-                print(response)
                 # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
                 response = re.sub(r"^```(?:json)?\s*", "", response, flags = re.IGNORECASE | re.MULTILINE)
-                print(response)
                 response = re.sub(r"\s*```$", "", response, flags = re.MULTILINE)
-                print(response)
                 # Clean up any text before '{'
                 response = re.sub(r"^[^{]*{", "{", response, flags = re.IGNORECASE | re.MULTILINE)
-                print(response)
                 # Normalize single quotes → double
                 response = response.replace("'", '"')
                 print(response)
@@ -916,7 +910,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     logging.error(f"Rejected malformed OpenAI response: {e}")
                     logging.error(response)
                     break
-                logging.info(f"OpenAI API response for {uid}: [<{short.upper()}] {report}")
+                logging.info(f"OpenAI API response for {uid}: [{short.upper()}] {report}")
                 # Update the dashboard
                 dashboard['success_count'] += 1
                 # Save to exams database
