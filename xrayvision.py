@@ -924,6 +924,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
                 else:
                     timings['average'] = timings['total']
+                logging.info(f"OpenAI API response timings: last {timings['total']} ms, average {timings['average']} ms")
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
                 # Success
