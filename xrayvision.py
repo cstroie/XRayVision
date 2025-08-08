@@ -889,12 +889,17 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
         try:
             async with aiohttp.ClientSession() as session:
                 result = await send_to_openai(session, headers, data)
-                response = result["choices"][0]["message"]["content"]
+                if not result:
+                    break
+                response = result["choices"][0]["message"]["content"].strip()
+                # FIXME
+                print(result)
+                print(response)
                 # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
-                response = re.sub(r"^```(?:json)?\s*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
-                response = re.sub(r"\s*```$", "", response.strip(), flags = re.MULTILINE)
+                response = re.sub(r"^```(?:json)?\s*", "", response, flags = re.IGNORECASE | re.MULTILINE)
+                response = re.sub(r"\s*```$", "", response, flags = re.MULTILINE)
                 # Clean up any text before '{'
-                response = re.sub(r"^[^{]*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
+                response = re.sub(r"^[^{]*", "", response, flags = re.IGNORECASE | re.MULTILINE)
                 # Normalize single quotes → double
                 response = response.replace("'", '"')
                 try:
@@ -933,7 +938,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Failure after max_retries
     db_set_status(uid, 'error')
     queue_event.clear()
-    logging.error(f"Failed to upload {uid} after {attempt} attempts.")
+    logging.error(f"Failed to process {uid} after {attempt} attempts.")
     dashboard['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
