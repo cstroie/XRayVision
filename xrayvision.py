@@ -29,13 +29,16 @@ from datetime import datetime, timedelta
 
 # Logger config
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)8s | %(message)s',
-    handlers=[
+    level = logging.INFO,
+    format = '%(asctime)s | %(levelname)8s | %(message)s',
+    handlers = [
         logging.FileHandler("xrayvision.log"),
         logging.StreamHandler()
     ]
 )
+# Filter out aiohttp access logs
+logging.getLogger('aiohttp').setLevel(logging.WARNING)
+logging.getLogger('asyncio').setLevel(logging.WARNING)
 
 # Configuration
 OPENAI_URL_PRIMARY = os.getenv("OPENAI_URL_PRIMARY", "http://192.168.3.239:8080/v1/chat/completions")
