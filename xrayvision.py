@@ -32,7 +32,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)8s | %(message)s',
     handlers=[
-        #logging.FileHandler("xrayvision.log"),
+        logging.FileHandler("xrayvision.log"),
         logging.StreamHandler()
     ]
 )
@@ -55,9 +55,14 @@ You only output mandatory JSON to a RESTful API, in the following format: {'shor
 It is important to identify all lesions in the xray and respond with 'yes' if there is anything pathological and 'no' if there is nothing to report.
 If in doubt, do not assume, stick to the facts.
 Look again at the xray if you think there is something ambiguous.
-ONLY JSON IS ALLOWED as an answer.
+Only json is allowed as an answer. Make sure your response is not malformed.
 No explanation or other text is allowed."""
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
+REV_PROMPT = """There is something inaccurate in your report.
+Analyse the xray again and look for any other possible lesions.
+Do not apologize or explain yourself.
+No explanation or other text is allowed. Only json is allowed as an answer.
+Update the json report according to the template."""
 REGIONS = ["chest", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
 
 # Images directory
@@ -305,8 +310,8 @@ async def db_stats():
 def db_queue_get():
     """ Get the next in queue exam to analyze """
     with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT uid, name, id, age, created, protocol, region, report FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
-        return (result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7]) if result else (None,) * 8
+        result = conn.execute('SELECT uid, name, id, age, created, protocol, region, report, positive FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
+        return (result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8]) if result else (None,) * 9
 
 def db_queue_size():
     """ Get the queue size """
@@ -692,7 +697,7 @@ def get_region(metadata):
     if check_any(desc, 'torace', 'pulmon',
                  'thorax'):
         region = 'chest'
-        question = "Are there any lung consolidations, hyperlucencies, infitrates, nodules, mediastinal shift, pleural effusion or pneumothorax"
+        question = "Are there any lung consolidations, infitrates, opacities, pleural effusion or pneumothorax"
     elif check_any(desc, 'grilaj', 'coaste'):
         region = 'ribs'
         question = "Are there any ribs or clavicles fractures"
@@ -701,7 +706,7 @@ def get_region(metadata):
         question = "Are there any fractures"
     elif check_any(desc, 'abdomen'):
         region = 'abdominal'
-        question = "Are there any fluid levels, distended bowel loops, free gas or metallic foreign bodies"
+        question = "Are there any fluid levels, free gas or metallic foreign bodies"
     elif check_any(desc, 'cap', 'craniu', 'occiput',
                    'skull'):
         region = 'skull'
@@ -714,7 +719,7 @@ def get_region(metadata):
         question = "Are there any fractures"
     elif check_any(desc, 'sinus'):
         region = 'maxilar and frontal sinus'
-        question = "Are there any changes in transparency of the sinuses"
+        question = "Are the sinuses normally aerated or are they opaque or are there fluid levels"
     elif check_any(desc, 'col.',
                    'spine', 'dens', 'sacrat'):
         region = 'spine'
@@ -810,8 +815,14 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Read the PNG file
     with open(os.path.join(IMAGES_DIR, f"{uid}.png"), 'rb') as f:
         image_bytes = f.read()
-    # Prepare the prompt
+    # Identify the region
     region, question = get_region(metadata)
+    # Filter on specific region
+    if not region in REGIONS:
+        logging.info(f"Ignoring {uid} with {region} x-ray.")
+        db_set_status(uid, 'ignore')
+        return False
+    # Identify the prjection, gender and age
     projection = get_projection(metadata)
     gender = get_gender(metadata)
     age = metadata["patient"]["age"]
@@ -823,11 +834,6 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
         txtAge = ""
     # Update metadata
     metadata['exam'].update({'region': region, 'projection': projection})
-    # Filter on specific region
-    if not region in REGIONS:
-        logging.info(f"Ignoring {uid} with {region} x-ray.")
-        db_set_status(uid, 'ignore')
-        return False
     # Get the subject of the study and the studied region
     subject = " ".join([txtAge, gender])
     if region:
@@ -838,6 +844,10 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     prompt = USR_PROMPT.format(question, anatomy, subject)
     logging.debug(f"Prompt: {prompt}")
     logging.info(f"Processing {uid} with {region} x-ray.")
+    if 'report' in metadata:
+        json_report = {'short': metadata['report']['short'], 'report': metadata['report']['text']}
+        metadata['report']['json'] = json.dumps(json_report)
+        logging.info(f"Previous report: {metadata['report']['json']}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -871,8 +881,8 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
         ]
     }
     if 'report' in metadata:
-        data['messages'].append({'role': 'assistant', 'content': metadata['report']})
-        data['messages'].append({'role': 'user', 'content': "Look again!"})
+        data['messages'].append({'role': 'assistant', 'content': metadata['report']['json']})
+        data['messages'].append({'role': 'user', 'content': REV_PROMPT})
     # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
     attempt = 1
     while attempt <= max_retries:
@@ -881,8 +891,10 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 result = await send_to_openai(session, headers, data)
                 response = result["choices"][0]["message"]["content"]
                 # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
-                response = re.sub(r"^```(?:json)?\s*[^{]*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
+                response = re.sub(r"^```(?:json)?\s*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
                 response = re.sub(r"\s*```$", "", response.strip(), flags = re.MULTILINE)
+                # Clean up any text before '{'
+                response = re.sub(r"^[^{]*", "", response.strip(), flags = re.IGNORECASE | re.MULTILINE)
                 # Normalize single quotes → double
                 response = response.replace("'", '"')
                 try:
@@ -895,7 +907,7 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     logging.error(f"Rejected malformed OpenAI response: {e}")
                     logging.error(response)
                     break
-                logging.info(f"OpenAI API response for {uid}: {report}")
+                logging.info(f"OpenAI API response for {uid}: [<{short.upper()}] {report}")
                 # Update the dashboard
                 dashboard['success_count'] += 1
                 # Save to exams database
@@ -905,7 +917,10 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 timings['prompt'] = int(result['timings']['prompt_ms'])
                 timings['predicted'] = int(result['timings']['predicted_ms'])
                 timings['total'] = timings['prompt'] + timings['predicted']
-                timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                if timings['average'] > 0:
+                    timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                else:
+                    timings['average'] = timings['total']
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid})
                 # Success
@@ -948,7 +963,7 @@ async def relay_to_openai_loop():
     """ Relay PNG files to OpenAI API with retries and dashboard update """
     while True:
         # Get one file from queue
-        (uid, name, id, age, created, protocol, region, report) = db_queue_get()
+        (uid, name, id, age, created, protocol, region, report, positive) = db_queue_get()
         # Wait here if there are no items in queue or there is no OpenAI server
         if not uid or active_openai_url is None:
             queue_event.clear()
@@ -980,7 +995,7 @@ async def relay_to_openai_loop():
             }
         }
         if report:
-            metadata['report'] = report
+            metadata['report'] = {'short': positive and 'yes' or 'no', 'text': report}
         # Try to send to AI
         result = False
         try:
