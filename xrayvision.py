@@ -962,12 +962,16 @@ async def relay_to_openai_loop():
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
         # Compose a metadata
+        try:
+            sex = int(id[0]) % 2 == 0 and 'F' or 'M'
+        except:
+            sex = 'O'
         metadata = {
             'patient': {
                 'name':  name,
                 'id':    id,
                 'age':   age,
-                'sex':   int(id[0]) % 2 == 0 and 'F' or 'M',
+                'sex':   sex,
             },
             'exam': {
                 'proto': protocol,
