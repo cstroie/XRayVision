@@ -653,10 +653,10 @@ async def lookagain(request):
 
 def auth_middleware(app_handler):
     """ Basic authentication middleware """
-    async def middleware(request):
+    async def middleware(request, handler):
         # Skip auth for static files and OPTIONS requests
         if request.path.startswith('/static/') or request.method == 'OPTIONS':
-            return await app_handler(request)
+            return await handler(request)
             
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Basic '):
