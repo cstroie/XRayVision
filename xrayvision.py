@@ -569,6 +569,9 @@ async def serve_stats_page(request):
 async def serve_about_page(request):
     return web.FileResponse(path = "about.html")
 
+async def serve_favicon(request):
+    return web.FileResponse(path = "favicon.ico")
+
 async def websocket_handler(request):
     """ Handle each WebSocket client """
     ws = web.WebSocketResponse()
@@ -975,6 +978,7 @@ async def start_dashboard():
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
     app.router.add_get('/about', serve_about_page)
+    app.router.add_get('/favicon.ico', serve_favicon)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', stats_handler)
