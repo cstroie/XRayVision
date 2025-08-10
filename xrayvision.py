@@ -120,14 +120,14 @@ def init_database():
                 reported TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 report TEXT,
                 positive INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
-                iswrong INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
-                reviewed INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
+                valid INTEGER DEFAULT 1 CHECK(valid IN (0, 1)),
+                reviewed INTEGER DEFAULT 0 CHECK(reviewed IN (0, 1)),
                 status TEXT DEFAULT 'none'
             )
         ''')
         conn.execute('''
             CREATE INDEX IF NOT EXISTS idx_cleanup 
-            ON exams(status, created)
+            ON exams(status, created, valid)
         ''')
         logging.info("Initialized SQLite database.")
 
@@ -200,17 +200,17 @@ def db_get_exams_count():
 
 def db_review(uid, normal = True):
     """ Mark the entry as right or wrong according to normal review """
-    wrong = None
+    valid = None
     with sqlite3.connect(DB_FILE) as conn:
         # Check if the report is positive database
         result = conn.execute(
             "SELECT positive FROM exams WHERE uid = ?", (uid,)
         ).fetchone()
-        # XOR
-        wrong = bool(not normal) ^ bool(result[0])
+        # Valid when review matches prediction
+        valid = bool(normal) == bool(result[0])
         # Update the entry
         conn.execute(
-            "UPDATE exams SET iswrong = ?, reviewed = 1 WHERE uid = ?", (wrong, uid,))
+            "UPDATE exams SET valid = ?, reviewed = 1 WHERE uid = ?", (valid, uid,))
     return wrong
 
 def db_add_exam(uid, metadata, report = None, positive = None):

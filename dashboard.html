@@ -155,7 +155,7 @@
             z-index: 1;
         }
 
-        .image-card.reviewed.wrong {
+        .image-card.reviewed:not(.valid) {
              background-color: var(--pico-color-red-900);
         }
 
@@ -301,10 +301,10 @@
                 <option value="yes">Positive</option>
                 <option value="no">Negative</option>
             </select>
-            <select id="filter-wrong" onchange="loadPage(1)" aria-label="Select wrong studies">
+            <select id="filter-valid" onchange="loadPage(1)" aria-label="Select valid studies">
                 <option value="any">Valid: all</option>
-                <option value="no">Valid</option>
-                <option value="yes">Invalid</option>
+                <option value="yes">Valid</option>
+                <option value="no">Invalid</option>
             </select>
             <select id="filter-region" onchange="loadPage(1)" aria-label="Select the anatomic region">
                 <option value="any">Region: any</option>
