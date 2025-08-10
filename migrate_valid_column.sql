@@ -1,7 +1,4 @@
--- Backup existing database first
-ATTACH DATABASE 'images/xrayvision.db' AS old;
-.backup old images/xrayvision_backup_$(date +%s).db
-DETACH DATABASE old;
+-- Backup will be handled by shell command before running this script
 
 -- Rename column and update values
 ALTER TABLE exams RENAME COLUMN iswrong TO valid;
@@ -13,4 +10,4 @@ CREATE INDEX IF NOT EXISTS idx_cleanup
 ON exams(status, created, valid);
 
 -- Verify changes
-PRAGMA foreign_key_check;
+PRAGMA main.foreign_key_check;
