@@ -431,7 +431,7 @@
                         // Load page 1
                         loadPage(1);
                     } else if (data.event.name === "review") {
-                        showToast("Review updated");
+                        showToast(`Exam is ${data.event.payload.valid ? 'valid' : 'invalid'}`);
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
@@ -440,6 +440,8 @@
                                 card.classList.add('invalid');
                             }
                         }
+                    } else if (data.event.name === "lookagain") {
+                        showToast(`Look again`);
                     }
                 }
             };
