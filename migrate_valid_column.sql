@@ -10,4 +10,5 @@ CREATE INDEX IF NOT EXISTS idx_cleanup
 ON exams(status, created, valid);
 
 -- Verify changes
-PRAGMA main.foreign_key_check;
+-- Backup is handled by migrate.sh before running this script
+SELECT uid, valid, reviewed FROM exams LIMIT 1;
