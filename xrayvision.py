@@ -113,14 +113,15 @@ def init_database():
                 name TEXT,
                 id TEXT,
                 age INTEGER,
+                sex TEXT CHECK(sex IN ('M', 'F', 'O')),
                 created TIMESTAMP,
                 protocol TEXT,
                 region TEXT,
                 reported TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 report TEXT,
-                positive INTEGER DEFAULT 0,
-                iswrong INTEGER DEFAULT 0,
-                reviewed INTEGER DEFAULT 0,
+                positive INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
+                iswrong INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
+                reviewed INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
                 status TEXT DEFAULT 'none'
             )
         ''')
@@ -160,32 +161,29 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
     with sqlite3.connect(DB_FILE) as conn:
         rows = conn.execute(query, params)
         for row in rows:
-            dt = datetime.strptime(row[4], "%Y-%m-%d %H:%M:%S")
-            try:
-                sex = int(row[2][0]) % 2 == 0 and 'F' or 'M'
-            except:
-                sex = 'O'
+            dt = datetime.strptime(row[5], "%Y-%m-%d %H:%M:%S")
             exams.append({
                 'uid': row[0],
                 'patient': {
                     'name': row[1],
                     'id': row[2], 
                     'age': row[3],
-                    'sex': sex,
+                    'sex': row[4],
                 },
                 'exam': {
                     'date': dt.strftime('%Y%m%d'),
                     'time': dt.strftime('%H%M%S'),
-                    'protocol': row[5],
-                    'region': row[6],
+                    'protocol': row[6],
+                    'region': row[7],
                 },
                 'report': {
-                    'text': row[8],
-                    'positive': bool(row[9]),
-                    'iswrong': bool(row[10]),
-                    'reviewed': bool(row[11]),
+                    'text': row[9],
+                    'datetime': row[8],
+                    'positive': bool(row[10]),
+                    'iswrong': bool(row[11]),
+                    'reviewed': bool(row[12]),
                 },
-                'status': row[12],
+                'status': row[13],
             })
         # Get the total for pagination
         count_query = 'SELECT COUNT(*) FROM exams'
@@ -237,6 +235,7 @@ def db_add_exam(uid, metadata, report = None, positive = None):
             metadata["patient"]["name"],
             metadata["patient"]["id"],
             metadata["patient"]["age"],
+            metadata["patient"]["sex"],
             metadata["exam"]['created'],
             metadata["exam"]["proto"],
             metadata['exam']['region'],
@@ -249,8 +248,8 @@ def db_add_exam(uid, metadata, report = None, positive = None):
         )
         conn.execute('''
             INSERT OR REPLACE INTO exams
-                (uid, name, id, age, created, protocol, region, reported, report, positive, iswrong, reviewed, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (uid, name, id, age, sex, created, protocol, region, reported, report, positive, iswrong, reviewed, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', values)
 
 def db_check_already_processed(uid):
@@ -531,6 +530,13 @@ def get_dicom_metadata(ds):
             'region': str(ds.ProtocolName),
         }
     }
+    # Check gender
+    if not metadata['patient']['sex'] in ['M', 'F', 'O']:
+        # Try to determine from ID
+        try:
+            metadata['patient']['sex'] = int(metadata['patient']['id'][0]) % 2 == 0 and 'F' or 'M'
+        except:
+            metadata['patient']['sex'] = 'O'
     return metadata
 
 # Image processing operations
