@@ -620,7 +620,7 @@
             data.forEach(item => {
                 let isPositive = item.report.positive;
                 let isReviewed = item.report.reviewed;
-                let isWrong = item.report.iswrong;
+                let isValid = item.report.valid;
                 if (item.report.text) {
                     //isPositive = item.report.text.trim().toLowerCase().startsWith('yes');
                     text = item.report.text;
@@ -636,7 +636,7 @@
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : item.patient.name;
 
                 let clsReviewed = isReviewed ? 'reviewed' : '';
-                let clsWrong = isWrong ? 'wrong' : '';
+                let clsValid = isValid ? 'valid' : '';
                 let clsPositive = isPositive ? 'positive' : '';
                 let signPozNeg = isPositive ? '&#x2795;' : '&#x2796;'
 
