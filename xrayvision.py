@@ -326,6 +326,31 @@ def db_queue_size():
         result = conn.execute('SELECT COUNT(*) FROM exams WHERE status = "queued"').fetchone()
         return result[0] if result else 0
 
+def db_purge_old_ignored():
+    """ Delete ignored records older than 1 month and their associated files """
+    deleted_uids = []
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.execute('''
+            DELETE FROM exams 
+            WHERE status = 'ignore' 
+            AND created < datetime('now', '-1 month')
+            RETURNING uid
+        ''')
+        deleted_uids = [row[0] for row in cursor.fetchall()]
+        deleted_count = cursor.rowcount
+
+    # Delete associated files
+    for uid in deleted_uids:
+        for ext in ('dcm', 'png'):
+            file_path = os.path.join(IMAGES_DIR, f"{uid}.{ext}")
+            try:
+                os.remove(file_path)
+            except FileNotFoundError:
+                pass
+
+    logging.info(f"Purged {deleted_count} old ignored records and their files from database")
+    return deleted_count
+
 def db_set_status(uid, status):
     """ Set the specified satatus for uid """
     with sqlite3.connect(DB_FILE) as conn:
@@ -1089,7 +1114,6 @@ async def openai_health_check():
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 
-
 async def query_retrieve_loop():
     """ Async thread to periodically poll the server for new studies """
     if NO_QUERY:
@@ -1101,6 +1125,13 @@ async def query_retrieve_loop():
         next_query = current_time + timedelta(seconds = 900)
         logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
         await asyncio.sleep(900)
+
+async def purge_old_ignored_loop():
+    """ Daily cleanup of old ignored records """
+    while True:
+        db_purge_old_ignored()
+        # Wait for 24 hours
+        await asyncio.sleep(86400)
 
 def start_dicom_server():
     """ Start the DICOM Storage SCP """
@@ -1139,6 +1170,7 @@ async def main():
     asyncio.create_task(openai_health_check())
     asyncio.create_task(relay_to_openai_loop())
     asyncio.create_task(query_retrieve_loop())
+    asyncio.create_task(purge_old_ignored_loop())
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
