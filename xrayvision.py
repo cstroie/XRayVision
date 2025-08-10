@@ -274,13 +274,14 @@ async def db_stats():
         # Global totals
         stats["total"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE status LIKE 'done'").fetchone()[0]
         stats["reviewed"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE reviewed = 1 AND status LIKE 'done'").fetchone()[0]
-        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE LOWER(report) LIKE 'yes%' AND status LIKE 'done'").fetchone()[0]
+        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE positive = 1 AND status LIKE 'done'").fetchone()[0]
         stats["invalid"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE valid = 0 AND status LIKE 'done'").fetchone()[0]
         # Totals per anatomic part
         cursor.execute("""
-            SELECT region, COUNT(*) AS total,
+            SELECT region,
+                    COUNT(*) AS total,
                     SUM(reviewed = 1) AS reviewed,
-                    SUM(LOWER(report) LIKE 'yes%') AS positive,
+                    SUM(positive = 1) AS positive,
                     SUM(valid = 0) AS invalid,
                     SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
                     SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
