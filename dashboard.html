@@ -436,7 +436,7 @@
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
                             card.classList.remove('invalid');
-                            if (not(data.event.payload.valid)) {
+                            if (!(data.event.payload.valid)) {
                                 card.classList.add('invalid');
                             }
                         }
@@ -513,7 +513,7 @@
             lightboxImg.src = imageSrc;
 
             lightbox.classList.remove('invalid', 'positive');
-            if (not(isValid)) {
+            if (!(isValid)) {
                 lightbox.classList.add('invalid');
             } else if (isPositive) {
                 lightbox.classList.add('positive');
