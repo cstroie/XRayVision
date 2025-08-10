@@ -37,7 +37,7 @@
             <article><strong>Total exams:</strong> <span id="total">0</span></article>
             <article><strong>Reviewed:</strong> <span id="reviewed">0</span></article>
             <article><strong>Positive reports:</strong> <span id="positive">0</span></article>
-            <article><strong>Wrong reports:</strong> <span id="wrong">0</span></article>
+            <article><strong>Invalid reports:</strong> <span id="invalid">0</span></article>
         </div>
     </header>
 
@@ -51,7 +51,7 @@
                         <th>Total</th>
                         <th>Reviewed</th>
                         <th>Positive</th>
-                        <th>Wrong</th>
+                        <th>Invalid</th>
                         <th>PPV</th>
                         <th>PNV</th>
                         <th>Sensitivity</th>
@@ -83,7 +83,7 @@
         document.getElementById('total').textContent = data.total;
         document.getElementById('reviewed').textContent = data.reviewed;
         document.getElementById('positive').textContent = data.positive;
-        document.getElementById('wrong').textContent = data.wrong;
+        document.getElementById('invalid').textContent = data.invalid;
 
         // Table
         const tbody = document.querySelector('#regionStats tbody');
@@ -95,7 +95,7 @@
                 <td>${counts.total}</td>
                 <td>${counts.reviewed}</td>
                 <td>${counts.positive}</td>
-                <td>${counts.wrong}</td>
+                <td>${counts.invalid}</td>
                 <td>${counts.ppv}%</td>
                 <td>${counts.pnv}%</td>
                 <td>${counts.snsi}%</td>
@@ -107,7 +107,7 @@
         tfoot.innerHTML = `
         <tr>
             <th scope="row">Total</th>
-            <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.wrong}</td>
+            <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
             <td>-</td><td>-</td><td>-</td><td>-</td>
         </tr>`;
 
@@ -115,7 +115,7 @@
         const regionLabels = [];
         const totalData = [];
         const positiveData = [];
-        const wrongData = [];
+        const invalidData = [];
         const tposData = [];
         const tnegData = [];
         const fposData = [];
@@ -125,7 +125,7 @@
             regionLabels.push(region);
             totalData.push(counts.total);
             positiveData.push(counts.positive);
-            wrongData.push(counts.wrong);
+            invalidData.push(counts.invalid);
             tposData.push(counts.tpos);
             tnegData.push(counts.tneg);
             fposData.push(counts.fpos);
@@ -139,7 +139,7 @@
             datasets: [
                 /*{ label: 'Total', data: totalData, backgroundColor: '#017FC0' },
                 { label: 'Positive', data: positiveData, backgroundColor: '#398712' },
-                { label: 'Wrong', data: wrongData, backgroundColor: '#D24317' }*/
+                { label: 'Invalid', data: invalidData, backgroundColor: '#D24317' }*/
                 { label: 'Positive', data: tposData, backgroundColor: '#398712' },
                 { label: 'Negative', data: tnegData, backgroundColor: '#1343A0' },
                 { label: 'False positive', data: fposData, backgroundColor: '#394D00' },
@@ -171,10 +171,10 @@
         new Chart(document.getElementById("globalChart"), {
         type: 'bar',
         data: {
-            labels: ['Total', 'Positive', 'Wrong'],
+            labels: ['Total', 'Positive', 'Invalid'],
             datasets: [{
                 label: 'Counts',
-                data: [data.total, data.positive, data.wrong],
+                data: [data.total, data.positive, data.invalid],
                 backgroundColor: ['#017FC0', '#398712', '#D24317']
             }]
         },

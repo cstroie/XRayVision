@@ -145,7 +145,7 @@
             color: var(--pico-color-green-100);
         }
 
-        .image-card.reviewed.wrong::after {
+        .image-card.reviewed.invalid::after {
             content: "✗";
             color: var(--pico-color-red-100);
         }
@@ -155,7 +155,7 @@
             z-index: 1;
         }
 
-        .image-card.reviewed:not(.valid) {
+        .image-card.reviewed.invalid {
              background-color: var(--pico-color-red-900);
         }
 
@@ -204,7 +204,7 @@
             background-color: var(--pico-color-jade-400);
         }
 
-        .wrong .sign {
+        .invalid .sign {
             background-color: var(--pico-color-red-400);
         }
 
@@ -222,7 +222,7 @@
             color: white;
         }
 
-        .lightbox.wrong {
+        .lightbox.invalid {
             background-color: rgba(45, 21, 9, 0.9) !important;
         }
 
@@ -238,7 +238,7 @@
             border-radius: 0.5rem;
         }
 
-        .lightbox.wrong img {
+        .lightbox.invalid img {
             border: 1px solid var(--pico-color-orange-400) !important;
         }
 
@@ -435,9 +435,9 @@
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
-                            card.classList.remove('wrong');
-                            if (data.event.payload.iswrong) {
-                                card.classList.add('wrong');
+                            card.classList.remove('invalid');
+                            if (not(data.event.payload.valid)) {
+                                card.classList.add('invalid');
                             }
                         }
                     }
@@ -466,7 +466,7 @@
             .then(response => response.json())
             .then(data => {
                 loadPage(currentPage);
-                console.log('Status update:', data.iswrong ? 'wrong' : 'right');
+                console.log('Status update:', data.valid ? 'valid' : 'invalid');
             })
             .catch(error => {
                 console.error('Error sending review:', error);
@@ -506,15 +506,15 @@
             });
         }
 
-        function openLightbox(imageSrc, patientName, report, isWrong, isPositive) {
+        function openLightbox(imageSrc, patientName, report, isValid, isPositive) {
             const lightbox = document.getElementById('lightbox');
             const lightboxImg = document.getElementById('lightbox-img');
             document.getElementById('lightbox-text').innerHTML = `<p>${report}</p>`;
             lightboxImg.src = imageSrc;
 
-            lightbox.classList.remove('wrong', 'positive');
-            if (isWrong) {
-                lightbox.classList.add('wrong');
+            lightbox.classList.remove('invalid', 'positive');
+            if (not(isValid)) {
+                lightbox.classList.add('invalid');
             } else if (isPositive) {
                 lightbox.classList.add('positive');
             }
@@ -529,14 +529,14 @@
         function loadPage(page, search = '') {
             const reviewed = document.getElementById("filter-reviewed").value;
             const positive = document.getElementById("filter-positive").value;
-            const wrong = document.getElementById("filter-wrong").value;
+            const valid = document.getElementById("filter-valid").value;
             const region = document.getElementById("filter-region").value;
             const status = document.getElementById("filter-status").value;
             const params = new URLSearchParams();
             params.append('page', page);
             if (reviewed) params.append('reviewed', reviewed);
             if (positive) params.append('positive', positive);
-            if (wrong)    params.append('wrong', wrong);
+            if (valid)    params.append('valid', valid);
             if (region)   params.append('region', region);
             if (status)   params.append('status', status)
             else          params.append('status', 'done');
@@ -636,14 +636,14 @@
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : item.patient.name;
 
                 let clsReviewed = isReviewed ? 'reviewed' : '';
-                let clsValid = isValid ? 'valid' : '';
+                let clsValid = isValid ? '' : 'invalid';
                 let clsPositive = isPositive ? 'positive' : '';
                 let signPozNeg = isPositive ? '&#x2795;' : '&#x2796;'
 
                 examsHtml += `
-                    <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsWrong}" id="card-${item.uid}">
+                    <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsValid}" id="card-${item.uid}">
                         <figure class="xray">
-                            <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isWrong}, ${isPositive})">
+                            <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
                             <div role="group">
                                 <button class="abnormal" onclick="review('${item.uid}', false)">👎︎ NotOk</button>
                                 <button class="normal" onclick="review('${item.uid}', true)">👍︎ Ok</button>
@@ -660,7 +660,7 @@
                             <small><strong>Time:</strong> ${formattedDate} ${formattedTime}</small><br>
                             <small><strong>Protocol:</strong> ${item.exam.protocol}</small><br>
                             <small><strong>Region:</strong> ${item.exam.region}</small><br>
-                            <small><strong>Result:</strong> ${isWrong ? 'False' : ''} ${isPositive ? 'Positive' : 'Negative'}</small><br>
+                            <small><strong>Result:</strong> ${isValid ? '' : 'False'} ${isPositive ? 'Positive' : 'Negative'}</small><br>
                             </p>
                             </details>
                             <p class="report">${text}</p>

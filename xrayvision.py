@@ -127,7 +127,7 @@ def init_database():
         ''')
         conn.execute('''
             CREATE INDEX IF NOT EXISTS idx_cleanup 
-            ON exams(status, created, valid)
+            ON exams(status, created)
         ''')
         logging.info("Initialized SQLite database.")
 
@@ -141,8 +141,8 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append(f"reviewed = {filters['reviewed']}")
     if 'positive' in filters:
         conditions.append(f"positive = {filters['positive']}")
-    if 'wrong' in filters:
-        conditions.append(f"iswrong = {filters['wrong']}")
+    if 'valid' in filters:
+        conditions.append(f"valid = {filters['valid']}")
     if 'region' in filters:
         conditions.append(f"LOWER(region) LIKE '%{filters['region'].lower()}%'")
     if 'status' in filters:
@@ -180,7 +180,7 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     'text': row[9],
                     'datetime': row[8],
                     'positive': bool(row[10]),
-                    'iswrong': bool(row[11]),
+                    'valid': bool(row[11]),
                     'reviewed': bool(row[12]),
                 },
                 'status': row[13],
@@ -199,7 +199,7 @@ def db_get_exams_count():
         return result[0] if result else 0
 
 def db_review(uid, normal = True):
-    """ Mark the entry as right or wrong according to normal review """
+    """ Mark the entry as valid or invalid according to normal review """
     valid = None
     with sqlite3.connect(DB_FILE) as conn:
         # Check if the report is positive database
@@ -207,23 +207,23 @@ def db_review(uid, normal = True):
             "SELECT positive FROM exams WHERE uid = ?", (uid,)
         ).fetchone()
         # Valid when review matches prediction
-        valid = bool(normal) == bool(result[0])
+        valid = bool(normal) != bool(result[0])
         # Update the entry
         conn.execute(
             "UPDATE exams SET valid = ?, reviewed = 1 WHERE uid = ?", (valid, uid,))
-    return wrong
+    return valid
 
 def db_add_exam(uid, metadata, report = None, positive = None):
     """ Add one row to the database """
     # Check if we have a report or just enqueue an exam
     if report:
         poz = positive
-        iswrong = False
+        valid = True
         reviewed = False
         status = 'done'
     else:
         poz = False
-        iswrong = False
+        valid = True
         reviewed = False
         status = 'queued'
     # Timestamp
@@ -242,13 +242,13 @@ def db_add_exam(uid, metadata, report = None, positive = None):
             now,
             report,
             poz,
-            iswrong,
+            valid,
             reviewed,
             status
         )
         conn.execute('''
             INSERT OR REPLACE INTO exams
-                (uid, name, id, age, sex, created, protocol, region, reported, report, positive, iswrong, reviewed, status)
+                (uid, name, id, age, sex, created, protocol, region, reported, report, positive, valid, reviewed, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', values)
 
@@ -266,7 +266,7 @@ async def db_stats():
         "total": 0,
         "reviewed": 0,
         "positive": 0,
-        "wrong": 0,
+        "invalid": 0,
         "region": {}
     }
     with sqlite3.connect(DB_FILE) as conn:
@@ -275,17 +275,17 @@ async def db_stats():
         stats["total"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE status LIKE 'done'").fetchone()[0]
         stats["reviewed"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE reviewed = 1 AND status LIKE 'done'").fetchone()[0]
         stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE LOWER(report) LIKE 'yes%' AND status LIKE 'done'").fetchone()[0]
-        stats["wrong"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE iswrong = 1 AND status LIKE 'done'").fetchone()[0]
+        stats["invalid"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE valid = 0 AND status LIKE 'done'").fetchone()[0]
         # Totals per anatomic part
         cursor.execute("""
             SELECT region, COUNT(*) AS total,
                     SUM(reviewed = 1) AS reviewed,
                     SUM(LOWER(report) LIKE 'yes%') AS positive,
-                    SUM(iswrong = 1) AS wrong,
-                    SUM(reviewed = 1 AND positive = 1 AND iswrong = 0) AS tpos,
-                    SUM(reviewed = 1 AND positive = 0 AND iswrong = 0) AS tneg,
-                    SUM(reviewed = 1 AND positive = 1 AND iswrong = 1) AS fpos,
-                    SUM(reviewed = 1 AND positive = 0 AND iswrong = 1) AS fneg
+                    SUM(valid = 0) AS invalid,
+                    SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
+                    SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
+                    SUM(reviewed = 1 AND positive = 1 AND valid = 0) AS fpos,
+                    SUM(reviewed = 1 AND positive = 0 AND valid = 0) AS fneg
             FROM exams
             WHERE status LIKE 'done'
             GROUP BY region
@@ -296,7 +296,7 @@ async def db_stats():
                 "total": row[1],
                 "reviewed": row[2],
                 "positive": row[3],
-                "wrong": row[4],
+                "invalid": row[4],
                 "tpos": row[5],
                 "tneg": row[6],
                 "fpos": row[7],
@@ -632,7 +632,7 @@ async def exams_handler(request):
     try:
         page = int(request.query.get("page", "1"))
         filters = {}
-        for filter in ['reviewed', 'positive', 'wrong']:
+        for filter in ['reviewed', 'positive', 'valid']:
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value[0].lower() == 'y' and 1 or 0
@@ -675,14 +675,14 @@ async def manual_query(request):
                                   'message': str(e)})
 
 async def review(request):
-    """ Toggle the right/wrong flag of a study """
+    """ Mark a study valid or invalid """
     data = await request.json()
     uid = data.get('uid')
     normal = data.get('normal', None)
-    wrong = db_review(uid, normal)
-    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {wrong and 'invalidates' or 'validates'} the report.")
-    await broadcast_dashboard_update(event = "review", payload = {'uid': uid, 'iswrong': wrong})
-    return web.json_response({'status': 'success', 'uid': uid, 'iswrong': wrong})
+    valid = db_review(uid, normal)
+    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {valid and 'validates' or 'invalidates'} the report.")
+    await broadcast_dashboard_update(event = "review", payload = {'uid': uid, 'valid': valid})
+    return web.json_response({'status': 'success', 'uid': uid, 'valid': valid})
 
 async def lookagain(request):
     """ Send an exam back to queue """
