@@ -680,6 +680,7 @@ async def review(request):
     uid = data.get('uid')
     normal = data.get('normal', None)
     wrong = db_review(uid, normal)
+    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {wrong and 'invalidates' or 'validates'} the report.")
     await broadcast_dashboard_update(event = "review", payload = {'uid': uid, 'iswrong': wrong})
     return web.json_response({'status': 'success', 'uid': uid, 'iswrong': wrong})
 
@@ -689,6 +690,7 @@ async def lookagain(request):
     uid = data.get('uid')
     prompt = data.get('prompt', None)
     status = db_set_status(uid, 'queued')
+    logging.info(f"Exam {uid} sent to processing queue (look again).")
     # Notify the queue
     queue_event.set()
     await broadcast_dashboard_update(event = "lookagain", payload = {'uid': uid, 'status': status})
