@@ -124,6 +124,10 @@ def init_database():
                 status TEXT DEFAULT 'none'
             )
         ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_cleanup 
+            ON exams(status, created)
+        ''')
         logging.info("Initialized SQLite database.")
 
 def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
