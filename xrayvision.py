@@ -336,13 +336,12 @@ def db_purge_old_ignored():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.execute('''
             DELETE FROM exams 
-            WHERE status = 'ignore' 
+            WHERE status IN ('ignore', 'error')
             AND created < datetime('now', '-1 month')
             RETURNING uid
         ''')
         deleted_uids = [row[0] for row in cursor.fetchall()]
         deleted_count = cursor.rowcount
-
     # Delete associated files
     for uid in deleted_uids:
         for ext in ('dcm', 'png'):
@@ -351,8 +350,7 @@ def db_purge_old_ignored():
                 os.remove(file_path)
             except FileNotFoundError:
                 pass
-
-    logging.info(f"Purged {deleted_count} old ignored records and their files from database")
+    logging.info(f"Purged {deleted_count} old records from database and their files.")
     return deleted_count
 
 def db_set_status(uid, status):
