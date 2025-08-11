@@ -970,9 +970,6 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 response = re.sub(r"\s*```$", "", response, flags = re.MULTILINE)
                 # Clean up any text before '{'
                 response = re.sub(r"^[^{]*{", "{", response, flags = re.IGNORECASE | re.MULTILINE)
-                # Normalize single quotes → double
-                response = response.replace("'", '"')
-                print(response)
                 try:
                     parsed = json.loads(response)
                     short = parsed["short"].strip().lower()
