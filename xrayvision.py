@@ -763,21 +763,25 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
 # Notification operations
 async def send_ntfy_notification(uid, report, metadata):
     """Send notification to ntfy.sh with image and report"""
-    png_file = os.path.join(IMAGES_DIR, f"{uid}.png")
-    if not os.path.exists(png_file):
-        logging.error(f"PNG file not found for notification: {png_file}")
-        return
-    with open(png_file, "rb") as f:
-        image_data = f.read()
-    form = aiohttp.FormData()
-    form.add_field("message", f"Positive finding in {metadata['exam']['region']} study\nPatient: {metadata['patient']['name']}\nReport: {report}")
-    form.add_field("title", "XRayVision Alert - Positive Finding")
-    form.add_field("tags", "warning,skull")
-    form.add_field("priority", "4")
-    form.add_field("attach", image_data, filename=f"{uid}.png", content_type="image/png")
+    # Construct image URL
+    image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
+    
+    # Create JSON payload
+    payload = {
+        "message": f"Positive finding in {metadata['exam']['region']} study\nPatient: {metadata['patient']['name']}\nReport: {report}",
+        "title": "XRayVision Alert - Positive Finding",
+        "tags": ["warning", "skull"],
+        "priority": 4,
+        "image": image_url
+    }
+    
     # Post the notification
     async with aiohttp.ClientSession() as session:
-        async with session.post(NTFY_URL, data=form) as resp:
+        async with session.post(
+            NTFY_URL,
+            json=payload,
+            headers={"Content-Type": "application/json"}
+        ) as resp:
             if resp.status == 200:
                 logging.info("Successfully sent ntfy notification")
             else:
