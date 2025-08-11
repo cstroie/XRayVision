@@ -353,6 +353,7 @@
         </div>
 
         <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
+        <audio id="chime" src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwNAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVVSQhhSADEhC2VyQjWXwv8Zv9cpj/o5+IiIqKn/7owVhHP/6I2gokBJjJpL/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6kSAAP7uc5HQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBTEFNRTMuMTAwqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//sQxAAD/AABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAASqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq">
     </main>
 
     <footer>
@@ -425,6 +426,10 @@
                         // Reload page 1, if viewing it
                         if (currentPage === 1) {
                             loadPage(1);
+                        }
+                        // Play chime if positive
+                        if (data.event.payload.positive) {
+                            document.getElementById('chime').play();
                         }
                     } else if (data.event.name === "connected") {
                         showToast("WebSocket connected");
