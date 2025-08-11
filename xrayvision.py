@@ -766,20 +766,20 @@ async def send_ntfy_notification(uid, report, metadata):
     # Construct image URL
     image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
     
-    # Create JSON payload
-    payload = {
-        "message": f"Positive finding in {metadata['exam']['region']} study\nPatient: {metadata['patient']['name']}\nReport: {report}",
-        "title": "XRayVision Alert - Positive Finding",
-        "tags": ["warning", "skull"],
-        "priority": 4,
-        "attach": image_url
+    # Create headers and message body
+    message = f"Positive finding in {metadata['exam']['region']} study\nPatient: {metadata['patient']['name']}\nReport: {report}"
+    headers = {
+        "Title": "XRayVision Alert - Positive Finding",
+        "Tags": "warning,skull",
+        "Priority": "4",
+        "Attach": image_url
     }
     
     # Post the notification
     async with aiohttp.ClientSession() as session:
         async with session.post(NTFY_URL,
-            data = payload,
-            headers = {"Content-Type": "application/json"}
+            data = message,
+            headers = headers
         ) as resp:
             if resp.status == 200:
                 logging.info("Successfully sent ntfy notification")
