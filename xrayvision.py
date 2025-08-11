@@ -473,7 +473,11 @@ async def load_existing_dicom_files():
             else:
                 logging.info(f"Adding {uid} into processing queue...")
                 # Get the dataset
-                ds = dcmread(os.path.join(IMAGES_DIR, dicom_file))
+                try:
+                    ds = dcmread(os.path.join(IMAGES_DIR, dicom_file))
+                except Exception as e:
+                    logging.error(f"Error reading the dataset from DICOM file {dicom_file}: {e}")
+                    continue
                 # Get some metadata for queueing
                 try:
                     metadata = get_dicom_metadata(ds)
@@ -775,7 +779,7 @@ def get_region(metadata):
     elif check_any(desc, 'stern'):
         region = 'sternum'
         question = "Are there any fractures"
-    elif check_any(desc, 'abdomen'):
+    elif check_any(desc, 'abdomen', 'abdominal'):
         region = 'abdominal'
         question = "Are there any fluid levels, free gas or metallic foreign bodies"
     elif check_any(desc, 'cap', 'craniu', 'occiput',
