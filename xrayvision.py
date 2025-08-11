@@ -772,15 +772,14 @@ async def send_ntfy_notification(uid, report, metadata):
         "title": "XRayVision Alert - Positive Finding",
         "tags": ["warning", "skull"],
         "priority": 4,
-        "image": image_url
+        "attach": image_url
     }
     
     # Post the notification
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            NTFY_URL,
-            json=payload,
-            headers={"Content-Type": "application/json"}
+        async with session.post(NTFY_URL,
+            data = payload,
+            headers = {"Content-Type": "application/json"}
         ) as resp:
             if resp.status == 200:
                 logging.info("Successfully sent ntfy notification")
