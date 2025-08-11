@@ -483,7 +483,7 @@ async def load_existing_dicom_files():
                 # Try to convert to PNG
                 png_file = None
                 try:
-                    png_file = dicom_to_png(dicom_file)
+                    png_file = dicom_to_png(os.path.join(IMAGES_DIR, dicom_file))
                 except Exception as e:
                     logging.error(f"Error converting DICOM file {dicom_file}: {e}")
                 # Check the result
