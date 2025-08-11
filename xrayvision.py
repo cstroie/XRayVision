@@ -779,7 +779,7 @@ def get_region(metadata):
     elif check_any(desc, 'stern'):
         region = 'sternum'
         question = "Are there any fractures"
-    elif check_any(desc, 'abdomen'):
+    elif check_any(desc, 'abdomen', 'abdominal'):
         region = 'abdominal'
         question = "Are there any fluid levels, free gas or metallic foreign bodies"
     elif check_any(desc, 'cap', 'craniu', 'occiput',
