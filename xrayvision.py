@@ -48,6 +48,7 @@ OPENAI_URL_SECONDARY = os.getenv("OPENAI_URL_SECONDARY", "http://127.0.0.1:8080/
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')
 XRAYVISION_USER = os.getenv('XRAYVISION_USER', 'admin')
 XRAYVISION_PASS = os.getenv('XRAYVISION_PASS', 'admin')
+NTFY_URL = os.getenv('NTFY_URL', 'https://ntfy.sh/xrayvision-alerts')
 DASHBOARD_PORT = 8000
 AE_TITLE = 'XRAYVISION'
 AE_PORT  = 4010
@@ -759,6 +760,29 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
             websocket_clients.remove(client)
 
 
+# Notification operations
+async def send_ntfy_notification(uid, report, metadata):
+    """Send notification to ntfy.sh with image and report"""
+    png_file = os.path.join(IMAGES_DIR, f"{uid}.png")
+    if not os.path.exists(png_file):
+        logging.error(f"PNG file not found for notification: {png_file}")
+        return
+    with open(png_file, "rb") as f:
+        image_data = f.read()
+    form = aiohttp.FormData()
+    form.add_field("message", f"Positive finding in {metadata['exam']['region']} study\nPatient: {metadata['patient']['name']}\nReport: {report}")
+    form.add_field("title", "XRayVision Alert - Positive Finding")
+    form.add_field("tags", "warning,skull")
+    form.add_field("priority", "4")
+    form.add_field("attach", image_data, filename=f"{uid}.png", content_type="image/png")
+    # Post the notification
+    async with aiohttp.ClientSession() as session:
+        async with session.post(NTFY_URL, data=form) as resp:
+            if resp.status == 200:
+                logging.info("Successfully sent ntfy notification")
+            else:
+                logging.error(f"Notification failed with status {resp.status}: {await resp.text()}")
+
 # AI API operations
 def check_any(string, *words):
     """ Check if any of the words are present in the string """
@@ -984,7 +1008,14 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                 # Update the dashboard
                 dashboard['success_count'] += 1
                 # Save to exams database
-                db_add_exam(uid, metadata, report = report, positive = short == "yes")
+                is_positive = short == "yes"
+                db_add_exam(uid, metadata, report = report, positive = is_positive)
+                # Send notification for positive cases
+                if is_positive:
+                    try:
+                        await send_ntfy_notification(uid, report, metadata)
+                    except Exception as e:
+                        logging.error(f"Failed to send ntfy notification: {e}")
                 # Get some timing statistics
                 global timings
                 timings['prompt'] = int(result['timings']['prompt_ms'])
