@@ -451,12 +451,6 @@ def dicom_store(event):
             png_file = dicom_to_png(dicom_file)
         except Exception as e:
             logging.error(f"Error converting DICOM file {dicom_file}: {e}")
-            # Remove failed entry and DICOM file
-            db_set_status(uid, 'ignore')
-            try:
-                os.remove(dicom_file)
-            except Exception as delete_error:
-                logging.error(f"Error deleting DICOM file {dicom_file}: {delete_error}")
         # Check the result
         if png_file:
             # Add to processing queue
