@@ -93,6 +93,7 @@ PAGE_SIZE = 10
 KEEP_DICOM = False
 LOAD_DICOM = False
 NO_QUERY = False
+ENABLE_NTFY = False
 
 # Dashboard state
 dashboard = {
@@ -763,6 +764,9 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
 # Notification operations
 async def send_ntfy_notification(uid, report, metadata):
     """Send notification to ntfy.sh with image and report"""
+    if not ENABLE_NTFY:
+        logging.info("ntfy notifications are disabled")
+        return
     # Construct image URL
     image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
     
@@ -1232,11 +1236,13 @@ if __name__ == '__main__':
     parser.add_argument("--keep-dicom", action = "store_true", help = "Do not delete .dcm files after conversion")
     parser.add_argument("--load-dicom", action = "store_true", help = "Load existing .dcm files in queue")
     parser.add_argument("--no-query", action = "store_true", help = "Do not query the DICOM server automatically")
+    parser.add_argument("--enable-ntfy", action = "store_true", help = "Enable ntfy.sh notifications")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
     LOAD_DICOM = args.load_dicom
     NO_QUERY = args.no_query
+    ENABLE_NTFY = args.enable_ntfy
 
     # Run
     try:
