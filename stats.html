@@ -164,6 +164,22 @@
                 <strong>Invalid Reports</strong>
                 <span id="invalid">0</span>
             </article>
+            <article>
+                <strong>Accuracy</strong>
+                <span id="accuracy">0%</span>
+            </article>
+            <article>
+                <strong>Precision</strong>
+                <span id="precision">0%</span>
+            </article>
+            <article>
+                <strong>Recall</strong>
+                <span id="recall">0%</span>
+            </article>
+            <article>
+                <strong>Avg. Processing</strong>
+                <span id="avg-time">0s</span>
+            </article>
         </div>
     </header>
 
@@ -215,6 +231,22 @@
         document.getElementById('reviewed').textContent = data.reviewed;
         document.getElementById('positive').textContent = data.positive;
         document.getElementById('invalid').textContent = data.invalid;
+        
+        // Calculate additional metrics
+        const totalReviewed = data.reviewed;
+        const truePositives = Object.values(data.region).reduce((sum, region) => sum + region.tpos, 0);
+        const trueNegatives = Object.values(data.region).reduce((sum, region) => sum + region.tneg, 0);
+        const falsePositives = Object.values(data.region).reduce((sum, region) => sum + region.fpos, 0);
+        const falseNegatives = Object.values(data.region).reduce((sum, region) => sum + region.fneg, 0);
+        
+        const accuracy = totalReviewed > 0 ? ((truePositives + trueNegatives) / totalReviewed * 100).toFixed(1) : 0;
+        const precision = (truePositives + falsePositives) > 0 ? (truePositives / (truePositives + falsePositives) * 100).toFixed(1) : 0;
+        const recall = (truePositives + falseNegatives) > 0 ? (truePositives / (truePositives + falseNegatives) * 100).toFixed(1) : 0;
+        
+        document.getElementById('accuracy').textContent = `${accuracy}%`;
+        document.getElementById('precision').textContent = `${precision}%`;
+        document.getElementById('recall').textContent = `${recall}%`;
+        document.getElementById('avg-time').textContent = data.avg_processing_time ? `${data.avg_processing_time}s` : '0s';
 
         // Table
         const tbody = document.querySelector('#regionStats tbody');
