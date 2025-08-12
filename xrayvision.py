@@ -100,7 +100,8 @@ dashboard = {
     'queue_size': 0,
     'processing_file': None,
     'success_count': 0,
-    'failure_count': 0
+    'error_count': 0,
+    'ignore_count': 0
 }
 # OpenAI timings
 timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
@@ -882,6 +883,8 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     dashboard['queue_size'] = db_get_queue_size()
     # Get error statistics
     error_stats = db_get_error_stats()
+    dashboard['error_count'] = error_stats['error']
+    dashboard['ignore_count'] = error_stats['ignore']
     # Get the count of successfully processed exams in the last week
     dashboard['success_count'] = db_get_weekly_processed_count()
     # Create a list of clients
@@ -899,7 +902,6 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
                 }
             },
             'timings': timings,
-            'error_stats': error_stats
     }
     if next_query:
         data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
