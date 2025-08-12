@@ -221,11 +221,27 @@
         button.normal {
             background-color: var(--pico-color-jade-600);
             border: 1px solid var(--pico-color-jade-700);
+            transition: all 0.2s ease;
+        }
+
+        button.normal:hover {
+            background-color: var(--pico-color-jade-500);
+            border-color: var(--pico-color-jade-600);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
         button.abnormal {
             background-color: var(--pico-color-orange-600);
             border: 1px solid var(--pico-color-orange-700);
+            transition: all 0.2s ease;
+        }
+
+        button.abnormal:hover {
+            background-color: var(--pico-color-orange-500);
+            border-color: var(--pico-color-orange-600);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
         .image-card .details {
