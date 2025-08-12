@@ -394,20 +394,34 @@
                        .replace(/'/g, "\&#039;");
         }
 
+        let isPlayingChime = false;
+        
         function playChime() {
+            if (isPlayingChime) return;
+            
             try {
                 const chime = document.getElementById('chime');
                 if (chime) {
+                    isPlayingChime = true;
                     chime.currentTime = 0;
+                    
                     const playPromise = chime.play();
                     if (playPromise !== undefined) {
-                        playPromise.catch(error => {
+                        playPromise.then(() => {
+                            // Reset flag when audio ends
+                            chime.addEventListener('ended', function onEnded() {
+                                isPlayingChime = false;
+                                chime.removeEventListener('ended', onEnded);
+                            }, { once: true });
+                        }).catch(error => {
                             console.warn('Chime play failed:', error);
+                            isPlayingChime = false;
                         });
                     }
                 }
             } catch (error) {
                 console.warn('Error playing chime:', error);
+                isPlayingChime = false;
             }
         }
 
@@ -459,8 +473,6 @@
                         showToast("WebSocket connected");
                         // Load page 1
                         loadPage(1);
-                        // Play chime
-                        playChime();
                     } else if (data.event.name === "validate") {
                         showToast(`Exam is ${data.event.payload.valid ? 'valid' : 'invalid'}`);
                         // Locate and update that card if it's visible
@@ -718,7 +730,6 @@
             e.preventDefault();
             const q = document.getElementById("search-input").value.trim();
             loadPage(1, q);
-            playChime();
         });
         
         var docWidth = document.documentElement.offsetWidth;
