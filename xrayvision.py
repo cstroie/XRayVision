@@ -1225,7 +1225,7 @@ async def start_dashboard():
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)
-    app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
+    app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)

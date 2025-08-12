@@ -530,7 +530,7 @@
         </div>
 
         <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
-        <audio id="chime" preload="auto" src="/static/chime.wav"></audio>
+        <audio id="chime" preload="auto" src="/images/chime.wav"></audio>
     </main>
 
     <footer>
@@ -870,7 +870,7 @@
                 examsHtml += `
                     <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsValid}" id="card-${item.uid}">
                         <figure class="xray">
-                            <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
+                            <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
                             <div role="group">
                                 <button class="abnormal" onclick="validate('${item.uid}', false)">⚠️ Abnormal</button>
                                 <button class="normal" onclick="validate('${item.uid}', true)">✓ Normal</button>
