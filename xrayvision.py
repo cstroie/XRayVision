@@ -779,6 +779,24 @@ async def stats_handler(request):
         logging.error(f"Exams page error: {e}")
         return web.json_response([], status = 500)
 
+async def config_handler(request):
+    """ Provide global configuration parameters """
+    try:
+        config = {
+            "OPENAI_URL_PRIMARY": OPENAI_URL_PRIMARY,
+            "OPENAI_URL_SECONDARY": OPENAI_URL_SECONDARY,
+            "NTFY_URL": NTFY_URL,
+            "AE_TITLE": AE_TITLE,
+            "AE_PORT": AE_PORT,
+            "REMOTE_AE_TITLE": REMOTE_AE_TITLE,
+            "REMOTE_AE_IP": REMOTE_AE_IP,
+            "REMOTE_AE_PORT": REMOTE_AE_PORT
+        }
+        return web.json_response(config)
+    except Exception as e:
+        logging.error(f"Config endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
 async def manual_query(request):
     """ Trigger a manual query/retrieve operation """
     try:
@@ -1185,6 +1203,7 @@ async def start_dashboard():
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', stats_handler)
+    app.router.add_get('/api/config', config_handler)
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)

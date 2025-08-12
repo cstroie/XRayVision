@@ -138,9 +138,70 @@
         
         <h2>How It Works</h2>
         <p>XRayVision automatically processes incoming DICOM studies, analyzes them using AI models, and presents findings through an intuitive web interface. Medical professionals can review results, validate findings, and flag studies for further examination.</p>
+        
+        <h2>Global Parameters</h2>
+        <article>
+            <table role="grid">
+                <tbody>
+                    <tr>
+                        <td><strong>OpenAI Primary URL</strong></td>
+                        <td><code id="openai-primary">Loading...</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>OpenAI Secondary URL</strong></td>
+                        <td><code id="openai-secondary">Loading...</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>NTFY URL</strong></td>
+                        <td><code id="ntfy-url">Loading...</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>AE Title</strong></td>
+                        <td><code id="ae-title">Loading...</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>AE Port</strong></td>
+                        <td><code id="ae-port">Loading...</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Remote AE Title</strong></td>
+                        <td><code id="remote-ae-title">Loading...</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Remote AE IP</strong></td>
+                        <td><code id="remote-ae-ip">Loading...</code></td>
+                    </tr>
+                    <tr>
+                        <td><strong>Remote AE Port</strong></td>
+                        <td><code id="remote-ae-port">Loading...</code></td>
+                    </tr>
+                </tbody>
+            </table>
+        </article>
     </main>
     <footer>
         <small>Project licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPLv3</a>. Created by Costin Stroie, 2025.</small>
     </footer>
+    
+    <script>
+        // Fetch global parameters from the server
+        fetch('/api/config')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('openai-primary').textContent = data.OPENAI_URL_PRIMARY || 'Not set';
+                document.getElementById('openai-secondary').textContent = data.OPENAI_URL_SECONDARY || 'Not set';
+                document.getElementById('ntfy-url').textContent = data.NTFY_URL || 'Not set';
+                document.getElementById('ae-title').textContent = data.AE_TITLE || 'Not set';
+                document.getElementById('ae-port').textContent = data.AE_PORT || 'Not set';
+                document.getElementById('remote-ae-title').textContent = data.REMOTE_AE_TITLE || 'Not set';
+                document.getElementById('remote-ae-ip').textContent = data.REMOTE_AE_IP || 'Not set';
+                document.getElementById('remote-ae-port').textContent = data.REMOTE_AE_PORT || 'Not set';
+            })
+            .catch(error => {
+                console.error('Error fetching config:', error);
+                const loadingElements = document.querySelectorAll('code[id^="openai-"], code[id^="ntfy-"], code[id^="ae-"], code[id^="remote-ae-"]');
+                loadingElements.forEach(el => el.textContent = 'Error loading');
+            });
+    </script>
 </body>
 </html>
