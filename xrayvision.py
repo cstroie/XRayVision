@@ -196,12 +196,6 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         total = conn.execute(count_query).fetchone()[0]
     return exams, total
 
-def db_get_exams_count():
-    """ Get total row count """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT COUNT(*) FROM exams').fetchone()
-        return result[0] if result else 0
-
 def db_add_exam(uid, metadata, report = None, positive = None):
     """ Add one row to the database """
     # Check if we have a new report or just enqueue an exam
@@ -236,7 +230,7 @@ def db_add_exam(uid, metadata, report = None, positive = None):
             metadata["patient"]["age"],
             metadata["patient"]["sex"],
             metadata["exam"]['created'],
-            metadata["exam"]["proto"],
+            metadata["exam"]["protocol"],
             metadata['exam']['region'],
             now,
             report,
@@ -252,10 +246,10 @@ def db_add_exam(uid, metadata, report = None, positive = None):
         ''', values)
 
 def db_check_already_processed(uid):
-    """ Check if the file has already been processed """
+    """ Check if the file has already been processed, in queue or processing """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute(
-            "SELECT 1 FROM exams WHERE uid = ? AND status = 'done'", (uid,)
+            "SELECT status FROM exams WHERE uid = ? AND status IN ('done', 'queued', 'processing')", (uid,)
         ).fetchone()
         return result is not None
 
@@ -317,17 +311,12 @@ async def db_get_stats():
     # Return stats
     return stats
 
-def db_queue_get():
-    """ Get the next in queue exam to analyze """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT uid, name, id, age, created, protocol, region, report, positive, valid FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
-        return (result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8], result[9]) if result else (None,) * 10
-
-def db_queue_size():
+def db_get_queue_size():
     """ Get the queue size """
     with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT COUNT(*) FROM exams WHERE status = "queued"').fetchone()
-        return result[0] if result else 0
+        result = conn.execute("SELECT COUNT(*) FROM exams WHERE status = 'queued'").fetchone()
+        return result[0]
+    return 0
 
 def db_purge_ignored_errors():
     """ Delete ignored and erroneous records older than 1 week and their associated files """
@@ -548,7 +537,7 @@ def get_dicom_metadata(ds):
             'bdate': str(ds.PatientBirthDate),
         },
         'exam': {
-            'proto': str(ds.ProtocolName),
+            'protocol': str(ds.ProtocolName),
             'created': created,
             'region': str(ds.ProtocolName),
         }
@@ -754,7 +743,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     if not (websocket_clients or client):
         return
     # Update the queue size
-    dashboard['queue_size'] = db_queue_size()
+    dashboard['queue_size'] = db_get_queue_size()
     # Create a list of clients
     if client:
         clients = [client,]
@@ -821,7 +810,7 @@ def check_any(string, *words):
 
 def get_region(metadata):
     """ Try to identify the region. Return the region and the question. """
-    desc = metadata["exam"]["proto"].lower()
+    desc = metadata["exam"]["protocol"].lower()
     if check_any(desc, 'torace', 'pulmon',
                  'thorax'):
         region = 'chest'
@@ -900,7 +889,7 @@ def get_region(metadata):
 
 def get_projection(metadata):
     """ Try to identify the projection """
-    desc = metadata["exam"]["proto"].lower()
+    desc = metadata["exam"]["protocol"].lower()
     if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
         projection = "frontal"
     elif check_any(desc, "lat.", "pr."):
@@ -938,17 +927,17 @@ async def send_to_openai(session, headers, payload):
     # Failed
     return None
 
-async def send_image_to_openai(uid, metadata, max_retries = 3):
+async def send_exam_to_openai(exam, max_retries = 3):
     """Send PNG to OpenAI API with retries and save response to text file."""
     # Read the PNG file
-    with open(os.path.join(IMAGES_DIR, f"{uid}.png"), 'rb') as f:
+    with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
         image_bytes = f.read()
     # Identify the region
     region, question = get_region(metadata)
     # Filter on specific region
     if not region in REGIONS:
-        logging.info(f"Ignoring {uid} with {region} x-ray.")
-        db_set_status(uid, 'ignore')
+        logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
+        db_set_status(exam['uid'], 'ignore')
         return False
     # Identify the prjection, gender and age
     projection = get_projection(metadata)
@@ -971,9 +960,10 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
     # Create the prompt
     prompt = USR_PROMPT.format(question, anatomy, subject)
     logging.debug(f"Prompt: {prompt}")
-    logging.info(f"Processing {uid} with {region} x-ray.")
+    logging.info(f"Processing {exam['uid']} with {region} x-ray.")
     if 'report' in metadata:
-        json_report = {'short': metadata['report']['short'], 'report': metadata['report']['text']}
+        json_report = {'short': metadata['report']['short'],
+                       'report': metadata['report']['text']}
         metadata['report']['json'] = json.dumps(json_report)
         logging.info(f"Previous report: {metadata['report']['json']}")
     # Base64 encode the PNG to comply with OpenAI Vision API
@@ -1035,16 +1025,16 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     logging.error(f"Rejected malformed OpenAI response: {e}")
                     logging.error(response)
                     break
-                logging.info(f"OpenAI API response for {uid}: [{short.upper()}] {report}")
+                logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report}")
                 # Update the dashboard
                 dashboard['success_count'] += 1
                 # Save to exams database
                 is_positive = short == "yes"
-                db_add_exam(uid, metadata, report = report, positive = is_positive)
+                db_add_exam(exam['uid'], metadata, report = report, positive = is_positive)
                 # Send notification for positive cases
                 if is_positive:
                     try:
-                        await send_ntfy_notification(uid, report, metadata)
+                        await send_ntfy_notification(exam['uid'], report, metadata)
                     except Exception as e:
                         logging.error(f"Failed to send ntfy notification: {e}")
                 # Get some timing statistics
@@ -1058,18 +1048,18 @@ async def send_image_to_openai(uid, metadata, max_retries = 3):
                     timings['average'] = timings['total']
                 logging.info(f"OpenAI API response timings: last {timings['total']} ms, average {timings['average']} ms")
                 # Notify the dashboard frontend to reload first page
-                await broadcast_dashboard_update(event = "new_item", payload = {'uid': uid, 'positive': is_positive})
+                await broadcast_dashboard_update(event = "new_item", payload = {'uid': exam['uid'], 'positive': is_positive})
                 # Success
                 return True
         except Exception as e:
-            logging.warning(f"Error uploading {uid} (attempt {attempt}): {e}")
+            logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
             # Exponential backoff
             await asyncio.sleep(2 ** attempt)
             attempt += 1
     # Failure after max_retries
-    db_set_status(uid, 'error')
+    db_set_status(exam['uid'], 'error')
     queue_event.clear()
-    logging.error(f"Failed to process {uid} after {attempt} attempts.")
+    logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
     dashboard['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
@@ -1100,56 +1090,36 @@ async def relay_to_openai_loop():
     """ Relay PNG files to OpenAI API with retries and dashboard update """
     while True:
         # Get one file from queue
-        (uid, name, id, age, created, protocol, region, report, positive, valid) = db_queue_get()
+        exams, total = db_get_exams(limit = 1, status = 'queued')
         # Wait here if there are no items in queue or there is no OpenAI server
-        if not uid or active_openai_url is None:
+        if not exams or active_openai_url is None:
             queue_event.clear()
             await queue_event.wait()
             continue
+        # Get only one exam, if any
+        exam = exams[0]
         # Set the status
-        db_set_status(uid, "processing")
+        db_set_status(exam['uid'], "processing")
         # Update the dashboard
-        dashboard['processing_file'] = name
+        dashboard['queue_size'] = total
+        dashboard['processing_file'] = exam['patient']['name']
         await broadcast_dashboard_update()
         # The DICOM file name
-        dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
-        # Compose a metadata
-        try:
-            sex = int(id[0]) % 2 == 0 and 'F' or 'M'
-        except:
-            sex = 'O'
-        metadata = {
-            'patient': {
-                'name':  name,
-                'id':    id,
-                'age':   age,
-                'sex':   sex,
-            },
-            'exam': {
-                'proto': protocol,
-                'region': region,
-                'created': created,
-            }
-        }
-        if report:
-            metadata['report'] = {'short': positive and 'yes' or 'no',
-                                  'text': report,
-                                  'positive': positive,
-                                  'valid': valid}
+        dicom_file = os.path.join(IMAGES_DIR, f"{exam['uid']}.dcm")
         # Try to send to AI
         result = False
         try:
-            result = await send_image_to_openai(uid, metadata)
+            result = await send_exam_to_openai(exam)
         except Exception as e:
-            logging.error(f"OpenAI error processing {uid}: {e}")
-            db_set_status(uid, "error")
+            logging.error(f"OpenAI error processing {exam['uid']}: {e}")
+            db_set_status(exam['uid'], "error")
         finally:
             dashboard['processing_file'] = None
             await broadcast_dashboard_update()
         # Check the result
         if result:
             # Set the status
-            db_set_status(uid, "done")
+            db_set_status(exam['uid'], "done")
             # Remove the DICOM file
             if not KEEP_DICOM:
                 try:
