@@ -226,6 +226,11 @@
             <h3>Temporal Trends by Region (Last 30 Days)</h3>
             <canvas id="trendsChart" width="800" height="400"></canvas>
         </section>
+        
+        <section class="chart-container">
+            <h3>Monthly Trends by Region (Last 12 Months)</h3>
+            <canvas id="monthlyTrendsChart" width="800" height="400"></canvas>
+        </section>
     </main>
 
     <script>
@@ -412,6 +417,69 @@
                         title: {
                             display: true,
                             text: 'Date'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Number of Studies'
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+        
+        // Chart: Monthly trends
+        const monthlyTrendMonths = [...new Set(Object.values(data.monthly_trends).flatMap(region => region.map(item => item.month)))].sort();
+        
+        // Prepare datasets for each region
+        const monthlyTrendDatasets = [];
+        const monthlyRegionColors = [
+            '#0ea5e9', '#2dd4bf', '#f59e0b', '#f87171', '#a78bfa', 
+            '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
+        ];
+        let monthlyColorIndex = 0;
+        
+        for (const [region, regionData] of Object.entries(data.monthly_trends)) {
+            // Create data points for all months
+            const dataPoints = monthlyTrendMonths.map(month => {
+                const monthData = regionData.find(item => item.month === month);
+                return monthData ? monthData.total : 0;
+            });
+            
+            monthlyTrendDatasets.push({
+                label: region,
+                data: dataPoints,
+                borderColor: monthlyRegionColors[monthlyColorIndex % monthlyRegionColors.length],
+                backgroundColor: monthlyRegionColors[monthlyColorIndex % monthlyRegionColors.length] + '40', // Add transparency
+                fill: false,
+                tension: 0.1
+            });
+            
+            monthlyColorIndex++;
+        }
+        
+        new Chart(document.getElementById("monthlyTrendsChart"), {
+            type: 'line',
+            data: {
+                labels: monthlyTrendMonths,
+                datasets: monthlyTrendDatasets
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: {
+                        display: true,
+                        text: 'Studies by Region (Last 12 Months)'
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Month'
                         }
                     },
                     y: {

@@ -261,7 +261,8 @@ async def db_get_stats():
         "positive": 0,
         "invalid": 0,
         "region": {},
-        "trends": {}
+        "trends": {},
+        "monthly_trends": {}
     }
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -331,6 +332,31 @@ async def db_get_stats():
                 stats["trends"][region] = []
             stats["trends"][region].append({
                 "date": date,
+                "total": total,
+                "positive": positive
+            })
+        
+        # Get monthly trends (last 12 months)
+        cursor.execute("""
+            SELECT strftime('%Y-%m', created) as month,
+                   region,
+                   COUNT(*) as total,
+                   SUM(positive = 1) as positive
+            FROM exams
+            WHERE status LIKE 'done'
+              AND created >= date('now', '-12 months')
+            GROUP BY strftime('%Y-%m', created), region
+            ORDER BY month
+        """)
+        monthly_trends_data = cursor.fetchall()
+        
+        # Process monthly trends data into a structured format
+        for row in monthly_trends_data:
+            month, region, total, positive = row
+            if region not in stats["monthly_trends"]:
+                stats["monthly_trends"][region] = []
+            stats["monthly_trends"][region].append({
+                "month": month,
                 "total": total,
                 "positive": positive
             })
