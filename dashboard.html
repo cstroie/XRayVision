@@ -445,6 +445,14 @@
                 <strong>Failed</strong>
                 <span id="failure">0</span>
             </article>
+            <article>
+                <strong>Errors</strong>
+                <span id="errors">0</span>
+            </article>
+            <article>
+                <strong>Ignored</strong>
+                <span id="ignored">0</span>
+            </article>
         </hgroup>
         <fieldset role="group">
             <select id="queryInterval">
@@ -613,6 +621,10 @@
                     document.getElementById('processing').innerHTML = data.dashboard.processing_file || 'Idle';
                     document.getElementById('success').innerHTML = data.dashboard.success_count;
                     document.getElementById('failure').innerHTML = data.dashboard.failure_count;
+                }
+                if (data.error_stats !== undefined) {
+                    document.getElementById('errors').innerHTML = data.error_stats.error || 0;
+                    document.getElementById('ignored').innerHTML = data.error_stats.ignore || 0;
                 }
                 if (data.openai !== undefined) {
                     if (data.openai.health.pri)

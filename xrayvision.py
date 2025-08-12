@@ -398,6 +398,17 @@ async def db_get_stats():
                 "total": total,
                 "positive": positive
             })
+    # Get error statistics for dashboard
+    cursor.execute("""
+        SELECT status, COUNT(*) as count
+        FROM exams
+        WHERE status IN ('error', 'ignore')
+        GROUP BY status
+    """)
+    error_data = cursor.fetchall()
+    for row in error_data:
+        data['error_stats'][row[0]] = row[1]
+    
     # Return stats
     return stats
 
@@ -851,6 +862,10 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
                 }
             },
             'timings': timings,
+            'error_stats': {
+                'error': 0,
+                'ignore': 0
+            }
     }
     if next_query:
         data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
