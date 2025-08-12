@@ -141,7 +141,49 @@
         </ul>
         
         <h2>How It Works</h2>
-        <p>XRayVision automatically processes incoming DICOM studies, analyzes them using AI models, and presents findings through an intuitive web interface. Medical professionals can review results, validate findings, and flag studies for further examination.</p>
+        <p>XRayVision is a comprehensive medical imaging platform that automates the processing and analysis of radiology studies. The system follows a streamlined workflow to deliver efficient and accurate results:</p>
+        
+        <h3>Data Ingestion</h3>
+        <p>XRayVision receives DICOM studies through two primary methods:</p>
+        <ul>
+            <li><strong>DICOM StoreSCP</strong> - Continuous reception of studies sent from PACS, modalities, or other DICOM sources</li>
+            <li><strong>Query/Retrieve</strong> - Automatic polling (every 15 minutes) or manual triggering to fetch recent studies from remote DICOM servers</li>
+        </ul>
+        
+        <h3>Image Processing</h3>
+        <p>Upon receipt, each DICOM study undergoes several processing steps:</p>
+        <ul>
+            <li><strong>Format Conversion</strong> - DICOM files are automatically converted to optimized PNG format for web display</li>
+            <li><strong>Image Enhancement</strong> - Automatic gamma correction and contrast optimization for improved visualization</li>
+            <li><strong>Metadata Extraction</strong> - Patient demographics, study details, and protocol information are parsed and stored</li>
+        </ul>
+        
+        <h3>AI Analysis</h3>
+        <p>The core intelligence of XRayVision lies in its AI-powered analysis engine:</p>
+        <ul>
+            <li><strong>Region Identification</strong> - Automatic anatomical region detection based on protocol names and imaging parameters</li>
+            <li><strong>Intelligent Prompting</strong> - Context-aware prompts are generated for each study type, focusing the AI on relevant pathologies</li>
+            <li><strong>Dual Backend Support</strong> - Integration with primary and fallback OpenAI-compatible APIs for maximum reliability</li>
+            <li><strong>Structured Reporting</strong> - AI responses are parsed into standardized JSON format with short answers and detailed reports</li>
+        </ul>
+        
+        <h3>Results Presentation & Review</h3>
+        <p>Processed studies are presented through an intuitive web dashboard:</p>
+        <ul>
+            <li><strong>Real-time Updates</strong> - WebSocket-powered interface provides instant notifications when new studies are processed</li>
+            <li><strong>Interactive Review</strong> - Medical professionals can validate AI findings as accurate or flag them for review</li>
+            <li><strong>Quality Assurance</strong> - Discrepancies between AI predictions and human review are tracked for continuous improvement</li>
+            <li><strong>Notification System</strong> - Critical positive findings trigger immediate alerts via ntfy.sh integration</li>
+        </ul>
+        
+        <h3>Data Management</h3>
+        <p>XRayVision maintains comprehensive data management capabilities:</p>
+        <ul>
+            <li><strong>SQLite Database</strong> - All studies, reports, and review statuses are stored in a robust local database</li>
+            <li><strong>Advanced Filtering</strong> - Studies can be filtered by region, status, review state, and search terms</li>
+            <li><strong>Statistical Analytics</strong> - Detailed performance metrics and trend analysis are available through the statistics dashboard</li>
+            <li><strong>Automatic Cleanup</strong> - Ignored and erroneous studies are automatically purged after one week to maintain system performance</li>
+        </ul>
         
         <h2>Global Parameters</h2>
         <article>
