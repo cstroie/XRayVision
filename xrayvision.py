@@ -396,7 +396,8 @@ async def db_get_stats():
             stats["monthly_trends"][region].append({
                 "month": month,
                 "total": total,
-    
+                "positive": positive                                                                                   
+            })                                                                                                         
     # Return stats
     return stats
 
