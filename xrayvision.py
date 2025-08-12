@@ -962,7 +962,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
     prompt = USR_PROMPT.format(question, anatomy, subject)
     logging.debug(f"Prompt: {prompt}")
     logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-    if 'report' in exam:
+    if exam['report']['text']:
         json_report = {'short': exam['report']['short'],
                        'report': exam['report']['text']}
         exam['report']['json'] = json.dumps(json_report)
@@ -999,7 +999,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
             }
         ]
     }
-    if 'report' in exam:
+    if 'json' in exam['report']:
         data['messages'].append({'role': 'assistant', 'content': exam['report']['json']})
         data['messages'].append({'role': 'user', 'content': REV_PROMPT})
     # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
