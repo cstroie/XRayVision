@@ -435,7 +435,7 @@
                         showToast("WebSocket connected");
                         // Load page 1
                         loadPage(1);
-                    } else if (data.event.name === "review") {
+                    } else if (data.event.name === "validate") {
                         showToast(`Exam is ${data.event.payload.valid ? 'valid' : 'invalid'}`);
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
@@ -464,8 +464,8 @@
             };
         }
 
-        function review(uid, normal) {
-            fetch('/api/review', {
+        function validate(uid, normal) {
+            fetch('/api/validate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid, normal: normal })
@@ -476,7 +476,7 @@
                 console.log('Status update:', data.valid ? 'valid' : 'invalid');
             })
             .catch(error => {
-                console.error('Error sending review:', error);
+                console.error('Error sending validate:', error);
             });
         }
 
@@ -652,11 +652,11 @@
                         <figure class="xray">
                             <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
                             <div role="group">
-                                <button class="abnormal" onclick="review('${item.uid}', false)">👎︎ NotOk</button>
-                                <button class="normal" onclick="review('${item.uid}', true)">👍︎ Ok</button>
+                                <button class="abnormal" onclick="validate('${item.uid}', false)">👎︎ NotOk</button>
+                                <button class="normal" onclick="validate('${item.uid}', true)">👍︎ Ok</button>
                             </div>
                             <div role="group">
-                                <button class="secondary " onclick="lookagain('${item.uid}')">Look again</button>
+                                <button class="secondary " onclick="lookagain('${item.uid}')">Inaccurate, look again</button>
                             </div>
                         </figure>
                         <aside class="details">

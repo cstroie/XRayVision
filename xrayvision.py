@@ -133,7 +133,7 @@ def init_database():
         ''')
         logging.info("Initialized SQLite database.")
 
-def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
+def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     """ Load the exams from the database, with filters and pagination """
     conditions = []
     params = []
@@ -173,6 +173,7 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     'sex': row[4],
                 },
                 'exam': {
+                    'created': row[5],
                     'date': dt.strftime('%Y%m%d'),
                     'time': dt.strftime('%H%M%S'),
                     'protocol': row[6],
@@ -180,6 +181,7 @@ def db_load_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 },
                 'report': {
                     'text': row[9],
+                    'short': row[10] and 'yes' or 'no',
                     'datetime': row[8],
                     'positive': bool(row[10]),
                     'valid': bool(row[11]),
@@ -200,30 +202,25 @@ def db_get_exams_count():
         result = conn.execute('SELECT COUNT(*) FROM exams').fetchone()
         return result[0] if result else 0
 
-def db_review(uid, normal = True):
-    """ Mark the entry as valid or invalid according to normal review """
-    valid = None
-    with sqlite3.connect(DB_FILE) as conn:
-        # Check if the report is positive database
-        result = conn.execute(
-            "SELECT positive FROM exams WHERE uid = ?", (uid,)
-        ).fetchone()
-        # Valid when review matches prediction
-        valid = bool(normal) != bool(result[0])
-        # Update the entry
-        conn.execute(
-            "UPDATE exams SET valid = ?, reviewed = 1 WHERE uid = ?", (valid, uid,))
-    return valid
-
 def db_add_exam(uid, metadata, report = None, positive = None):
     """ Add one row to the database """
-    # Check if we have a report or just enqueue an exam
+    # Check if we have a new report or just enqueue an exam
     if report:
+        # We have a new report
         poz = positive
         valid = True
         reviewed = False
         status = 'done'
+        # Check if we have previous report
+        if 'report' in metadata:
+            # There is an previous also, check validity and new positivity
+            if not metadata['report']['valid'] and metadata['report']['positive'] != positive:
+                # It was invalid and now positivity flipped, mark it as reviewed
+                reviewed = True
+                logging.info(f"Exam {uid} marked as reviewed and valid after being reanalyzed.")
+
     else:
+        # Null report, just enqueue a new exam
         poz = False
         valid = True
         reviewed = False
@@ -262,7 +259,7 @@ def db_check_already_processed(uid):
         ).fetchone()
         return result is not None
 
-async def db_stats():
+async def db_get_stats():
     """ Get statistics from database """
     stats = {
         "total": 0,
@@ -323,8 +320,8 @@ async def db_stats():
 def db_queue_get():
     """ Get the next in queue exam to analyze """
     with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute('SELECT uid, name, id, age, created, protocol, region, report, positive FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
-        return (result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8]) if result else (None,) * 9
+        result = conn.execute('SELECT uid, name, id, age, created, protocol, region, report, positive, valid FROM exams WHERE status = "queued" ORDER BY created DESC LIMIT 1').fetchone()
+        return (result[0], result[1], result[2], result[3], result[4], result[5], result[6], result[7], result[8], result[9]) if result else (None,) * 10
 
 def db_queue_size():
     """ Get the queue size """
@@ -332,14 +329,14 @@ def db_queue_size():
         result = conn.execute('SELECT COUNT(*) FROM exams WHERE status = "queued"').fetchone()
         return result[0] if result else 0
 
-def db_purge_old_ignored():
-    """ Delete ignored records older than 1 month and their associated files """
+def db_purge_ignored_errors():
+    """ Delete ignored and erroneous records older than 1 week and their associated files """
     deleted_uids = []
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.execute('''
             DELETE FROM exams 
             WHERE status IN ('ignore', 'error')
-            AND created < datetime('now', '-1 month')
+            AND created < datetime('now', '-1 week')
             RETURNING uid
         ''')
         deleted_uids = [row[0] for row in cursor.fetchall()]
@@ -354,6 +351,27 @@ def db_purge_old_ignored():
                 pass
     logging.info(f"Purged {deleted_count} old records from database and their files.")
     return deleted_count
+
+def db_validate(uid, normal = True, valid = None, enqueue = False):
+    """ Mark the entry as valid or invalid """
+    with sqlite3.connect(DB_FILE) as conn:
+        if valid is None:
+            # Check if the report is positive
+            result = conn.execute("SELECT positive FROM exams WHERE uid = ?", (uid,)).fetchone()
+            # Valid when review matches prediction
+            valid = bool(normal) != bool(result[0])
+        # Update the entry
+        columns = []
+        params = []
+        columns.append("reviewed = 1")
+        columns.append("valid = ?")
+        params.append(bool(valid))
+        if enqueue:
+            columns.append("status = 'queued'")
+        params.append(uid)
+        set_clause = 'SET ' + ','.join(columns)
+        conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
+    return valid
 
 def db_set_status(uid, status):
     """ Set the specified satatus for uid """
@@ -646,7 +664,7 @@ async def exams_handler(request):
             if value != 'any':
                 filters[filter] = value
         offset = (page - 1) * PAGE_SIZE
-        data, total = db_load_exams(limit = PAGE_SIZE, offset = offset, **filters)
+        data, total = db_get_exams(limit = PAGE_SIZE, offset = offset, **filters)
         return web.json_response({
             "exams": data,
             "total": total,
@@ -660,7 +678,7 @@ async def exams_handler(request):
 async def stats_handler(request):
     """ Provide a page of statistics """
     try:
-        return web.json_response(await db_stats())
+        return web.json_response(await db_get_stats())
     except Exception as e:
         logging.error(f"Exams page error: {e}")
         return web.json_response([], status = 500)
@@ -679,27 +697,33 @@ async def manual_query(request):
         return web.json_response({'status': 'error',
                                   'message': str(e)})
 
-async def review(request):
+async def validate(request):
     """ Mark a study valid or invalid """
     data = await request.json()
+    # Get 'uid' and 'normal' from request
     uid = data.get('uid')
     normal = data.get('normal', None)
-    valid = db_review(uid, normal)
+    # Validate/Invalidate a study, send only the 'normal' attribute
+    valid = db_validate(uid, normal)
     logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {valid and 'validates' or 'invalidates'} the report.")
-    await broadcast_dashboard_update(event = "review", payload = {'uid': uid, 'valid': valid})
-    return web.json_response({'status': 'success', 'uid': uid, 'valid': valid})
+    payload = {'uid': uid, 'valid': valid}
+    await broadcast_dashboard_update(event = "validate", payload = payload)
+    return web.json_response({'status': 'success'}.update(payload))
 
 async def lookagain(request):
-    """ Send an exam back to queue """
+    """ Send an exam back to the queue """
     data = await request.json()
+    # Get 'uid' and custom 'prompt' from request
     uid = data.get('uid')
     prompt = data.get('prompt', None)
-    status = db_set_status(uid, 'queued')
-    logging.info(f"Exam {uid} sent to processing queue (look again).")
+    # Mark reviewed, invalid and re-enqueue
+    valid = db_validate(uid, valid = False, enqueue = True)
+    logging.info(f"Exam {uid} sent to the processing queue (look again).")
     # Notify the queue
     queue_event.set()
-    await broadcast_dashboard_update(event = "lookagain", payload = {'uid': uid, 'status': status})
-    return web.json_response({'status': 'success', 'uid': uid, 'status': status})
+    payload = {'uid': uid, 'valid': valid}
+    await broadcast_dashboard_update(event = "lookagain", payload = payload)
+    return web.json_response({'status': 'success'}.update(payload))
 
 @web.middleware
 async def auth_middleware(request, handler):
@@ -1062,7 +1086,7 @@ async def start_dashboard():
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', stats_handler)
-    app.router.add_post('/api/review', review)
+    app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/static/', path = IMAGES_DIR, name = 'static')
@@ -1076,7 +1100,7 @@ async def relay_to_openai_loop():
     """ Relay PNG files to OpenAI API with retries and dashboard update """
     while True:
         # Get one file from queue
-        (uid, name, id, age, created, protocol, region, report, positive) = db_queue_get()
+        (uid, name, id, age, created, protocol, region, report, positive, valid) = db_queue_get()
         # Wait here if there are no items in queue or there is no OpenAI server
         if not uid or active_openai_url is None:
             queue_event.clear()
@@ -1108,7 +1132,10 @@ async def relay_to_openai_loop():
             }
         }
         if report:
-            metadata['report'] = {'short': positive and 'yes' or 'no', 'text': report}
+            metadata['report'] = {'short': positive and 'yes' or 'no',
+                                  'text': report,
+                                  'positive': positive,
+                                  'valid': valid}
         # Try to send to AI
         result = False
         try:
@@ -1176,10 +1203,10 @@ async def query_retrieve_loop():
         logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
         await asyncio.sleep(900)
 
-async def purge_old_ignored_loop():
+async def purge_ignored_errors_loop():
     """ Daily cleanup of old ignored records """
     while True:
-        db_purge_old_ignored()
+        db_purge_ignored_errors()
         # Wait for 24 hours
         await asyncio.sleep(86400)
 
@@ -1212,7 +1239,7 @@ async def main():
     logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
      
     # Load exams
-    exams, total = db_load_exams(status = 'done')
+    exams, total = db_get_exams(status = 'done')
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
 
     # Start the asynchronous tasks
@@ -1220,7 +1247,7 @@ async def main():
     asyncio.create_task(openai_health_check())
     asyncio.create_task(relay_to_openai_loop())
     asyncio.create_task(query_retrieve_loop())
-    asyncio.create_task(purge_old_ignored_loop())
+    asyncio.create_task(purge_ignored_errors_loop())
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
