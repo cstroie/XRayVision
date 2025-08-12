@@ -104,7 +104,8 @@ dashboard = {
     'processing_file': None,
     'success_count': 0,
     'error_count': 0,
-    'ignore_count': 0
+    'ignore_count': 0,
+    'failure_count': 0
 }
 # OpenAI timings
 timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
@@ -141,27 +142,38 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     """ Load the exams from the database, with filters and pagination """
     conditions = []
     params = []
-    where = ""
-    # Update the conditions
+    
+    # Update the conditions with proper parameterization
     if 'reviewed' in filters:
-        conditions.append(f"reviewed = {filters['reviewed']}")
+        conditions.append("reviewed = ?")
+        params.append(filters['reviewed'])
     if 'positive' in filters:
-        conditions.append(f"positive = {filters['positive']}")
+        conditions.append("positive = ?")
+        params.append(filters['positive'])
     if 'valid' in filters:
-        conditions.append(f"valid = {filters['valid']}")
+        conditions.append("valid = ?")
+        params.append(filters['valid'])
     if 'region' in filters:
-        conditions.append(f"LOWER(region) LIKE '%{filters['region'].lower()}%'")
+        conditions.append("LOWER(region) LIKE ?")
+        params.append(f"%{filters['region'].lower()}%")
     if 'status' in filters:
-        conditions.append(f"LOWER(status) = '{filters['status'].lower()}'")
+        conditions.append("LOWER(status) = ?")
+        params.append(filters['status'].lower())
     else:
         conditions.append("status = 'done'")
     if 'search' in filters:
-        #conditions.append(f"(LOWER(uid) LIKE '%{filters['search']}%' OR LOWER(name) LIKE '%{filters['search']}%' OR LOWER(report) LIKE '%{filters['search']}%')")
-        conditions.append(f"LOWER(name) LIKE '%{filters['search']}%'")
+        conditions.append("LOWER(name) LIKE ?")
+        params.append(f"%{filters['search']}%")
+    
+    # Build WHERE clause
+    where = ""
     if conditions:
         where = "WHERE " + " AND ".join(conditions)
+    
     # Apply the limits (pagination)
-    query = f"SELECT * FROM exams {where} ORDER BY created DESC LIMIT {limit} OFFSET {offset}"
+    query = f"SELECT * FROM exams {where} ORDER BY created DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
     # Get the exams
     exams = []
     with sqlite3.connect(DB_FILE) as conn:
@@ -195,9 +207,11 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             })
         # Get the total for pagination
         count_query = 'SELECT COUNT(*) FROM exams'
+        count_params = []
         if conditions:
             count_query += ' WHERE ' + " AND ".join(conditions)
-        total = conn.execute(count_query).fetchone()[0]
+            count_params = params[:-2]  # Exclude limit and offset parameters
+        total = conn.execute(count_query, count_params).fetchone()[0]
     return exams, total
 
 def db_add_exam(info, report = None, positive = None):
@@ -471,7 +485,10 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
             # Check if the report is positive
             result = conn.execute("SELECT positive FROM exams WHERE uid = ?", (uid,)).fetchone()
             # Valid when review matches prediction
-            valid = bool(normal) != bool(result[0])
+            if result and result[0] is not None:
+                valid = bool(normal) != bool(result[0])
+            else:
+                valid = True
         # Update the entry
         columns = []
         params = []
@@ -488,7 +505,7 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
 def db_set_status(uid, status):
     """ Set the specified satatus for uid """
     with sqlite3.connect(DB_FILE) as conn:
-        conn.execute(f'UPDATE exams SET status = "{status}" WHERE uid = ?', (uid,))
+        conn.execute("UPDATE exams SET status = ? WHERE uid = ?", (status, uid))
     # Return the status
     return status
 
