@@ -286,13 +286,16 @@ async def db_get_stats():
         stats["positive"] = row[2] or 0
         stats["invalid"] = row[3] or 0
 
-        # Get processing time statistics
+        # Get processing time statistics (last week only)
         cursor.execute("""
             SELECT 
                 AVG(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) AS avg_processing_time,
                 COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) + 1) AS throughput
             FROM exams
-            WHERE status LIKE 'done' AND reported IS NOT NULL AND created IS NOT NULL
+            WHERE status LIKE 'done' 
+              AND reported IS NOT NULL 
+              AND created IS NOT NULL
+              AND reported >= datetime('now', '-7 days')
         """)
         timing_row = cursor.fetchone()
         if timing_row and timing_row[0] is not None:
