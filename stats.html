@@ -184,14 +184,6 @@
                 <strong>Throughput</strong>
                 <span id="throughput">0/h</span>
             </article>
-            <article>
-                <strong>Errors</strong>
-                <span id="errors">0</span>
-            </article>
-            <article>
-                <strong>Ignored</strong>
-                <span id="ignored">0</span>
-            </article>
         </div>
     </header>
 
@@ -270,8 +262,6 @@
         document.getElementById('recall').textContent = `${recall}%`;
         document.getElementById('avg-time').textContent = data.avg_processing_time ? `${data.avg_processing_time}s` : '0s';
         document.getElementById('throughput').textContent = data.throughput ? `${data.throughput}/h` : '0/h';
-        document.getElementById('errors').textContent = data.error_stats.error || 0;
-        document.getElementById('ignored').textContent = data.error_stats.ignore || 0;
 
         // Table
         const tbody = document.querySelector('#regionStats tbody');
