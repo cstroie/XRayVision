@@ -408,16 +408,19 @@
                     const playPromise = chime.play();
                     if (playPromise !== undefined) {
                         playPromise.then(() => {
-                            // Reset flag when audio ends
-                            chime.addEventListener('ended', function onEnded() {
-                                isPlayingChime = false;
-                                chime.removeEventListener('ended', onEnded);
-                            }, { once: true });
+                            isPlayingChime = false;
                         }).catch(error => {
                             console.warn('Chime play failed:', error);
                             isPlayingChime = false;
                         });
+                    } else {
+                        // Fallback for browsers that don't return a promise
+                        chime.addEventListener('ended', function() {
+                            isPlayingChime = false;
+                        }, { once: true });
                     }
+                } else {
+                    isPlayingChime = false;
                 }
             } catch (error) {
                 console.warn('Error playing chime:', error);
