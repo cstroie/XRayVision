@@ -438,7 +438,7 @@
                 <span id="processing">Idle</span>
             </article>
             <article>
-                <strong>Processed (7d)</strong>
+                <strong>Processed</strong>
                 <span id="success">0</span>
             </article>
             <article>
@@ -615,12 +615,9 @@
                 if (data.dashboard !== undefined) {
                     document.getElementById('queue').innerHTML = data.dashboard.queue_size;
                     document.getElementById('processing').innerHTML = data.dashboard.processing_file || 'Idle';
-                    document.getElementById('success').innerHTML = data.dashboard.success_count;
-                    document.getElementById('failure').innerHTML = data.dashboard.failure_count;
-                }
-                if (data.error_stats !== undefined) {
-                    document.getElementById('errors').innerHTML = data.error_stats.error || 0;
-                    document.getElementById('ignored').innerHTML = data.error_stats.ignore || 0;
+                    document.getElementById('success').innerHTML = data.dashboard.success_count || 0;
+                    document.getElementById('errors').innerHTML = data.dashboard.error_count || 0;
+                    document.getElementById('ignored').innerHTML = data.dashboard.ignore_count || 0;
                 }
                 if (data.openai !== undefined) {
                     if (data.openai.health.pri)
