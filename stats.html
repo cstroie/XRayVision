@@ -34,43 +34,60 @@
 
     <header>
         <div class="grid">
-            <article><strong>Total exams:</strong> <span id="total">0</span></article>
-            <article><strong>Reviewed:</strong> <span id="reviewed">0</span></article>
-            <article><strong>Positive reports:</strong> <span id="positive">0</span></article>
-            <article><strong>Invalid reports:</strong> <span id="invalid">0</span></article>
+            <article>
+                <h3>Total Exams</h3>
+                <p><span id="total">0</span></p>
+            </article>
+            <article>
+                <h3>Reviewed</h3>
+                <p><span id="reviewed">0</span></p>
+            </article>
+            <article>
+                <h3>Positive Reports</h3>
+                <p><span id="positive">0</span></p>
+            </article>
+            <article>
+                <h3>Invalid Reports</h3>
+                <p><span id="invalid">0</span></p>
+            </article>
         </div>
     </header>
 
     <main>
         <section>
-            <div><strong>Breakdown by anatomical region</strong></div>
-            <table id="regionStats" role="grid">
-                <thead>
-                    <tr>
-                        <th>Region</th>
-                        <th>Total</th>
-                        <th>Reviewed</th>
-                        <th>Positive</th>
-                        <th>Invalid</th>
-                        <th>PPV</th>
-                        <th>PNV</th>
-                        <th>Sensitivity</th>
-                        <th>Specificity</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- dynamically populated -->
-                </tbody>
-                <tfoot>
-                    <!-- dynamically populated -->
-                </tfoot>
-            </table>
+            <h2>Breakdown by Anatomical Region</h2>
+            <div class="overflow-auto">
+                <table id="regionStats" role="grid">
+                    <thead>
+                        <tr>
+                            <th>Region</th>
+                            <th>Total</th>
+                            <th>Reviewed</th>
+                            <th>Positive</th>
+                            <th>Invalid</th>
+                            <th>PPV (%)</th>
+                            <th>PNV (%)</th>
+                            <th>Sensitivity (%)</th>
+                            <th>Specificity (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- dynamically populated -->
+                    </tbody>
+                    <tfoot>
+                        <!-- dynamically populated -->
+                    </tfoot>
+                </table>
+            </div>
         </section>
+        
         <section class="grid">
             <article>
+                <h3>Studies by Anatomic Region</h3>
                 <canvas id="regionChart" width="400" height="200"></canvas>
             </article>
             <article>
+                <h3>Global Summary</h3>
                 <canvas id="globalChart" width="400" height="200"></canvas>
             </article>
         </section>
