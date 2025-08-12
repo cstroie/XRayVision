@@ -110,6 +110,14 @@
 
         .chart-container h3 {
             margin-top: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chart-container h3 button {
+            font-size: 0.9rem;
+            padding: 0.25rem 0.5rem;
         }
 
         table {
@@ -126,9 +134,44 @@
             background-color: rgba(50, 50, 60, 0.3);
         }
 
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--pico-muted-color);
+        }
+
+        .error {
+            text-align: center;
+            padding: 2rem;
+            color: var(--pico-color-red-600);
+            background-color: var(--pico-color-red-900);
+            border-radius: var(--pico-border-radius);
+            margin: 1rem 0;
+        }
+
+        .refresh-btn {
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: flex-end;
+        }
+
         @media (max-width: 768px) {
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .chart-container {
+                padding: 1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .refresh-btn {
+                justify-content: center;
             }
         }
     </style>
@@ -145,6 +188,10 @@
             <li><a href="/about">About</a></li>
         </ul>
     </nav>
+
+    <div class="refresh-btn">
+        <button id="refreshBtn" class="secondary">Refresh Data</button>
+    </div>
 
     <header>
         <div class="grid stats-grid">
@@ -188,330 +235,511 @@
     </header>
 
     <main>
-        <section>
-            <h2>Breakdown by Anatomical Region</h2>
-            <div class="overflow-auto">
-                <table id="regionStats" role="grid">
-                    <thead>
-                        <tr>
-                            <th>Region</th>
-                            <th>Total</th>
-                            <th>Reviewed</th>
-                            <th>Positive</th>
-                            <th>Invalid</th>
-                            <th>PPV (%)</th>
-                            <th>PNV (%)</th>
-                            <th>Sensitivity (%)</th>
-                            <th>Specificity (%)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- dynamically populated -->
-                    </tbody>
-                    <tfoot>
-                        <!-- dynamically populated -->
-                    </tfoot>
-                </table>
+        <div id="loadingIndicator" class="loading">
+            <p>Loading statistics...</p>
+        </div>
+        
+        <div id="errorContainer" style="display: none;">
+            <div class="error">
+                <p id="errorMessage">Failed to load statistics. Please try again later.</p>
             </div>
-        </section>
-        
-        <section class="grid">
-            <article class="chart-container">
-                <h3>Studies by Anatomic Region</h3>
-                <canvas id="regionChart" width="400" height="200"></canvas>
-            </article>
-            <article class="chart-container">
-                <h3>Global Summary</h3>
-                <canvas id="globalChart" width="400" height="200"></canvas>
-            </article>
-        </section>
-        
-        <section class="chart-container">
-            <h3>Temporal Trends by Region (Last 30 Days)</h3>
-            <canvas id="trendsChart" width="800" height="400"></canvas>
-        </section>
-        
-        <section class="chart-container">
-            <h3>Monthly Trends by Region (Last 12 Months)</h3>
-            <canvas id="monthlyTrendsChart" width="800" height="400"></canvas>
+        </div>
+
+        <section id="statsContent" style="display: none;">
+            <section>
+                <h2>Breakdown by Anatomical Region</h2>
+                <div class="overflow-auto">
+                    <table id="regionStats" role="grid">
+                        <thead>
+                            <tr>
+                                <th>Region</th>
+                                <th>Total</th>
+                                <th>Reviewed</th>
+                                <th>Positive</th>
+                                <th>Invalid</th>
+                                <th>PPV (%)</th>
+                                <th>PNV (%)</th>
+                                <th>Sensitivity (%)</th>
+                                <th>Specificity (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- dynamically populated -->
+                        </tbody>
+                        <tfoot>
+                            <!-- dynamically populated -->
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+            
+            <section class="grid">
+                <article class="chart-container">
+                    <h3>
+                        Studies by Anatomic Region
+                        <button class="secondary outline" onclick="downloadChart('regionChart')">Download</button>
+                    </h3>
+                    <canvas id="regionChart" width="400" height="200"></canvas>
+                </article>
+                <article class="chart-container">
+                    <h3>
+                        Global Summary
+                        <button class="secondary outline" onclick="downloadChart('globalChart')">Download</button>
+                    </h3>
+                    <canvas id="globalChart" width="400" height="200"></canvas>
+                </article>
+            </section>
+            
+            <section class="chart-container">
+                <h3>
+                    Temporal Trends by Region (Last 30 Days)
+                    <button class="secondary outline" onclick="downloadChart('trendsChart')">Download</button>
+                </h3>
+                <canvas id="trendsChart" width="800" height="400"></canvas>
+            </section>
+            
+            <section class="chart-container">
+                <h3>
+                    Monthly Trends by Region (Last 12 Months)
+                    <button class="secondary outline" onclick="downloadChart('monthlyTrendsChart')">Download</button>
+                </h3>
+                <canvas id="monthlyTrendsChart" width="800" height="400"></canvas>
+            </section>
         </section>
     </main>
 
     <script>
-    fetch('/api/stats')
-    .then(res => res.json())
-    .then(data => {
-        document.getElementById('total').textContent = data.total;
-        document.getElementById('reviewed').textContent = data.reviewed;
-        document.getElementById('positive').textContent = data.positive;
-        document.getElementById('invalid').textContent = data.invalid;
-        
-        // Calculate additional metrics
-        const totalReviewed = data.reviewed;
-        const truePositives = Object.values(data.region).reduce((sum, region) => sum + region.tpos, 0);
-        const trueNegatives = Object.values(data.region).reduce((sum, region) => sum + region.tneg, 0);
-        const falsePositives = Object.values(data.region).reduce((sum, region) => sum + region.fpos, 0);
-        const falseNegatives = Object.values(data.region).reduce((sum, region) => sum + region.fneg, 0);
-        
-        const accuracy = totalReviewed > 0 ? ((truePositives + trueNegatives) / totalReviewed * 100).toFixed(1) : 0;
-        const precision = (truePositives + falsePositives) > 0 ? (truePositives / (truePositives + falsePositives) * 100).toFixed(1) : 0;
-        const recall = (truePositives + falseNegatives) > 0 ? (truePositives / (truePositives + falseNegatives) * 100).toFixed(1) : 0;
-        
-        document.getElementById('accuracy').textContent = `${accuracy}%`;
-        document.getElementById('precision').textContent = `${precision}%`;
-        document.getElementById('recall').textContent = `${recall}%`;
-        document.getElementById('avg-time').textContent = data.avg_processing_time ? `${data.avg_processing_time}s` : '0s';
-        document.getElementById('throughput').textContent = data.throughput ? `${data.throughput}/h` : '0/h';
+        // Consistent color palette
+        const chartColors = {
+            positive: '#2dd4bf',
+            negative: '#64748b',
+            falsePositive: '#f59e0b',
+            falseNegative: '#f87171',
+            total: '#0ea5e9',
+            invalid: '#f87171',
+            primary: '#0ea5e9',
+            secondary: '#2dd4bf',
+            accent: '#f59e0b'
+        };
 
-        // Table
-        const tbody = document.querySelector('#regionStats tbody');
-        tbody.innerHTML = '';
-        for (const [region, counts] of Object.entries(data.region)) {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <th scope="row">${region}</th>
-                <td>${counts.total}</td>
-                <td>${counts.reviewed}</td>
-                <td>${counts.positive}</td>
-                <td>${counts.invalid}</td>
-                <td>${counts.ppv}%</td>
-                <td>${counts.pnv}%</td>
-                <td>${counts.snsi}%</td>
-                <td>${counts.spci}%</td>
-            `;
-            tbody.appendChild(row);
-        }
-        const tfoot = document.querySelector('#regionStats tfoot');
-        // Calculate totals for all metrics
-        let totalTpos = 0, totalTneg = 0, totalFpos = 0, totalFneg = 0;
-        for (const [region, counts] of Object.entries(data.region)) {
-            totalTpos += counts.tpos;
-            totalTneg += counts.tneg;
-            totalFpos += counts.fpos;
-            totalFneg += counts.fneg;
-        }
-        // Calculate aggregate metrics
-        const totalPpv = (totalTpos + totalFpos) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFpos)) : '-';
-        const totalPnv = (totalTneg + totalFneg) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFneg)) : '-';
-        const totalSnsi = (totalTpos + totalFneg) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFneg)) : '-';
-        const totalSpci = (totalTneg + totalFpos) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFpos)) : '-';
+        // Chart instances
+        let regionChart, globalChart, trendsChart, monthlyTrendsChart;
         
-        tfoot.innerHTML = `
-        <tr>
-            <th scope="row">Total</th>
-            <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
-            <td>${totalPpv}%</td><td>${totalPnv}%</td><td>${totalSnsi}%</td><td>${totalSpci}%</td>
-        </tr>`;
-
-        // Chart: region breakdown
-        const regionLabels = [];
-        const totalData = [];
-        const positiveData = [];
-        const invalidData = [];
-        const tposData = [];
-        const tnegData = [];
-        const fposData = [];
-        const fnegData = [];
-
-        for (const [region, counts] of Object.entries(data.region)) {
-            regionLabels.push(region);
-            totalData.push(counts.total);
-            positiveData.push(counts.positive);
-            invalidData.push(counts.invalid);
-            tposData.push(counts.tpos);
-            tnegData.push(counts.tneg);
-            fposData.push(counts.fpos);
-            fnegData.push(counts.fneg);
-        }
-
-        new Chart(document.getElementById("regionChart"), {
-        type: 'bar',
-        data: {
-            labels: regionLabels,
-            datasets: [
-                /*{ label: 'Total', data: totalData, backgroundColor: '#017FC0' },
-                { label: 'Positive', data: positiveData, backgroundColor: '#398712' },
-                { label: 'Invalid', data: invalidData, backgroundColor: '#D24317' }*/
-                { label: 'Positive', data: tposData, backgroundColor: '#2dd4bf' },
-                { label: 'Negative', data: tnegData, backgroundColor: '#64748b' },
-                { label: 'False positive', data: fposData, backgroundColor: '#f59e0b' },
-                { label: 'False negative', data: fnegData, backgroundColor: '#f87171' }
-            ]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'top' },
-                title: {
-                    display: true,
-                    text: 'Studies by anatomic region'
-                }
-            },
-            scales: {
-                x: {
-                    stacked: true
-                },
-                y: {
-                    stacked: true
-                }
-            },
-            indexAxis: 'y'
-        }
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            document.getElementById('refreshBtn').addEventListener('click', loadStats);
         });
 
-        // Chart: Global summary
-        new Chart(document.getElementById("globalChart"), {
-        type: 'bar',
-        data: {
-            labels: ['Total', 'Positive', 'Invalid'],
-            datasets: [{
-                label: 'Counts',
-                data: [data.total, data.positive, data.invalid],
-                backgroundColor: [
-                    '#0ea5e9',
-                    '#2dd4bf',
-                    '#f87171'
-                ]
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false },
-                title: {
-                    display: true,
-                    text: 'Global summary'
+        function showLoading() {
+            document.getElementById('loadingIndicator').style.display = 'block';
+            document.getElementById('statsContent').style.display = 'none';
+            document.getElementById('errorContainer').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingIndicator').style.display = 'none';
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message || 'Failed to load statistics. Please try again later.';
+            document.getElementById('errorContainer').style.display = 'block';
+            document.getElementById('statsContent').style.display = 'none';
+        }
+
+        function showContent() {
+            document.getElementById('statsContent').style.display = 'block';
+            document.getElementById('errorContainer').style.display = 'none';
+        }
+
+        function loadStats() {
+            showLoading();
+            
+            fetch('/api/stats')
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
                 }
+                return res.json();
+            })
+            .then(data => {
+                hideLoading();
+                updateStats(data);
+                showContent();
+            })
+            .catch(error => {
+                console.error('Error loading stats:', error);
+                hideLoading();
+                showError('Failed to load statistics. Please check your connection and try again.');
+            });
+        }
+
+        function updateStats(data) {
+            document.getElementById('total').textContent = data.total;
+            document.getElementById('reviewed').textContent = data.reviewed;
+            document.getElementById('positive').textContent = data.positive;
+            document.getElementById('invalid').textContent = data.invalid;
+            
+            // Calculate additional metrics
+            const totalReviewed = data.reviewed;
+            const truePositives = Object.values(data.region).reduce((sum, region) => sum + (region.tpos || 0), 0);
+            const trueNegatives = Object.values(data.region).reduce((sum, region) => sum + (region.tneg || 0), 0);
+            const falsePositives = Object.values(data.region).reduce((sum, region) => sum + (region.fpos || 0), 0);
+            const falseNegatives = Object.values(data.region).reduce((sum, region) => sum + (region.fneg || 0), 0);
+            
+            const accuracy = totalReviewed > 0 ? ((truePositives + trueNegatives) / totalReviewed * 100).toFixed(1) : 0;
+            const precision = (truePositives + falsePositives) > 0 ? (truePositives / (truePositives + falsePositives) * 100).toFixed(1) : 0;
+            const recall = (truePositives + falseNegatives) > 0 ? (truePositives / (truePositives + falseNegatives) * 100).toFixed(1) : 0;
+            
+            document.getElementById('accuracy').textContent = `${accuracy}%`;
+            document.getElementById('precision').textContent = `${precision}%`;
+            document.getElementById('recall').textContent = `${recall}%`;
+            document.getElementById('avg-time').textContent = data.avg_processing_time ? `${data.avg_processing_time}s` : '0s';
+            document.getElementById('throughput').textContent = data.throughput ? `${data.throughput}/h` : '0/h';
+
+            // Table
+            const tbody = document.querySelector('#regionStats tbody');
+            tbody.innerHTML = '';
+            for (const [region, counts] of Object.entries(data.region)) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <th scope="row">${region}</th>
+                    <td>${counts.total}</td>
+                    <td>${counts.reviewed}</td>
+                    <td>${counts.positive}</td>
+                    <td>${counts.invalid}</td>
+                    <td>${counts.ppv !== '-' ? counts.ppv + '%' : '-'}</td>
+                    <td>${counts.pnv !== '-' ? counts.pnv + '%' : '-'}</td>
+                    <td>${counts.snsi !== '-' ? counts.snsi + '%' : '-'}</td>
+                    <td>${counts.spci !== '-' ? counts.spci + '%' : '-'}</td>
+                `;
+                tbody.appendChild(row);
             }
-        }
-        });
-        
-        // Chart: Temporal trends
-        const trendDates = [...new Set(Object.values(data.trends).flatMap(region => region.map(item => item.date)))].sort();
-        
-        // Prepare datasets for each region
-        const trendDatasets = [];
-        const regionColors = [
-            '#0ea5e9', '#2dd4bf', '#f59e0b', '#f87171', '#a78bfa', 
-            '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
-        ];
-        let colorIndex = 0;
-        
-        for (const [region, regionData] of Object.entries(data.trends)) {
-            // Create data points for all dates
-            const dataPoints = trendDates.map(date => {
-                const dayData = regionData.find(item => item.date === date);
-                return dayData ? dayData.total : 0;
-            });
+            const tfoot = document.querySelector('#regionStats tfoot');
+            // Calculate totals for all metrics
+            let totalTpos = 0, totalTneg = 0, totalFpos = 0, totalFneg = 0;
+            for (const [region, counts] of Object.entries(data.region)) {
+                totalTpos += counts.tpos || 0;
+                totalTneg += counts.tneg || 0;
+                totalFpos += counts.fpos || 0;
+                totalFneg += counts.fneg || 0;
+            }
+            // Calculate aggregate metrics
+            const totalPpv = (totalTpos + totalFpos) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFpos)) : '-';
+            const totalPnv = (totalTneg + totalFneg) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFneg)) : '-';
+            const totalSnsi = (totalTpos + totalFneg) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFneg)) : '-';
+            const totalSpci = (totalTneg + totalFpos) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFpos)) : '-';
             
-            trendDatasets.push({
-                label: region,
-                data: dataPoints,
-                borderColor: regionColors[colorIndex % regionColors.length],
-                backgroundColor: regionColors[colorIndex % regionColors.length] + '40', // Add transparency
-                fill: false,
-                tension: 0.1
-            });
-            
-            colorIndex++;
-        }
-        
-        new Chart(document.getElementById("trendsChart"), {
-            type: 'line',
-            data: {
-                labels: trendDates,
-                datasets: trendDatasets
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { position: 'top' },
-                    title: {
-                        display: true,
-                        text: 'Studies by Region (Last 30 Days)'
-                    }
+            tfoot.innerHTML = `
+            <tr>
+                <th scope="row">Total</th>
+                <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
+                <td>${totalPpv}%</td><td>${totalPnv}%</td><td>${totalSnsi}%</td><td>${totalSpci}%</td>
+            </tr>`;
+
+            // Destroy existing charts if they exist
+            if (regionChart) regionChart.destroy();
+            if (globalChart) globalChart.destroy();
+            if (trendsChart) trendsChart.destroy();
+            if (monthlyTrendsChart) monthlyTrendsChart.destroy();
+
+            // Chart: region breakdown
+            const regionLabels = [];
+            const tposData = [];
+            const tnegData = [];
+            const fposData = [];
+            const fnegData = [];
+
+            for (const [region, counts] of Object.entries(data.region)) {
+                regionLabels.push(region);
+                tposData.push(counts.tpos || 0);
+                tnegData.push(counts.tneg || 0);
+                fposData.push(counts.fpos || 0);
+                fnegData.push(counts.fneg || 0);
+            }
+
+            regionChart = new Chart(document.getElementById("regionChart"), {
+                type: 'bar',
+                data: {
+                    labels: regionLabels,
+                    datasets: [
+                        { 
+                            label: 'True Positive', 
+                            data: tposData, 
+                            backgroundColor: chartColors.positive,
+                            borderColor: chartColors.positive,
+                            borderWidth: 1
+                        },
+                        { 
+                            label: 'True Negative', 
+                            data: tnegData, 
+                            backgroundColor: chartColors.negative,
+                            borderColor: chartColors.negative,
+                            borderWidth: 1
+                        },
+                        { 
+                            label: 'False Positive', 
+                            data: fposData, 
+                            backgroundColor: chartColors.falsePositive,
+                            borderColor: chartColors.falsePositive,
+                            borderWidth: 1
+                        },
+                        { 
+                            label: 'False Negative', 
+                            data: fnegData, 
+                            backgroundColor: chartColors.falseNegative,
+                            borderColor: chartColors.falseNegative,
+                            borderWidth: 1
+                        }
+                    ]
                 },
-                scales: {
-                    x: {
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
                         title: {
-                            display: true,
-                            text: 'Date'
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
                         }
                     },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Number of Studies'
+                    scales: {
+                        x: {
+                            stacked: true,
+                            grid: {
+                                display: false
+                            }
                         },
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-        
-        // Chart: Monthly trends
-        const monthlyTrendMonths = [...new Set(Object.values(data.monthly_trends).flatMap(region => region.map(item => item.month)))].sort();
-        
-        // Prepare datasets for each region
-        const monthlyTrendDatasets = [];
-        const monthlyRegionColors = [
-            '#0ea5e9', '#2dd4bf', '#f59e0b', '#f87171', '#a78bfa', 
-            '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
-        ];
-        let monthlyColorIndex = 0;
-        
-        for (const [region, regionData] of Object.entries(data.monthly_trends)) {
-            // Create data points for all months
-            const dataPoints = monthlyTrendMonths.map(month => {
-                const monthData = regionData.find(item => item.month === month);
-                return monthData ? monthData.total : 0;
-            });
-            
-            monthlyTrendDatasets.push({
-                label: region,
-                data: dataPoints,
-                borderColor: monthlyRegionColors[monthlyColorIndex % monthlyRegionColors.length],
-                backgroundColor: monthlyRegionColors[monthlyColorIndex % monthlyRegionColors.length] + '40', // Add transparency
-                fill: false,
-                tension: 0.1
-            });
-            
-            monthlyColorIndex++;
-        }
-        
-        new Chart(document.getElementById("monthlyTrendsChart"), {
-            type: 'line',
-            data: {
-                labels: monthlyTrendMonths,
-                datasets: monthlyTrendDatasets
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { position: 'top' },
-                    title: {
-                        display: true,
-                        text: 'Studies by Region (Last 12 Months)'
-                    }
-                },
-                scales: {
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Month'
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
                         }
                     },
-                    y: {
-                        title: {
-                            display: true,
-                            text: 'Number of Studies'
+                    indexAxis: 'y'
+                }
+            });
+
+            // Chart: Global summary
+            globalChart = new Chart(document.getElementById("globalChart"), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Positive', 'Negative', 'Invalid'],
+                    datasets: [{
+                        data: [data.positive, data.total - data.positive - data.invalid, data.invalid],
+                        backgroundColor: [
+                            chartColors.positive,
+                            chartColors.negative,
+                            chartColors.invalid
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'right',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
                         },
-                        beginAtZero: true
+                        title: {
+                            display: false
+                        }
+                    },
+                    cutout: '60%'
+                }
+            });
+            
+            // Chart: Temporal trends
+            const trendDates = [...new Set(Object.values(data.trends).flatMap(region => region.map(item => item.date)))].sort();
+            
+            // Prepare datasets for each region
+            const trendDatasets = [];
+            const regionColors = [
+                chartColors.primary, chartColors.secondary, chartColors.accent, 
+                '#a78bfa', '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
+            ];
+            let colorIndex = 0;
+            
+            for (const [region, regionData] of Object.entries(data.trends)) {
+                // Create data points for all dates
+                const dataPoints = trendDates.map(date => {
+                    const dayData = regionData.find(item => item.date === date);
+                    return dayData ? dayData.total : 0;
+                });
+                
+                trendDatasets.push({
+                    label: region,
+                    data: dataPoints,
+                    borderColor: regionColors[colorIndex % regionColors.length],
+                    backgroundColor: regionColors[colorIndex % regionColors.length] + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3
+                });
+                
+                colorIndex++;
+            }
+            
+            trendsChart = new Chart(document.getElementById("trendsChart"), {
+                type: 'line',
+                data: {
+                    labels: trendDates,
+                    datasets: trendDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Number of Studies',
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
                     }
                 }
+            });
+            
+            // Chart: Monthly trends
+            const monthlyTrendMonths = [...new Set(Object.values(data.monthly_trends).flatMap(region => region.map(item => item.month)))].sort();
+            
+            // Prepare datasets for each region
+            const monthlyTrendDatasets = [];
+            const monthlyRegionColors = [
+                chartColors.primary, chartColors.secondary, chartColors.accent,
+                '#a78bfa', '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
+            ];
+            let monthlyColorIndex = 0;
+            
+            for (const [region, regionData] of Object.entries(data.monthly_trends)) {
+                // Create data points for all months
+                const dataPoints = monthlyTrendMonths.map(month => {
+                    const monthData = regionData.find(item => item.month === month);
+                    return monthData ? monthData.total : 0;
+                });
+                
+                monthlyTrendDatasets.push({
+                    label: region,
+                    data: dataPoints,
+                    borderColor: monthlyRegionColors[monthlyColorIndex % monthlyRegionColors.length],
+                    backgroundColor: monthlyRegionColors[monthlyColorIndex % monthlyRegionColors.length] + '20',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 3
+                });
+                
+                monthlyColorIndex++;
             }
-        });
-    });
+            
+            monthlyTrendsChart = new Chart(document.getElementById("monthlyTrendsChart"), {
+                type: 'line',
+                data: {
+                    labels: monthlyTrendMonths,
+                    datasets: monthlyTrendDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Month',
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Number of Studies',
+                                color: 'rgba(255, 255, 255, 0.7)'
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function downloadChart(chartId) {
+            const canvas = document.getElementById(chartId);
+            const url = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `xrayvision-${chartId}-${new Date().toISOString().slice(0, 10)}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
     </script>
 </body>
 
