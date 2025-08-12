@@ -56,6 +56,7 @@ REMOTE_AE_TITLE = '3DNETCLOUD'
 REMOTE_AE_IP = '192.168.3.50'
 REMOTE_AE_PORT = 104
 IMAGES_DIR = 'images'
+STATIC_DIR = 'static'
 DB_FILE = os.path.join(IMAGES_DIR, "xrayvision.db")
 
 SYS_PROMPT = """You are a smart radiologist working in ER. 
@@ -75,6 +76,8 @@ REGIONS = ["chest", "abdominal", "nasal bones", "maxilar and frontal sinus", "cl
 
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok = True)
+# Static directory
+os.makedirs(STATIC_DIR, exist_ok = True)
 
 # Global variables
 main_loop = None
@@ -735,16 +738,16 @@ def dicom_to_png(dicom_file, max_size = 800):
 
 # WebSocket and WebServer operations
 async def serve_dashboard_page(request):
-    return web.FileResponse(path = "dashboard.html")
+    return web.FileResponse(path = os.path.join(STATIC_DIR, "dashboard.html"))
 
 async def serve_stats_page(request):
-    return web.FileResponse(path = "stats.html")
+    return web.FileResponse(path = os.path.join(STATIC_DIR, "stats.html"))
 
 async def serve_about_page(request):
-    return web.FileResponse(path = "about.html")
+    return web.FileResponse(path = os.path.join(STATIC_DIR, "about.html"))
 
 async def serve_favicon(request):
-    return web.FileResponse(path = "favicon.ico")
+    return web.FileResponse(path = os.path.join(STATIC_DIR, "favicon.ico"))
 
 async def websocket_handler(request):
     """ Handle each WebSocket client """
@@ -858,7 +861,7 @@ async def lookagain(request):
 async def auth_middleware(request, handler):
     """ Basic authentication middleware """
     # Skip auth for static files and OPTIONS requests
-    if request.path.startswith('/static/') or request.method == 'OPTIONS':
+    if request.path.startswith('/static/') or request.path.startswith('/images/') or request.method == 'OPTIONS':
         return await handler(request)
     auth_header = request.headers.get('Authorization', '')
     if not auth_header.startswith('Basic '):
@@ -1226,6 +1229,7 @@ async def start_dashboard():
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
+    app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
