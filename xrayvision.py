@@ -260,7 +260,8 @@ async def db_get_stats():
         "reviewed": 0,
         "positive": 0,
         "invalid": 0,
-        "region": {}
+        "region": {},
+        "trends": {}
     }
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -308,6 +309,31 @@ async def db_get_stats():
                 stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
+        
+        # Get temporal trends (last 30 days)
+        cursor.execute("""
+            SELECT DATE(created) as date,
+                   region,
+                   COUNT(*) as total,
+                   SUM(positive = 1) as positive
+            FROM exams
+            WHERE status LIKE 'done'
+              AND created >= date('now', '-30 days')
+            GROUP BY DATE(created), region
+            ORDER BY date
+        """)
+        trends_data = cursor.fetchall()
+        
+        # Process trends data into a structured format
+        for row in trends_data:
+            date, region, total, positive = row
+            if region not in stats["trends"]:
+                stats["trends"][region] = []
+            stats["trends"][region].append({
+                "date": date,
+                "total": total,
+                "positive": positive
+            })
     # Return stats
     return stats
 

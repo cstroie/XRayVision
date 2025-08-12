@@ -221,6 +221,11 @@
                 <canvas id="globalChart" width="400" height="200"></canvas>
             </article>
         </section>
+        
+        <section class="chart-container">
+            <h3>Temporal Trends by Region (Last 30 Days)</h3>
+            <canvas id="trendsChart" width="800" height="400"></canvas>
+        </section>
     </main>
 
     <script>
@@ -355,6 +360,69 @@
                 }
             }
         }
+        });
+        
+        // Chart: Temporal trends
+        const trendDates = [...new Set(Object.values(data.trends).flatMap(region => region.map(item => item.date)))].sort();
+        
+        // Prepare datasets for each region
+        const trendDatasets = [];
+        const regionColors = [
+            '#0ea5e9', '#2dd4bf', '#f59e0b', '#f87171', '#a78bfa', 
+            '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
+        ];
+        let colorIndex = 0;
+        
+        for (const [region, regionData] of Object.entries(data.trends)) {
+            // Create data points for all dates
+            const dataPoints = trendDates.map(date => {
+                const dayData = regionData.find(item => item.date === date);
+                return dayData ? dayData.total : 0;
+            });
+            
+            trendDatasets.push({
+                label: region,
+                data: dataPoints,
+                borderColor: regionColors[colorIndex % regionColors.length],
+                backgroundColor: regionColors[colorIndex % regionColors.length] + '40', // Add transparency
+                fill: false,
+                tension: 0.1
+            });
+            
+            colorIndex++;
+        }
+        
+        new Chart(document.getElementById("trendsChart"), {
+            type: 'line',
+            data: {
+                labels: trendDates,
+                datasets: trendDatasets
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: {
+                        display: true,
+                        text: 'Studies by Region (Last 30 Days)'
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Number of Studies'
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
         });
     });
     </script>
