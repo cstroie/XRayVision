@@ -264,7 +264,8 @@ async def db_get_stats():
         "trends": {},
         "monthly_trends": {},
         "avg_processing_time": 0,
-        "throughput": 0
+        "throughput": 0,
+        "error_stats": {}
     }
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -296,6 +297,17 @@ async def db_get_stats():
         if timing_row and timing_row[0] is not None:
             stats["avg_processing_time"] = round(timing_row[0], 2)
             stats["throughput"] = round(timing_row[1] * 3600, 2)  # exams per hour
+
+        # Get error statistics
+        cursor.execute("""
+            SELECT status, COUNT(*) as count
+            FROM exams
+            WHERE status IN ('error', 'ignore')
+            GROUP BY status
+        """)
+        error_data = cursor.fetchall()
+        for row in error_data:
+            stats["error_stats"][row[0]] = row[1]
 
         # Totals per anatomic part
         cursor.execute("""
