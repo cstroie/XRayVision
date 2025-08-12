@@ -57,7 +57,7 @@ REMOTE_AE_IP = '192.168.3.50'
 REMOTE_AE_PORT = 104
 IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
-DB_FILE = "xrayvision.db"
+DB_FILE = os.getenv("XRAYVISION_DB_PATH", "xrayvision.db")
 
 SYS_PROMPT = """You are a smart radiologist working in ER. 
 You only output mandatory JSON to a RESTful API, in the following format: {"short": "yes or no", "report": "REPORT"} where "yes or no" is the short answer, only "yes" and "no" being allowed, and "REPORT" is the full description of the findings, like a radiologist would write.
