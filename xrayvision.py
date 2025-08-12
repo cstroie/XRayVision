@@ -196,7 +196,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         total = conn.execute(count_query).fetchone()[0]
     return exams, total
 
-def db_add_exam(uid, metadata, report = None, positive = None):
+def db_add_exam(info, report = None, positive = None):
     """ Add one row to the database """
     # Check if we have a new report or just enqueue an exam
     if report:
@@ -206,9 +206,9 @@ def db_add_exam(uid, metadata, report = None, positive = None):
         reviewed = False
         status = 'done'
         # Check if we have previous report
-        if 'report' in metadata:
+        if 'report' in info:
             # There is an previous also, check validity and new positivity
-            if not metadata['report']['valid'] and metadata['report']['positive'] != positive:
+            if not info['report']['valid'] and info['report']['positive'] != positive:
                 # It was invalid and now positivity flipped, mark it as reviewed
                 reviewed = True
                 logging.info(f"Exam {uid} marked as reviewed and valid after being reanalyzed.")
@@ -224,14 +224,14 @@ def db_add_exam(uid, metadata, report = None, positive = None):
     # Insert into database
     with sqlite3.connect(DB_FILE) as conn:
         values = (
-            uid,
-            metadata["patient"]["name"],
-            metadata["patient"]["id"],
-            metadata["patient"]["age"],
-            metadata["patient"]["sex"],
-            metadata["exam"]['created'],
-            metadata["exam"]["protocol"],
-            metadata['exam']['region'],
+            info['uid'],
+            info["patient"]["name"],
+            info["patient"]["id"],
+            info["patient"]["age"],
+            info["patient"]["sex"],
+            info["exam"]['created'],
+            info["exam"]["protocol"],
+            info['exam']['region'],
             now,
             report,
             poz,
@@ -446,11 +446,11 @@ def dicom_store(event):
         # Save the DICOM file
         ds.save_as(dicom_file, enforce_file_format = True)
         logging.info(f"DICOM file saved to {dicom_file}")
-        # Get some metadata for queueing
+        # Get some info for queueing
         try:
-            metadata = get_dicom_metadata(ds)
+            info = get_dicom_info(ds)
         except Exception as e:
-            logging.error(f"Error getting metadata {dicom_file}: {e}")
+            logging.error(f"Error getting info {dicom_file}: {e}")
             return 0x0000
         # Try to convert to PNG
         png_file = None
@@ -461,7 +461,7 @@ def dicom_store(event):
         # Check the result
         if png_file:
             # Add to processing queue
-            db_add_exam(uid, metadata)
+            db_add_exam(info)
             # Notify the queue
             queue_event.set()
             asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
@@ -485,11 +485,11 @@ async def load_existing_dicom_files():
                 except Exception as e:
                     logging.error(f"Error reading the dataset from DICOM file {dicom_file}: {e}")
                     continue
-                # Get some metadata for queueing
+                # Get some info for queueing
                 try:
-                    metadata = get_dicom_metadata(ds)
+                    info = get_dicom_info(ds)
                 except Exception as e:
-                    logging.error(f"Error getting metadata {dicom_file}: {e}")
+                    logging.error(f"Error getting info {dicom_file}: {e}")
                     continue
                 # Try to convert to PNG
                 png_file = None
@@ -500,14 +500,14 @@ async def load_existing_dicom_files():
                 # Check the result
                 if png_file:
                     # Add to processing queue
-                    db_add_exam(uid, metadata)
+                    db_add_exam(info)
                     # Notify the queue
                     queue_event.set()
     # At the end, update the dashboard
     await broadcast_dashboard_update()
 
-def get_dicom_metadata(ds):
-    """ Read and return the metadata from a DICOM file """
+def get_dicom_info(ds):
+    """ Read and return the info from a DICOM file """
     age = -1
     if 'PatientAge' in ds:
         age = str(ds.PatientAge).lower().replace("y", "").strip()
@@ -528,7 +528,8 @@ def get_dicom_metadata(ds):
     else:
         created = now
 
-    metadata = {
+    info = {
+        'uid': str(ds.SOPInstanceUID),
         'patient': {
             'name':  str(ds.PatientName),
             'id':    str(ds.PatientID),
@@ -543,13 +544,14 @@ def get_dicom_metadata(ds):
         }
     }
     # Check gender
-    if not metadata['patient']['sex'] in ['M', 'F', 'O']:
+    if not info['patient']['sex'] in ['M', 'F', 'O']:
         # Try to determine from ID
         try:
-            metadata['patient']['sex'] = int(metadata['patient']['id'][0]) % 2 == 0 and 'F' or 'M'
+            info['patient']['sex'] = int(info['patient']['id'][0]) % 2 == 0 and 'F' or 'M'
         except:
-            metadata['patient']['sex'] = 'O'
-    return metadata
+            info['patient']['sex'] = 'O'
+    # Return the dicom info
+    return info
 
 # Image processing operations
 def adjust_gamma(image, gamma = 1.2):
@@ -607,7 +609,7 @@ def dicom_to_png(dicom_file, max_size = 800):
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     cv2.imwrite(png_file, image)
     logging.info(f"Converted PNG saved to {png_file}")
-    # Return the PNG file name and metadata
+    # Return the PNG file name
     return png_file
 
 
@@ -775,16 +777,15 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
 
 
 # Notification operations
-async def send_ntfy_notification(uid, report, metadata):
+async def send_ntfy_notification(uid, report, info):
     """Send notification to ntfy.sh with image and report"""
     if not ENABLE_NTFY:
-        logging.info("ntfy notifications are disabled")
+        logging.info("NTFY notifications are disabled")
         return
     # Construct image URL
     image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
-    
     # Create headers and message body
-    message = f"Positive finding in {metadata['exam']['region']} study\nPatient: {metadata['patient']['name']}\nReport: {report}"
+    message = f"Positive finding in {info['exam']['region']} study\nPatient: {info['patient']['name']}\nReport: {report}"
     headers = {
         "Title": "XRayVision Alert - Positive Finding",
         "Tags": "warning,skull",
@@ -808,9 +809,9 @@ def check_any(string, *words):
     """ Check if any of the words are present in the string """
     return any(i in string for i in words)
 
-def get_region(metadata):
+def get_region(info):
     """ Try to identify the region. Return the region and the question. """
-    desc = metadata["exam"]["protocol"].lower()
+    desc = info["exam"]["protocol"].lower()
     if check_any(desc, 'torace', 'pulmon',
                  'thorax'):
         region = 'chest'
@@ -887,9 +888,9 @@ def get_region(metadata):
     # Return the region and the question
     return region, question
 
-def get_projection(metadata):
+def get_projection(info):
     """ Try to identify the projection """
-    desc = metadata["exam"]["protocol"].lower()
+    desc = info["exam"]["protocol"].lower()
     if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
         projection = "frontal"
     elif check_any(desc, "lat.", "pr."):
@@ -902,9 +903,9 @@ def get_projection(metadata):
     # Return the projection
     return projection
 
-def get_gender(metadata):
+def get_gender(info):
     """ Try to identify the gender """
-    patient_sex = metadata["patient"]["sex"].lower()
+    patient_sex = info["patient"]["sex"].lower()
     if "m" in patient_sex:
         gender = "boy"
     elif "f" in patient_sex:
@@ -933,24 +934,24 @@ async def send_exam_to_openai(exam, max_retries = 3):
     with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
         image_bytes = f.read()
     # Identify the region
-    region, question = get_region(metadata)
+    region, question = get_region(exam)
     # Filter on specific region
     if not region in REGIONS:
         logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
         db_set_status(exam['uid'], 'ignore')
         return False
     # Identify the prjection, gender and age
-    projection = get_projection(metadata)
-    gender = get_gender(metadata)
-    age = metadata["patient"]["age"]
+    projection = get_projection(exam)
+    gender = get_gender(exam)
+    age = exam["patient"]["age"]
     if age > 0:
         txtAge = f"{age} years old"
     elif age == 0:
         txtAge = "newborn"
     else:
         txtAge = ""
-    # Update metadata
-    metadata['exam'].update({'region': region, 'projection': projection})
+    # Update exam info
+    exam['exam'].update({'region': region, 'projection': projection})
     # Get the subject of the study and the studied region
     subject = " ".join([txtAge, gender])
     if region:
@@ -961,11 +962,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
     prompt = USR_PROMPT.format(question, anatomy, subject)
     logging.debug(f"Prompt: {prompt}")
     logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-    if 'report' in metadata:
-        json_report = {'short': metadata['report']['short'],
-                       'report': metadata['report']['text']}
-        metadata['report']['json'] = json.dumps(json_report)
-        logging.info(f"Previous report: {metadata['report']['json']}")
+    if 'report' in exam:
+        json_report = {'short': exam['report']['short'],
+                       'report': exam['report']['text']}
+        exam['report']['json'] = json.dumps(json_report)
+        logging.info(f"Previous report: {exam['report']['json']}")
     # Base64 encode the PNG to comply with OpenAI Vision API
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
@@ -998,8 +999,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
             }
         ]
     }
-    if 'report' in metadata:
-        data['messages'].append({'role': 'assistant', 'content': metadata['report']['json']})
+    if 'report' in exam:
+        data['messages'].append({'role': 'assistant', 'content': exam['report']['json']})
         data['messages'].append({'role': 'user', 'content': REV_PROMPT})
     # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
     attempt = 1
@@ -1030,11 +1031,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
                 dashboard['success_count'] += 1
                 # Save to exams database
                 is_positive = short == "yes"
-                db_add_exam(exam['uid'], metadata, report = report, positive = is_positive)
+                db_add_exam(exam, report = report, positive = is_positive)
                 # Send notification for positive cases
                 if is_positive:
                     try:
-                        await send_ntfy_notification(exam['uid'], report, metadata)
+                        await send_ntfy_notification(exam['uid'], report, exam)
                     except Exception as e:
                         logging.error(f"Failed to send ntfy notification: {e}")
                 # Get some timing statistics
