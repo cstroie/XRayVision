@@ -398,23 +398,33 @@
             try {
                 const chime = document.getElementById('chime');
                 if (chime) {
-                    // First, reset the audio to the beginning
+                    // Create a simple beep using the Web Audio API as fallback
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioContext.createOscillator();
+                    const gainNode = audioContext.createGain();
+                    
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioContext.destination);
+                    
+                    oscillator.frequency.value = 800;
+                    oscillator.type = 'sine';
+                    
+                    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                    
+                    oscillator.start(audioContext.currentTime);
+                    oscillator.stop(audioContext.currentTime + 0.5);
+                    
+                    // Fallback: try to play HTML5 audio element
                     chime.currentTime = 0;
                     const playPromise = chime.play();
                     
                     if (playPromise !== undefined) {
-                        playPromise.then(() => {
-                            // console.log('Chime played successfully');
-                        }).catch(error => {
-                            console.warn('Chime play failed (may need user interaction):', error);
-                            // Try alternative approach with user interaction
-                            document.body.addEventListener('click', () => {
-                                chime.play().catch(e => console.warn('Chime play failed on user click:', e));
-                            }, { once: true });
+                        playPromise.catch(error => {
+                            console.warn('Chime play failed:', error);
+                            // We've already played the Web Audio API version
                         });
                     }
-                } else {
-                    console.warn('Chime audio element not found');
                 }
             } catch (error) {
                 console.warn('Error playing chime:', error);
