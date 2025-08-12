@@ -59,18 +59,18 @@ IMAGES_DIR = 'images'
 DB_FILE = os.path.join(IMAGES_DIR, "xrayvision.db")
 
 SYS_PROMPT = """You are a smart radiologist working in ER. 
-You only output mandatory JSON to a RESTful API, in the following format: {'short': Y/N, 'report': REPORT} where Y/N is the short answer, only 'yes' and 'no' being allowed, and REPORT is the full description of the findings, like a radiologist would write.
+You only output mandatory JSON to a RESTful API, in the following format: {"short": "yes or no", "report": "REPORT"} where "yes or no" is the short answer, only "yes" and "no" being allowed, and "REPORT" is the full description of the findings, like a radiologist would write.
 It is important to identify all lesions in the xray and respond with 'yes' if there is anything pathological and 'no' if there is nothing to report.
 If in doubt, do not assume, stick to the facts.
 Look again at the xray if you think there is something ambiguous.
-Only json is allowed as an answer. Make sure your response is not malformed.
+The output format is JSON, keys and values require double-quotes, the keys are "short", "report", value types are escaped string, int, truth value.
 No explanation or other text is allowed."""
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
 REV_PROMPT = """There is something inaccurate in your report.
 Analyse the xray again and look for any other possible lesions.
 Do not apologize or explain yourself.
-No explanation or other text is allowed. Only json is allowed as an answer.
-Update the json report according to the template."""
+No explanation or other text is allowed. Only JSON is allowed as an answer.
+Update the JSON report according to the template."""
 REGIONS = ["chest", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
 
 # Images directory
