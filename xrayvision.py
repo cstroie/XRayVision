@@ -262,7 +262,9 @@ async def db_get_stats():
         "invalid": 0,
         "region": {},
         "trends": {},
-        "monthly_trends": {}
+        "monthly_trends": {},
+        "avg_processing_time": 0,
+        "throughput": 0
     }
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -281,6 +283,19 @@ async def db_get_stats():
         stats["reviewed"] = row[1] or 0
         stats["positive"] = row[2] or 0
         stats["invalid"] = row[3] or 0
+
+        # Get processing time statistics
+        cursor.execute("""
+            SELECT 
+                AVG(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) AS avg_processing_time,
+                COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) + 1) AS throughput
+            FROM exams
+            WHERE status LIKE 'done' AND reported IS NOT NULL AND created IS NOT NULL
+        """)
+        timing_row = cursor.fetchone()
+        if timing_row and timing_row[0] is not None:
+            stats["avg_processing_time"] = round(timing_row[0], 2)
+            stats["throughput"] = round(timing_row[1] * 3600, 2)  # exams per hour
 
         # Totals per anatomic part
         cursor.execute("""
