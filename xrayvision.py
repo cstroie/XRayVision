@@ -58,6 +58,7 @@ REMOTE_AE_PORT = int(os.getenv('REMOTE_AE_PORT', '104'))
 IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
 DB_FILE = os.getenv("XRAYVISION_DB_PATH", "xrayvision.db")
+BACKUP_DIR = os.getenv("XRAYVISION_BACKUP_DIR", "backup")
 
 SYS_PROMPT = """You are a smart radiologist working in ER. 
 You only output mandatory JSON to a RESTful API, in the following format: {"short": "yes or no", "report": "REPORT"} where "yes or no" is the short answer, only "yes" and "no" being allowed, and "REPORT" is the full description of the findings, like a radiologist would write.
@@ -480,20 +481,16 @@ def db_purge_ignored_errors():
 def db_backup():
     """ Create a backup of the database with timestamp """
     # Create backup directory if it doesn't exist
-    backup_dir = 'backup'
-    os.makedirs(backup_dir, exist_ok=True)
-    
+    os.makedirs(BACKUP_DIR, exist_ok=True)
     # Create backup filename with timestamp
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_filename = f"xrayvision_{timestamp}.db"
-    backup_path = os.path.join(backup_dir, backup_filename)
-    
+    backup_path = os.path.join(BACKUP_DIR, backup_filename)
     # Create backup using SQLite backup API
     with sqlite3.connect(DB_FILE) as conn:
         backup_conn = sqlite3.connect(backup_path)
         conn.backup(backup_conn)
         backup_conn.close()
-    
     logging.info(f"Database backed up to {backup_path}")
     return backup_path
 
