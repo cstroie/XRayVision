@@ -104,8 +104,7 @@ dashboard = {
     'processing_file': None,
     'success_count': 0,
     'error_count': 0,
-    'ignore_count': 0,
-    'failure_count': 0
+    'ignore_count': 0
 }
 # OpenAI timings
 timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
@@ -1195,8 +1194,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     logging.error(response)
                     break
                 logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report}")
-                # Update the dashboard
-                dashboard['success_count'] += 1
                 # Save to exams database
                 is_positive = short == "yes"
                 db_add_exam(exam, report = report, positive = is_positive)
@@ -1229,7 +1226,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
     db_set_status(exam['uid'], 'error')
     queue_event.clear()
     logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
-    dashboard['failure_count'] += 1
     await broadcast_dashboard_update()
     return False
 
