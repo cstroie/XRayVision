@@ -840,7 +840,8 @@ async def validate(request):
     logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {valid and 'validates' or 'invalidates'} the report.")
     payload = {'uid': uid, 'valid': valid}
     await broadcast_dashboard_update(event = "validate", payload = payload)
-    return web.json_response({'status': 'success'}.update(payload))
+    response_data = {'status': 'success', 'uid': uid, 'valid': valid}
+    return web.json_response(response_data)
 
 async def lookagain(request):
     """ Send an exam back to the queue """
@@ -855,7 +856,8 @@ async def lookagain(request):
     queue_event.set()
     payload = {'uid': uid, 'valid': valid}
     await broadcast_dashboard_update(event = "lookagain", payload = payload)
-    return web.json_response({'status': 'success'}.update(payload))
+    response_data = {'status': 'success', 'uid': uid, 'valid': valid}
+    return web.json_response(response_data)
 
 @web.middleware
 async def auth_middleware(request, handler):
