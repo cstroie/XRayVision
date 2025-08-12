@@ -833,8 +833,8 @@
                         <figure class="xray">
                             <img src="/static/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/static/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
                             <div role="group">
-                                <button class="abnormal" onclick="validate('${item.uid}', false)">👎︎ NotOk</button>
-                                <button class="normal" onclick="validate('${item.uid}', true)">👍︎ Ok</button>
+                                <button class="abnormal" onclick="validate('${item.uid}', false)">⚠️ Abnormal</button>
+                                <button class="normal" onclick="validate('${item.uid}', true)">✓ Normal</button>
                             </div>
                             <div role="group">
                                 <button class="secondary " onclick="lookagain('${item.uid}')">Inaccurate, look again</button>
