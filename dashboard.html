@@ -22,28 +22,24 @@
         :root {
             --pico-font-family-sans-serif: Inter, system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, Arial, "Helvetica Neue", sans-serif, var(--pico-font-family-emoji);
             --pico-font-size: 87.5%;
-            /* Original: 100% */
-            --pico-line-height: 1.25;
-            /* Original: 1.5 */
-            --pico-form-element-spacing-vertical: 0.5rem;
-            /* Original: 1rem */
-            --pico-form-element-spacing-horizontal: 1.0rem;
-            /* Original: 1.25rem */
-            --pico-border-radius: 0.375rem;
-            /* Original: 0.25rem */
+            --pico-line-height: 1.5;
+            --pico-form-element-spacing-vertical: 0.75rem;
+            --pico-form-element-spacing-horizontal: 1.25rem;
+            --pico-border-radius: 0.5rem;
+            --card-border-radius: 0.75rem;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
 
         @media (min-width: 576px) {
             :root {
                 --pico-font-size: 100%;
-                /* Original: 106.25% */
             }
         }
 
         @media (min-width: 768px) {
             :root {
                 --pico-font-size: 106.25%;
-                /* Original: 112.5% */
             }
             .image-card {
                 grid-template-columns: 300px 1fr;
@@ -51,55 +47,54 @@
 
             .pagination button,
             .pagination [role=button] {
-                padding: 0.5rem 2rem;
+                padding: 0.5rem 1.5rem;
             }
         }
 
         @media (min-width: 1024px) {
             :root {
                 --pico-font-size: 112.5%;
-                /* Original: 118.75% */
+            }
             .image-card {
                 grid-template-columns: 350px 1fr;
-            }
             }
         }
 
         @media (min-width: 1280px) {
             :root {
                 --pico-font-size: 118.75%;
-                /* Original: 125% */
+            }
             .image-card {
                 grid-template-columns: 400px 1fr;
-            }
             }
         }
 
         @media (min-width: 1536px) {
             :root {
                 --pico-font-size: 125%;
-                /* Original: 131.25% */
+            }
             .image-card {
                 grid-template-columns: 500px 1fr;
-            }
             }
         }
 
         h1, h2, h3, h4, h5, h6 {
             --pico-font-weight: 600;
-            /* Original: 700 */
         }
 
         article {
             border: 1px solid var(--pico-muted-border-color);
-            /* Original doesn't have a border */
-            border-radius: calc(var(--pico-border-radius) * 2);
-            /* Original: var(--pico-border-radius) */
+            border-radius: var(--card-border-radius);
+            box-shadow: var(--card-shadow);
+            transition: box-shadow 0.2s ease;
+        }
+
+        article:hover {
+            box-shadow: var(--card-shadow-hover);
         }
 
         article>footer {
-            border-radius: calc(var(--pico-border-radius) * 2);
-            /* Original: var(--pico-border-radius) */
+            border-radius: var(--card-border-radius);
         }
 
         .pagination button,
@@ -107,47 +102,84 @@
             padding: 0.5rem 1rem;
         }
 
-    
+        .stats-grid {
+            gap: 1rem;
+        }
+
+        .stats-grid article {
+            text-align: center;
+            padding: 1.25rem 1rem;
+        }
+
+        .stats-grid article strong {
+            display: block;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: var(--pico-muted-color);
+        }
+
+        .stats-grid article span {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
         .image-card {
             position: relative;
-            border-radius: 0.5rem;
-            background-color: var(--pico-color-slate-900);
-            /*grid-template-columns: 1fr 4fr;*/
-            grid-gap: 0.5rem;
+            border-radius: var(--card-border-radius);
+            background-color: var(--pico-background-color);
+            box-shadow: var(--card-shadow);
+            border: 1px solid var(--pico-muted-border-color);
+            transition: all 0.2s ease;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        .image-card:hover {
+            box-shadow: var(--card-shadow-hover);
+            transform: translateY(-2px);
         }
 
         .image-card.reviewed {
-             background-color: var(--pico-color-azure-800);
+            border-left: 4px solid var(--pico-color-azure-500);
         }
+
         .image-card.positive {
-             background-color: var(--pico-color-green-700);
+            border-left: 4px solid var(--pico-color-green-500);
         }
+
         .image-card.reviewed.positive {
-             background-color: var(--pico-color-green-600);
+            border-left: 4px solid var(--pico-color-jade-500);
+        }
+
+        .image-card.reviewed.invalid {
+            border-left: 4px solid var(--pico-color-red-500);
         }
 
         .image-card.reviewed::after {
-            content: "✓"; /* or ✖ */
+            content: "✓";
             position: absolute;
-            bottom: 0.5rem;
-            right: 0.5rem;
-            transform: translateY(25%);
-            font-size: 6rem;
-            font-weight: 200;
-            vertical-align: baseline;
-            color: var(--pico-color-azure-100);
-            opacity: 0.2;
-            pointer-events: none;
-            z-index: 0;    
+            top: 1rem;
+            right: 1rem;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--pico-color-azure-500);
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 50%;
+            width: 2rem;
+            height: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
         .image-card.reviewed.positive::after {
-            color: var(--pico-color-green-100);
+            color: var(--pico-color-jade-600);
         }
 
         .image-card.reviewed.invalid::after {
             content: "✗";
-            color: var(--pico-color-red-100);
+            color: var(--pico-color-red-600);
         }
 
         .image-card > * {
@@ -155,13 +187,23 @@
             z-index: 1;
         }
 
-        .image-card.reviewed.invalid {
-             background-color: var(--pico-color-red-900);
+        .image-card .xray {
+            background-color: #0a0a0a;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
         }
 
-        .image-card .xray {
-            background-color: black;
-            padding: 0.5rem;
+        .image-card .xray img {
+            border-radius: 0.25rem;
+            max-width: 100%;
+            height: auto;
+            transition: transform 0.2s ease;
+        }
+
+        .image-card .xray img:hover {
+            transform: scale(1.02);
         }
 
         .image-card .xray div {
@@ -169,23 +211,25 @@
         }
 
         .image-card .xray div button {
-            /*padding: 0;*/
-            border-radius: 0;
-            font-size: 1.0rem;
+            border-radius: 0.375rem;
+            font-size: 0.9rem;
+            padding: 0.5rem 0.75rem;
             width: 100%;
-        }
-        button.normal {
-            background-color: var(--pico-color-azure-800);
-            border: 1px solid var(--pico-color-azure-900);
-        }
-        button.abnormal {
-            background-color: var(--pico-color-red-800);
-            border: 1px solid var(--pico-color-red-900);
+            margin-bottom: 0.25rem;
         }
 
+        button.normal {
+            background-color: var(--pico-color-azure-600);
+            border: 1px solid var(--pico-color-azure-700);
+        }
+
+        button.abnormal {
+            background-color: var(--pico-color-red-600);
+            border: 1px solid var(--pico-color-red-700);
+        }
 
         .image-card .details {
-            padding: 0.5rem;
+            padding: 1rem;
         }
 
         .image-card img {
@@ -198,14 +242,22 @@
 
         .report {
             color: var(--pico-color-azure-50);
+            background-color: rgba(12, 45, 75, 0.3);
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            margin-top: 0.75rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
         }
 
-        .positive .sign {
-            background-color: var(--pico-color-jade-400);
+        .positive .report {
+            background-color: rgba(15, 55, 35, 0.3);
+            border-left: 3px solid var(--pico-color-jade-500);
         }
 
-        .invalid .sign {
-            background-color: var(--pico-color-red-400);
+        .invalid .report {
+            background-color: rgba(75, 25, 25, 0.3);
+            border-left: 3px solid var(--pico-color-red-500);
         }
 
         .lightbox {
@@ -216,45 +268,111 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(6, 30, 47, 0.9);
+            background-color: rgba(0, 0, 0, 0.9);
             text-align: center;
-            padding-top: 60px;
+            padding: 2rem;
             color: white;
+            overflow: auto;
+        }
+
+        .lightbox-content {
+            max-width: 900px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
         }
 
         .lightbox.invalid {
-            background-color: rgba(45, 21, 9, 0.9) !important;
+            background-color: rgba(30, 10, 10, 0.95);
         }
 
         .lightbox.positive {
-            background-color: rgba(5, 32, 20, 0.9);
+            background-color: rgba(10, 30, 20, 0.95);
         }
 
         .lightbox img {
             max-width: 90%;
-            max-height: 80%;
-            margin-bottom: 1rem;
-            border: 1px solid var(--pico-color-azure-400);
+            max-height: 70vh;
+            margin: 0 auto;
+            border: 2px solid var(--pico-color-azure-400);
             border-radius: 0.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
         }
 
         .lightbox.invalid img {
-            border: 1px solid var(--pico-color-orange-400) !important;
+            border: 2px solid var(--pico-color-red-400);
         }
 
         .lightbox.positive img {
-            border: 1px solid var(--pico-color-green-400);
+            border: 2px solid var(--pico-color-jade-400);
         }
 
         .lightbox .lightbox-text {
-            font-size: 1rem;
+            font-size: 1.1rem;
+            max-width: 800px;
+            background-color: rgba(30, 30, 40, 0.8);
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            text-align: left;
+            line-height: 1.6;
         }
 
         .no-exams {
             text-align: center;
-            padding: 3rem;
-            color: var(--pico-color-slate-400);
+            padding: 4rem 2rem;
+            color: var(--pico-muted-color);
             font-size: 1.1rem;
+        }
+
+        #filters {
+            background-color: var(--pico-background-color);
+            padding: 1rem;
+            border-radius: var(--pico-border-radius);
+            box-shadow: var(--card-shadow);
+            margin-bottom: 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 0.75rem;
+        }
+
+        #filters select {
+            margin-bottom: 0;
+        }
+
+        footer .grid {
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        footer card {
+            padding: 1rem;
+            background-color: var(--pico-background-color);
+            border-radius: var(--pico-border-radius);
+            box-shadow: var(--card-shadow);
+            text-align: center;
+        }
+
+        footer card strong {
+            display: block;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: var(--pico-muted-color);
+        }
+
+        @media (max-width: 768px) {
+            #filters {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            footer .grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -272,20 +390,32 @@
     </nav>
 
     <header>
-        <hgroup class="grid">
-            <article><strong>Queue Size:</strong><br><span id="queue">0</span></article>
-            <article><strong>Currently Processing:</strong><br><span id="processing">Idle</span></article>
-            <article><strong>Successful Uploads:</strong><br><span id="success">0</span></article>
-            <article><strong>Failed Uploads:</strong><br><span id="failure">0</span></article>
+        <hgroup class="grid stats-grid">
+            <article>
+                <strong>Queue Size</strong>
+                <span id="queue">0</span>
+            </article>
+            <article>
+                <strong>Processing</strong>
+                <span id="processing">Idle</span>
+            </article>
+            <article>
+                <strong>Successful</strong>
+                <span id="success">0</span>
+            </article>
+            <article>
+                <strong>Failed</strong>
+                <span id="failure">0</span>
+            </article>
         </hgroup>
         <fieldset role="group">
             <select id="queryInterval">
-                <option selected disabled value="">Select the time interval</option>
-                <option value="1">1</option>
-                <option value="3">3</option>
-                <option value="6">6</option>
-                <option value="12">12</option>
-                <option value="24">24</option>
+                <option selected disabled value="">Select hours</option>
+                <option value="1">1 hour</option>
+                <option value="3">3 hours</option>
+                <option value="6">6 hours</option>
+                <option value="12">12 hours</option>
+                <option value="24">24 hours</option>
             </select>
             <button onclick="triggerQuery()">Query/Retrieve</button>
         </fieldset>
@@ -355,8 +485,10 @@
         </section>
 
         <div id="lightbox" class="lightbox">
-            <main><img id="lightbox-img" src=""></main>
-            <footer id="lightbox-text" class="lightbox-text"></footer>
+            <div class="lightbox-content">
+                <img id="lightbox-img" src="" alt="X-ray image">
+                <footer id="lightbox-text" class="lightbox-text"></footer>
+            </div>
         </div>
 
         <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
