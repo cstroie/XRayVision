@@ -477,6 +477,26 @@ def db_purge_ignored_errors():
     logging.info(f"Purged {deleted_count} old records from database and their files.")
     return deleted_count
 
+def db_backup():
+    """ Create a backup of the database with timestamp """
+    # Create backup directory if it doesn't exist
+    backup_dir = 'backup'
+    os.makedirs(backup_dir, exist_ok=True)
+    
+    # Create backup filename with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    backup_filename = f"xrayvision_{timestamp}.db"
+    backup_path = os.path.join(backup_dir, backup_filename)
+    
+    # Create backup using SQLite backup API
+    with sqlite3.connect(DB_FILE) as conn:
+        backup_conn = sqlite3.connect(backup_path)
+        conn.backup(backup_conn)
+        backup_conn.close()
+    
+    logging.info(f"Database backed up to {backup_path}")
+    return backup_path
+
 def db_validate(uid, normal = True, valid = None, enqueue = False):
     """ Mark the entry as valid or invalid """
     with sqlite3.connect(DB_FILE) as conn:
@@ -1340,10 +1360,18 @@ async def query_retrieve_loop():
         logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
         await asyncio.sleep(900)
 
-async def purge_ignored_errors_loop():
-    """ Daily cleanup of old ignored records """
+async def maintenance_loop():
+    """ Daily maintenance tasks: cleanup and database backup """
     while True:
+        # Purge old ignored/error records
         db_purge_ignored_errors()
+        
+        # Create database backup
+        try:
+            db_backup()
+        except Exception as e:
+            logging.error(f"Database backup failed: {e}")
+        
         # Wait for 24 hours
         await asyncio.sleep(86400)
 
@@ -1384,7 +1412,7 @@ async def main():
     asyncio.create_task(openai_health_check())
     asyncio.create_task(relay_to_openai_loop())
     asyncio.create_task(query_retrieve_loop())
-    asyncio.create_task(purge_ignored_errors_loop())
+    asyncio.create_task(maintenance_loop())
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
