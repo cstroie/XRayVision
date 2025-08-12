@@ -408,6 +408,21 @@ def db_get_queue_size():
         return result[0]
     return 0
 
+def db_get_error_stats():
+    """ Get error and ignore statistics """
+    stats = {'error': 0, 'ignore': 0}
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT status, COUNT(*) as count
+            FROM exams
+            WHERE status IN ('error', 'ignore')
+            GROUP BY status
+        """)
+        for row in cursor.fetchall():
+            stats[row[0]] = row[1]
+    return stats
+
 def db_purge_ignored_errors():
     """ Delete ignored and erroneous records older than 1 week and their associated files """
     deleted_uids = []
@@ -836,6 +851,8 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
         return
     # Update the queue size
     dashboard['queue_size'] = db_get_queue_size()
+    # Get error statistics
+    error_stats = db_get_error_stats()
     # Create a list of clients
     if client:
         clients = [client,]
@@ -851,10 +868,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
                 }
             },
             'timings': timings,
-            'error_stats': {
-                'error': 0,
-                'ignore': 0
-            }
+            'error_stats': error_stats
     }
     if next_query:
         data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
