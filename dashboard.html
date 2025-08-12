@@ -249,6 +249,13 @@
         .lightbox .lightbox-text {
             font-size: 1rem;
         }
+
+        .no-exams {
+            text-align: center;
+            padding: 3rem;
+            color: var(--pico-color-slate-400);
+            font-size: 1.1rem;
+        }
     </style>
 </head>
 
@@ -353,7 +360,7 @@
         </div>
 
         <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
-        <audio id="chime" src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwNAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVVSQhhSADEhC2VyQjWXwv8Zv9cpj/o5+IiIqKn/7owVhHP/6I2gokBJjJpL/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6kSAAP7uc5HQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBTEFNRTMuMTAwqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//sQxAAD/AABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAASqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq">
+        <audio id="chime" src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwNAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVVSQhhSADEhC2VyQjWXwv8Zv9cpj/o5+IiIqKn/7owVhHP/6I2gokBJjJpL/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6jRjQjWRUGl/6kSAAP7uc5HQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBTEFNRTMuMTAwqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//sQxAAD/AABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAASqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq">
     </main>
 
     <footer>
@@ -623,6 +630,14 @@
         }
 
         function renderExams(data) {
+            const examsElement = document.getElementById('exams');
+            
+            // Check if there are no exams
+            if (!data || data.length === 0) {
+                examsElement.innerHTML = '<p class="no-exams">No exams matching the current filters</p>';
+                return;
+            }
+
             let examsHtml = '';
             data.forEach(item => {
                 let isPositive = item.report.positive;
@@ -675,7 +690,7 @@
                     </section>
                 `;
             });
-            document.getElementById('exams').innerHTML = examsHtml;
+            examsElement.innerHTML = examsHtml;
         }
 
         connectWebSocket();
