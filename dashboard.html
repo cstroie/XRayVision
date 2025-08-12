@@ -469,6 +469,8 @@
                         showToast("WebSocket connected");
                         // Load page 1
                         loadPage(1);
+                        // Play chime
+                        playChime();
                     } else if (data.event.name === "validate") {
                         showToast(`Exam is ${data.event.payload.valid ? 'valid' : 'invalid'}`);
                         // Locate and update that card if it's visible
