@@ -871,6 +871,15 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     dashboard['queue_size'] = db_get_queue_size()
     # Get error statistics
     error_stats = db_get_error_stats()
+    # Get the count of successfully processed exams in the last week
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute("""
+            SELECT COUNT(*) 
+            FROM exams 
+            WHERE status = 'done' 
+            AND reported >= datetime('now', '-7 days')
+        """).fetchone()
+        dashboard['success_count'] = result[0] if result else 0
     # Create a list of clients
     if client:
         clients = [client,]
