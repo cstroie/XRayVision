@@ -14,10 +14,124 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <title>XRayVision Statistics</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="icon" href="/favicon-64x64.png" type="image/png" sizes="64x64">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --pico-font-family-sans-serif: Inter, system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, Arial, "Helvetica Neue", sans-serif, var(--pico-font-family-emoji);
+            --pico-font-size: 87.5%;
+            --pico-line-height: 1.5;
+            --pico-border-radius: 0.5rem;
+            --card-border-radius: 0.75rem;
+            --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --card-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        @media (min-width: 576px) {
+            :root {
+                --pico-font-size: 100%;
+            }
+        }
+
+        @media (min-width: 768px) {
+            :root {
+                --pico-font-size: 106.25%;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            :root {
+                --pico-font-size: 112.5%;
+            }
+        }
+
+        @media (min-width: 1280px) {
+            :root {
+                --pico-font-size: 118.75%;
+            }
+        }
+
+        @media (min-width: 1536px) {
+            :root {
+                --pico-font-size: 125%;
+            }
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            --pico-font-weight: 600;
+        }
+
+        article {
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--card-border-radius);
+            box-shadow: var(--card-shadow);
+            transition: box-shadow 0.2s ease;
+        }
+
+        article:hover {
+            box-shadow: var(--card-shadow-hover);
+        }
+
+        article>footer {
+            border-radius: var(--card-border-radius);
+        }
+
+        .stats-grid {
+            gap: 1rem;
+        }
+
+        .stats-grid article {
+            text-align: center;
+            padding: 1.25rem 1rem;
+        }
+
+        .stats-grid article strong {
+            display: block;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            color: var(--pico-muted-color);
+        }
+
+        .stats-grid article span {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .chart-container {
+            background-color: var(--pico-background-color);
+            padding: 1.5rem;
+            border-radius: var(--card-border-radius);
+            box-shadow: var(--card-shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-container h3 {
+            margin-top: 0;
+        }
+
+        table {
+            background-color: var(--pico-background-color);
+            border-radius: var(--card-border-radius);
+            box-shadow: var(--card-shadow);
+        }
+
+        thead th {
+            background-color: rgba(30, 30, 40, 0.5);
+        }
+
+        tbody tr:hover {
+            background-color: rgba(50, 50, 60, 0.3);
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
 </head>
 
 <body class="container">
@@ -33,22 +147,22 @@
     </nav>
 
     <header>
-        <div class="grid">
+        <div class="grid stats-grid">
             <article>
-                <h3>Total Exams</h3>
-                <p><span id="total">0</span></p>
+                <strong>Total Exams</strong>
+                <span id="total">0</span>
             </article>
             <article>
-                <h3>Reviewed</h3>
-                <p><span id="reviewed">0</span></p>
+                <strong>Reviewed</strong>
+                <span id="reviewed">0</span>
             </article>
             <article>
-                <h3>Positive Reports</h3>
-                <p><span id="positive">0</span></p>
+                <strong>Positive Reports</strong>
+                <span id="positive">0</span>
             </article>
             <article>
-                <h3>Invalid Reports</h3>
-                <p><span id="invalid">0</span></p>
+                <strong>Invalid Reports</strong>
+                <span id="invalid">0</span>
             </article>
         </div>
     </header>
@@ -82,11 +196,11 @@
         </section>
         
         <section class="grid">
-            <article>
+            <article class="chart-container">
                 <h3>Studies by Anatomic Region</h3>
                 <canvas id="regionChart" width="400" height="200"></canvas>
             </article>
-            <article>
+            <article class="chart-container">
                 <h3>Global Summary</h3>
                 <canvas id="globalChart" width="400" height="200"></canvas>
             </article>
