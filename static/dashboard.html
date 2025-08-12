@@ -162,22 +162,54 @@
             right: 1rem;
             font-size: 0.7rem;
             font-weight: 600;
-            color: var(--pico-color-azure-500);
-            background-color: rgba(255, 255, 255, 0.9);
+            color: #ffffff;
+            background-color: #000000;
             border-radius: 0.25rem;
             padding: 0.25rem 0.5rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
             white-space: nowrap;
         }
 
         .image-card.reviewed.positive::after {
             content: "REVIEWED POSITIVE";
-            color: var(--pico-color-jade-600);
+            color: #ffffff;
+            background-color: #000000;
         }
 
         .image-card.reviewed.invalid::after {
             content: "REVIEWED INVALID";
-            color: var(--pico-color-red-600);
+            color: #ffffff;
+            background-color: #000000;
+        }
+
+        .image-card.queued::after {
+            content: "QUEUED";
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #ffffff;
+            background-color: #000000;
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
+        }
+
+        .image-card.processing::after {
+            content: "PROCESSING";
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #ffffff;
+            background-color: #000000;
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
         }
 
         .image-card > * {
@@ -865,10 +897,11 @@
                 let clsReviewed = isReviewed ? 'reviewed' : '';
                 let clsValid = isValid ? '' : 'invalid';
                 let clsPositive = isPositive ? 'positive' : '';
+                let clsStatus = item.status || '';
                 let signPozNeg = isPositive ? '&#x2795;' : '&#x2796;'
 
                 examsHtml += `
-                    <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsValid}" id="card-${item.uid}">
+                    <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsValid} ${clsStatus}" id="card-${item.uid}">
                         <figure class="xray">
                             <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
                             <div role="group">
