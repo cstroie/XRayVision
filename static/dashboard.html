@@ -478,17 +478,6 @@
                 <span id="ignored">0</span>
             </article>
         </hgroup>
-        <fieldset role="group">
-            <select id="queryInterval">
-                <option selected disabled value="">Select hours</option>
-                <option value="1">1 hour</option>
-                <option value="3">3 hours</option>
-                <option value="6">6 hours</option>
-                <option value="12">12 hours</option>
-                <option value="24">24 hours</option>
-            </select>
-            <button onclick="triggerQuery()">Query/Retrieve</button>
-        </fieldset>
     </header>
 
     <main>
@@ -574,7 +563,20 @@
             <card>
                 <strong>Average timing</strong> <span id="openai-timings"><i aria-busy="true"></i></span>
             </card>
-            <card></card>
+            <card>
+                <strong>Query/Retrieve</strong>
+                <fieldset role="group" style="margin-top: 0.5rem;">
+                    <select id="queryInterval" style="width: 100px;">
+                        <option selected disabled value="">Hours</option>
+                        <option value="1">1</option>
+                        <option value="3">3</option>
+                        <option value="6">6</option>
+                        <option value="12">12</option>
+                        <option value="24">24</option>
+                    </select>
+                    <button onclick="triggerQuery()" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;">Query</button>
+                </fieldset>
+            </card>
             <card>
                 <strong>Next query</strong> <span id="next-query"><i aria-busy="true">unknown</i></span>
             </card>
