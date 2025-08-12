@@ -266,11 +266,22 @@ async def db_get_stats():
     }
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        # Global totals
-        stats["total"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE status LIKE 'done'").fetchone()[0]
-        stats["reviewed"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE reviewed = 1 AND status LIKE 'done'").fetchone()[0]
-        stats["positive"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE positive = 1 AND status LIKE 'done'").fetchone()[0]
-        stats["invalid"] = cursor.execute("SELECT COUNT(*) FROM exams WHERE valid = 0 AND status LIKE 'done'").fetchone()[0]
+        # Get all statistics in a single query
+        cursor.execute("""
+            SELECT 
+                COUNT(*) AS total,
+                SUM(CASE WHEN reviewed = 1 THEN 1 ELSE 0 END) AS reviewed,
+                SUM(CASE WHEN positive = 1 THEN 1 ELSE 0 END) AS positive,
+                SUM(CASE WHEN valid = 0 THEN 1 ELSE 0 END) AS invalid
+            FROM exams
+            WHERE status LIKE 'done'
+        """)
+        row = cursor.fetchone()
+        stats["total"] = row[0]
+        stats["reviewed"] = row[1] or 0
+        stats["positive"] = row[2] or 0
+        stats["invalid"] = row[3] or 0
+
         # Totals per anatomic part
         cursor.execute("""
             SELECT region,
