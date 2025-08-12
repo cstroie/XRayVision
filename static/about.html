@@ -109,12 +109,48 @@
             border-radius: var(--card-border-radius);
             box-shadow: var(--card-shadow);
         }
+
+        .feature-list li {
+            margin-bottom: 0.5rem;
+        }
+
+        .config-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .config-table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+        }
+
+        .config-table td:first-child {
+            font-weight: 600;
+            width: 30%;
+        }
+
+        .config-table td:last-child {
+            word-break: break-all;
+        }
+
+        .loading {
+            color: var(--pico-muted-color);
+            font-style: italic;
+        }
+
+        .config-section {
+            margin-top: 2rem;
+        }
+
+        .config-section h3 {
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body class="container">
     <nav>
         <ul>
-            <li><strong>XRayVision About</strong></li>
+            <li><strong>XRayVision</strong></li>
         </ul>
         <ul>
             <li><a href="/">Dashboard</a></li>
@@ -123,110 +159,103 @@
         </ul>
     </nav>
     <main>
-        <h2>Overview</h2>
-        <p><strong>XRayVision</strong> is an open-source medical imaging platform designed for real-time DICOM ingestion, processing, and interactive review of radiology studies with AI-powered assistance.</p>
+        <h2>What is XRayVision?</h2>
+        <p>XRayVision is an open-source medical imaging platform that helps radiologists by automatically analyzing X-rays using AI. It's designed to make radiology workflows faster and more efficient.</p>
         
         <h2>Key Features</h2>
-        <ul>
-            <li><strong>AI-Powered Analysis</strong> - Integrates with OpenAI (primary &amp; fallback) for intelligent image interpretation</li>
-            <li><strong>DICOM Compatibility</strong> - Supports storescp-based DICOM reception for seamless integration with medical imaging systems</li>
-            <li><strong>Real-Time Dashboard</strong> - WebSocket-powered interface with live queue monitoring and instant result updates</li>
-            <li><strong>Database Management</strong> - SQLite-based exam storage with advanced pagination, filtering, and flagging capabilities</li>
-            <li><strong>Comprehensive Analytics</strong> - Detailed statistics with anatomical breakdown and system health monitoring</li>
-            <li><strong>Query/Retrieve Integration</strong> - Automatic polling and manual triggering of DICOM Query/Retrieve operations</li>
-            <li><strong>Notification System</strong> - Ntfy.sh integration for real-time alerts on positive findings</li>
-            <li><strong>Image Processing</strong> - Automatic DICOM to PNG conversion with gamma correction and resizing</li>
-            <li><strong>Quality Assurance</strong> - Review and validation system for AI-generated reports with accuracy metrics</li>
-            <li><strong>Modern Architecture</strong> - Fully asynchronous and responsive design built with aiohttp and PicoCSS</li>
+        <ul class="feature-list">
+            <li><strong>AI-Powered Analysis</strong> - Uses OpenAI (with backup) to intelligently interpret images</li>
+            <li><strong>DICOM Compatibility</strong> - Works seamlessly with medical imaging systems</li>
+            <li><strong>Real-Time Dashboard</strong> - See live updates as images are processed</li>
+            <li><strong>Smart Database</strong> - Stores exams with filtering and review capabilities</li>
+            <li><strong>Detailed Analytics</strong> - Track performance with anatomical breakdowns</li>
+            <li><strong>Automatic Retrieval</strong> - Pulls studies from PACS every 15 minutes</li>
+            <li><strong>Instant Notifications</strong> - Get alerts for critical findings via ntfy.sh</li>
+            <li><strong>Image Enhancement</strong> - Automatically optimizes X-ray images for viewing</li>
+            <li><strong>Quality Control</strong> - Review and validate AI reports for accuracy</li>
+            <li><strong>Modern Design</strong> - Fast, responsive interface built with modern web tech</li>
         </ul>
         
         <h2>How It Works</h2>
-        <p>XRayVision is a comprehensive medical imaging platform that automates the processing and analysis of radiology studies. The system follows a streamlined workflow to deliver efficient and accurate results:</p>
+        <p>XRayVision streamlines radiology workflows through a simple 4-step process:</p>
         
-        <h3>Data Ingestion</h3>
-        <p>XRayVision receives DICOM studies through two primary methods:</p>
+        <h3>1. Data Ingestion</h3>
+        <p>Receives X-rays from medical systems in two ways:</p>
         <ul>
-            <li><strong>DICOM StoreSCP</strong> - Continuous reception of studies sent from PACS, modalities, or other DICOM sources</li>
-            <li><strong>Query/Retrieve</strong> - Automatic polling (every 15 minutes) or manual triggering to fetch recent studies from remote DICOM servers</li>
+            <li><strong>Direct Transfer</strong> - DICOM studies are sent directly to XRayVision</li>
+            <li><strong>Auto Fetch</strong> - Automatically pulls recent studies every 15 minutes (or on-demand)</li>
         </ul>
         
-        <h3>Image Processing</h3>
-        <p>Upon receipt, each DICOM study undergoes several processing steps:</p>
+        <h3>2. Image Processing</h3>
+        <p>Each X-ray gets optimized for analysis:</p>
         <ul>
-            <li><strong>Format Conversion</strong> - DICOM files are automatically converted to optimized PNG format for web display</li>
-            <li><strong>Image Enhancement</strong> - Automatic gamma correction and contrast optimization for improved visualization</li>
-            <li><strong>Metadata Extraction</strong> - Patient demographics, study details, and protocol information are parsed and stored</li>
+            <li><strong>Format Conversion</strong> - Converts DICOM to web-friendly PNG</li>
+            <li><strong>Image Enhancement</strong> - Automatically adjusts contrast and brightness</li>
+            <li><strong>Metadata Extraction</strong> - Pulls patient info and study details</li>
         </ul>
         
-        <h3>AI Analysis</h3>
-        <p>The core intelligence of XRayVision lies in its AI-powered analysis engine:</p>
+        <h3>3. AI Analysis</h3>
+        <p>The smart part - AI examines each X-ray:</p>
         <ul>
-            <li><strong>Region Identification</strong> - Automatic anatomical region detection based on protocol names and imaging parameters</li>
-            <li><strong>Intelligent Prompting</strong> - Context-aware prompts are generated for each study type, focusing the AI on relevant pathologies</li>
-            <li><strong>Dual Backend Support</strong> - Integration with primary and fallback OpenAI-compatible APIs for maximum reliability</li>
-            <li><strong>Structured Reporting</strong> - AI responses are parsed into standardized JSON format with short answers and detailed reports</li>
+            <li><strong>Body Part Detection</strong> - Figures out what body part is in the image</li>
+            <li><strong>Smart Questions</strong> - Asks the AI specific questions based on the body part</li>
+            <li><strong>Backup System</strong> - Uses a secondary AI if the primary one is down</li>
+            <li><strong>Structured Reports</strong> - Creates clean, standardized reports</li>
         </ul>
         
-        <h3>Results Presentation &amp; Review</h3>
-        <p>Processed studies are presented through an intuitive web dashboard:</p>
+        <h3>4. Results & Review</h3>
+        <p>Processed studies appear in an easy-to-use dashboard:</p>
         <ul>
-            <li><strong>Real-time Updates</strong> - WebSocket-powered interface provides instant notifications when new studies are processed</li>
-            <li><strong>Interactive Review</strong> - Medical professionals can validate AI findings as accurate or flag them for review</li>
-            <li><strong>Quality Assurance</strong> - Discrepancies between AI predictions and human review are tracked for continuous improvement</li>
-            <li><strong>Notification System</strong> - Critical positive findings trigger immediate alerts via ntfy.sh integration</li>
+            <li><strong>Live Updates</strong> - See new results as they come in</li>
+            <li><strong>Interactive Review</strong> - Confirm or correct AI findings</li>
+            <li><strong>Quality Tracking</strong> - Tracks how often AI is right or wrong</li>
+            <li><strong>Instant Alerts</strong> - Critical findings trigger immediate notifications</li>
         </ul>
         
-        <h3>Data Management</h3>
-        <p>XRayVision maintains comprehensive data management capabilities:</p>
-        <ul>
-            <li><strong>SQLite Database</strong> - All studies, reports, and review statuses are stored in a robust local database</li>
-            <li><strong>Advanced Filtering</strong> - Studies can be filtered by region, status, review state, and search terms</li>
-            <li><strong>Statistical Analytics</strong> - Detailed performance metrics and trend analysis are available through the statistics dashboard</li>
-            <li><strong>Automatic Cleanup</strong> - Ignored and erroneous studies are automatically purged after one week to maintain system performance</li>
-        </ul>
-        
-        <h2>Global Parameters</h2>
-        <article>
-            <table role="grid">
-                <tbody>
-                    <tr>
-                        <td><strong>OpenAI Primary URL</strong></td>
-                        <td><code id="openai-primary">Loading...</code></td>
-                    </tr>
-                    <tr>
-                        <td><strong>OpenAI Secondary URL</strong></td>
-                        <td><code id="openai-secondary">Loading...</code></td>
-                    </tr>
-                    <tr>
-                        <td><strong>NTFY URL</strong></td>
-                        <td><code id="ntfy-url">Loading...</code></td>
-                    </tr>
-                    <tr>
-                        <td><strong>AE Title</strong></td>
-                        <td><code id="ae-title">Loading...</code></td>
-                    </tr>
-                    <tr>
-                        <td><strong>AE Port</strong></td>
-                        <td><code id="ae-port">Loading...</code></td>
-                    </tr>
-                    <tr>
-                        <td><strong>Remote AE Title</strong></td>
-                        <td><code id="remote-ae-title">Loading...</code></td>
-                    </tr>
-                    <tr>
-                        <td><strong>Remote AE IP</strong></td>
-                        <td><code id="remote-ae-ip">Loading...</code></td>
-                    </tr>
-                    <tr>
-                        <td><strong>Remote AE Port</strong></td>
-                        <td><code id="remote-ae-port">Loading...</code></td>
-                    </tr>
-                </tbody>
-            </table>
-        </article>
+        <div class="config-section">
+            <h3>System Configuration</h3>
+            <article>
+                <table class="config-table" role="grid">
+                    <tbody>
+                        <tr>
+                            <td>Primary AI Endpoint</td>
+                            <td id="openai-primary" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>Backup AI Endpoint</td>
+                            <td id="openai-secondary" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>Notification URL</td>
+                            <td id="ntfy-url" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>DICOM Title</td>
+                            <td id="ae-title" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>DICOM Port</td>
+                            <td id="ae-port" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>Remote DICOM Title</td>
+                            <td id="remote-ae-title" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>Remote Server IP</td>
+                            <td id="remote-ae-ip" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>Remote Server Port</td>
+                            <td id="remote-ae-port" class="loading">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </article>
+        </div>
     </main>
     <footer>
-        <small>Project licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPLv3</a>. Created by Costin Stroie, 2025.</small>
+        <small>Built with ❤️ by Costin Stroie | Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPLv3</a> | 2025</small>
     </footer>
     
     <script>
@@ -234,19 +263,19 @@
         fetch('/api/config')
             .then(response => response.json())
             .then(data => {
-                document.getElementById('openai-primary').textContent = data.OPENAI_URL_PRIMARY || 'Not set';
-                document.getElementById('openai-secondary').textContent = data.OPENAI_URL_SECONDARY || 'Not set';
-                document.getElementById('ntfy-url').textContent = data.NTFY_URL || 'Not set';
-                document.getElementById('ae-title').textContent = data.AE_TITLE || 'Not set';
-                document.getElementById('ae-port').textContent = data.AE_PORT || 'Not set';
-                document.getElementById('remote-ae-title').textContent = data.REMOTE_AE_TITLE || 'Not set';
-                document.getElementById('remote-ae-ip').textContent = data.REMOTE_AE_IP || 'Not set';
-                document.getElementById('remote-ae-port').textContent = data.REMOTE_AE_PORT || 'Not set';
+                document.getElementById('openai-primary').textContent = data.OPENAI_URL_PRIMARY || 'Not configured';
+                document.getElementById('openai-secondary').textContent = data.OPENAI_URL_SECONDARY || 'Not configured';
+                document.getElementById('ntfy-url').textContent = data.NTFY_URL || 'Not configured';
+                document.getElementById('ae-title').textContent = data.AE_TITLE || 'Not configured';
+                document.getElementById('ae-port').textContent = data.AE_PORT || 'Not configured';
+                document.getElementById('remote-ae-title').textContent = data.REMOTE_AE_TITLE || 'Not configured';
+                document.getElementById('remote-ae-ip').textContent = data.REMOTE_AE_IP || 'Not configured';
+                document.getElementById('remote-ae-port').textContent = data.REMOTE_AE_PORT || 'Not configured';
             })
             .catch(error => {
                 console.error('Error fetching config:', error);
-                const loadingElements = document.querySelectorAll('code[id^="openai-"], code[id^="ntfy-"], code[id^="ae-"], code[id^="remote-ae-"]');
-                loadingElements.forEach(el => el.textContent = 'Error loading');
+                const loadingElements = document.querySelectorAll('.loading');
+                loadingElements.forEach(el => el.textContent = 'Error loading configuration');
             });
     </script>
 </body>
