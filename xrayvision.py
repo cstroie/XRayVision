@@ -423,6 +423,17 @@ def db_get_error_stats():
             stats[row[0]] = row[1]
     return stats
 
+def db_get_weekly_processed_count():
+    """ Get the count of successfully processed exams in the last week """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute("""
+            SELECT COUNT(*) 
+            FROM exams 
+            WHERE status = 'done' 
+            AND reported >= datetime('now', '-7 days')
+        """).fetchone()
+        return result[0] if result else 0
+
 def db_purge_ignored_errors():
     """ Delete ignored and erroneous records older than 1 week and their associated files """
     deleted_uids = []
@@ -872,14 +883,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     # Get error statistics
     error_stats = db_get_error_stats()
     # Get the count of successfully processed exams in the last week
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("""
-            SELECT COUNT(*) 
-            FROM exams 
-            WHERE status = 'done' 
-            AND reported >= datetime('now', '-7 days')
-        """).fetchone()
-        dashboard['success_count'] = result[0] if result else 0
+    dashboard['success_count'] = db_get_weekly_processed_count()
     # Create a list of clients
     if client:
         clients = [client,]
