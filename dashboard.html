@@ -156,29 +156,27 @@
         }
 
         .image-card.reviewed::after {
-            content: "✓";
+            content: "REVIEWED";
             position: absolute;
             top: 1rem;
             right: 1rem;
-            font-size: 1.5rem;
+            font-size: 0.7rem;
             font-weight: 600;
             color: var(--pico-color-azure-500);
             background-color: rgba(255, 255, 255, 0.9);
-            border-radius: 50%;
-            width: 2rem;
-            height: 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            white-space: nowrap;
         }
 
         .image-card.reviewed.positive::after {
+            content: "REVIEWED POSITIVE";
             color: var(--pico-color-jade-600);
         }
 
         .image-card.reviewed.invalid::after {
-            content: "✗";
+            content: "REVIEWED INVALID";
             color: var(--pico-color-red-600);
         }
 
