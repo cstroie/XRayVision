@@ -211,7 +211,7 @@ def db_add_exam(info, report = None, positive = None):
             if not info['report']['valid'] and info['report']['positive'] != positive:
                 # It was invalid and now positivity flipped, mark it as reviewed
                 reviewed = True
-                logging.info(f"Exam {uid} marked as reviewed and valid after being reanalyzed.")
+                logging.info(f"Exam {info['uid']} marked as reviewed and valid after being reanalyzed.")
 
     else:
         # Null report, just enqueue a new exam
