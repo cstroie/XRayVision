@@ -271,10 +271,10 @@
                 /*{ label: 'Total', data: totalData, backgroundColor: '#017FC0' },
                 { label: 'Positive', data: positiveData, backgroundColor: '#398712' },
                 { label: 'Invalid', data: invalidData, backgroundColor: '#D24317' }*/
-                { label: 'Positive', data: tposData, backgroundColor: '#398712' },
-                { label: 'Negative', data: tnegData, backgroundColor: '#1343A0' },
-                { label: 'False positive', data: fposData, backgroundColor: '#394D00' },
-                { label: 'False negative', data: fnegData, backgroundColor: '#D24317' }
+                { label: 'Positive', data: tposData, backgroundColor: 'var(--pico-color-jade-500)' },
+                { label: 'Negative', data: tnegData, backgroundColor: 'var(--pico-color-slate-500)' },
+                { label: 'False positive', data: fposData, backgroundColor: 'var(--pico-color-amber-500)' },
+                { label: 'False negative', data: fnegData, backgroundColor: 'var(--pico-color-red-500)' }
             ]
         },
         options: {
@@ -306,7 +306,11 @@
             datasets: [{
                 label: 'Counts',
                 data: [data.total, data.positive, data.invalid],
-                backgroundColor: ['#017FC0', '#398712', '#D24317']
+                backgroundColor: [
+                    'var(--pico-color-azure-500)',
+                    'var(--pico-color-jade-500)',
+                    'var(--pico-color-red-500)'
+                ]
             }]
         },
         options: {
