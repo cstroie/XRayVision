@@ -277,11 +277,25 @@
             tbody.appendChild(row);
         }
         const tfoot = document.querySelector('#regionStats tfoot');
+        // Calculate totals for all metrics
+        let totalTpos = 0, totalTneg = 0, totalFpos = 0, totalFneg = 0;
+        for (const [region, counts] of Object.entries(data.region)) {
+            totalTpos += counts.tpos;
+            totalTneg += counts.tneg;
+            totalFpos += counts.fpos;
+            totalFneg += counts.fneg;
+        }
+        // Calculate aggregate metrics
+        const totalPpv = (totalTpos + totalFpos) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFpos)) : '-';
+        const totalPnv = (totalTneg + totalFneg) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFneg)) : '-';
+        const totalSnsi = (totalTpos + totalFneg) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFneg)) : '-';
+        const totalSpci = (totalTneg + totalFpos) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFpos)) : '-';
+        
         tfoot.innerHTML = `
         <tr>
             <th scope="row">Total</th>
             <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
-            <td>-</td><td>-</td><td>-</td><td>-</td>
+            <td>${totalPpv}%</td><td>${totalPnv}%</td><td>${totalSnsi}%</td><td>${totalSpci}%</td>
         </tr>`;
 
         // Chart: region breakdown
