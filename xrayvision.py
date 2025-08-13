@@ -876,10 +876,13 @@ def get_dicom_info(ds):
     }
     # Check gender
     if not info['patient']['sex'] in ['M', 'F', 'O']:
-        # Try to determine from ID
-        try:
-            info['patient']['sex'] = int(info['patient']['id'][0]) % 2 == 0 and 'F' or 'M'
-        except:
+        # Try to determine from ID only if it's a valid Romanian ID
+        if validate_romanian_id(info['patient']['id']):
+            try:
+                info['patient']['sex'] = int(info['patient']['id'][0]) % 2 == 0 and 'F' or 'M'
+            except:
+                info['patient']['sex'] = 'O'
+        else:
             info['patient']['sex'] = 'O'
     # Return the dicom info
     return info
