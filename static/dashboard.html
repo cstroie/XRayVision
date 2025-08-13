@@ -612,7 +612,10 @@
                     const playPromise = chime.play();
                     if (playPromise !== undefined) {
                         playPromise.then(() => {
-                            isPlayingChime = false;
+                            // Reset flag when audio finishes playing
+                            chime.addEventListener('ended', function() {
+                                isPlayingChime = false;
+                            }, { once: true });
                         }).catch(error => {
                             console.warn('Chime play failed:', error);
                             isPlayingChime = false;
