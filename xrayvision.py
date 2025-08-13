@@ -86,13 +86,20 @@ websocket_clients = set()
 queue_event = asyncio.Event()
 next_query = None
 
+# Global variables to store the servers
+dicom_server = None
+web_server = None
+
+# OpenAI health
 active_openai_url = None
 health_status = {
     OPENAI_URL_PRIMARY: False,
     OPENAI_URL_SECONDARY: False
 }
+# OpenAI timings
+timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
 
-# Global paramters
+# Global parameters
 PAGE_SIZE = 10
 KEEP_DICOM = False
 LOAD_DICOM = False
@@ -107,8 +114,6 @@ dashboard = {
     'error_count': 0,
     'ignore_count': 0
 }
-# OpenAI timings
-timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
 
 # Database operations
 def init_database():
@@ -1250,7 +1255,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
 # Threads
 async def start_dashboard():
     """ Start the dashboard web server """
-    global web_runner
+    global web_server
     app = web.Application(middlewares = [auth_middleware])
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
@@ -1265,9 +1270,9 @@ async def start_dashboard():
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
-    web_runner = web.AppRunner(app)
-    await web_runner.setup()
-    site = web.TCPSite(web_runner, '0.0.0.0', DASHBOARD_PORT)
+    web_server = web.AppRunner(app)
+    await web_server.setup()
+    site = web.TCPSite(web_server, '0.0.0.0', DASHBOARD_PORT)
     await site.start()
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
@@ -1373,28 +1378,23 @@ async def maintenance_loop():
         # Wait for 24 hours
         await asyncio.sleep(86400)
 
-# Global variables to store the servers
-dicom_server = None
-web_runner = None
-
 def start_dicom_server():
     """ Start the DICOM Storage SCP """
     global dicom_server
-    ae = AE(ae_title = AE_TITLE)
+    dicom_server = AE(ae_title = AE_TITLE)
     # Accept everything
     #ae.supported_contexts = StoragePresentationContexts
     # Accept only XRays
-    ae.add_supported_context(ComputedRadiographyImageStorage)
-    ae.add_supported_context(DigitalXRayImageStorageForPresentation)
+    dicom_server.add_supported_context(ComputedRadiographyImageStorage)
+    dicom_server.add_supported_context(DigitalXRayImageStorageForPresentation)
     # C-Store handler
     handlers = [(evt.EVT_C_STORE, dicom_store)]
     logging.info(f"Starting DICOM server on port {AE_PORT} with AE Title '{AE_TITLE}'...")
-    dicom_server = ae
-    ae.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = True)
+    dicom_server.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = False)
 
 async def stop_servers():
     """ Stop all servers gracefully """
-    global dicom_server, web_runner
+    global dicom_server, web_server
     # Stop DICOM server
     if dicom_server:
         try:
@@ -1403,9 +1403,9 @@ async def stop_servers():
         except Exception as e:
             logging.error(f"Error stopping DICOM server: {e}")
     # Stop web server
-    if web_runner:
+    if web_server:
         try:
-            await web_runner.cleanup()
+            await web_server.cleanup()
             logging.info("Web server stopped.")
         except Exception as e:
             logging.error(f"Error stopping web server: {e}")
