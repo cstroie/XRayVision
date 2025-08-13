@@ -1429,8 +1429,14 @@ async def main():
     exams, total = db_get_exams(status = 'done')
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
 
-    # Start the asynchronous tasks
     tasks = []
+    # Start the web dashboard in a separate thread
+    dashboard_task = asyncio.create_task(asyncio.to_thread(start_dashboard))
+    tasks.append(dashboard_task)
+    # Start the DICOM server in a separate thread
+    dicom_task = asyncio.create_task(asyncio.to_thread(start_dicom_server))
+    tasks.append(dicom_task)
+    # Start the tasks
     tasks.append(asyncio.create_task(openai_health_check()))
     tasks.append(asyncio.create_task(relay_to_openai_loop()))
     tasks.append(asyncio.create_task(query_retrieve_loop()))
@@ -1438,13 +1444,6 @@ async def main():
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
-    # Start the web dashboard in a separate thread
-    dashboard_task = asyncio.create_task(asyncio.to_thread(start_dashboard))
-    tasks.append(dashboard_task)
-    # Start the DICOM server in a separate thread
-    dicom_task = asyncio.create_task(asyncio.to_thread(start_dicom_server))
-    tasks.append(dicom_task)
-    
     try:
         # Wait for all tasks to complete
         await asyncio.gather(*tasks)
