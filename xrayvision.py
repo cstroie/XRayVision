@@ -1372,8 +1372,12 @@ async def maintenance_loop():
         # Wait for 24 hours
         await asyncio.sleep(86400)
 
+# Global variable to store the DICOM server
+dicom_server = None
+
 def start_dicom_server():
     """ Start the DICOM Storage SCP """
+    global dicom_server
     ae = AE(ae_title = AE_TITLE)
     # Accept everything
     #ae.supported_contexts = StoragePresentationContexts
@@ -1383,7 +1387,18 @@ def start_dicom_server():
     # C-Store handler
     handlers = [(evt.EVT_C_STORE, dicom_store)]
     logging.info(f"Starting DICOM server on port {AE_PORT} with AE Title '{AE_TITLE}'...")
+    dicom_server = ae
     ae.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = True)
+
+def stop_dicom_server():
+    """ Stop the DICOM Storage SCP """
+    global dicom_server
+    if dicom_server:
+        try:
+            dicom_server.shutdown()
+            logging.info("DICOM server stopped.")
+        except Exception as e:
+            logging.error(f"Error stopping DICOM server: {e}")
 
 async def main():
     """ The main thread """
@@ -1405,11 +1420,12 @@ async def main():
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
 
     # Start the asynchronous tasks
-    asyncio.create_task(start_dashboard())
-    asyncio.create_task(openai_health_check())
-    asyncio.create_task(relay_to_openai_loop())
-    asyncio.create_task(query_retrieve_loop())
-    asyncio.create_task(maintenance_loop())
+    tasks = []
+    tasks.append(asyncio.create_task(start_dashboard()))
+    tasks.append(asyncio.create_task(openai_health_check()))
+    tasks.append(asyncio.create_task(relay_to_openai_loop()))
+    tasks.append(asyncio.create_task(query_retrieve_loop()))
+    tasks.append(asyncio.create_task(maintenance_loop()))
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
@@ -1438,5 +1454,7 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
-
-    logging.shutdown()
+        # Stop DICOM server
+        stop_dicom_server()
+    finally:
+        logging.shutdown()
