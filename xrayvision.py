@@ -1008,7 +1008,8 @@ def get_region(info):
         question = "Are there any fractures"
     elif check_any(desc, 'abdomen', 'abdominal'):
         region = 'abdominal'
-        question = "Are there any fluid levels, free gas or metallic foreign bodies"
+        #question = "Are there any fluid levels, free gas or metallic foreign bodies"
+        question = "Are there any signs of bowel obstruction, pneumoperitoneum or foreign bodies"
     elif check_any(desc, 'cap', 'craniu', 'occiput',
                    'skull'):
         region = 'skull'
