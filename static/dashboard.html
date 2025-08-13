@@ -132,55 +132,61 @@
         }
 
 
-        .image-card.reviewed {
-            border-left: 4px solid var(--pico-color-azure-500);
-        }
-
-        .image-card:not(.positive) {
+        .image-card:not(.reviewed):not(.positive) {
             border-left: 4px solid var(--pico-color-slate-500);
         }
 
-        .image-card.positive {
-            border-left: 4px solid var(--pico-color-green-500);
-        }
-
-        .image-card.reviewed:not(.positive) {
-            border-left: 4px solid var(--pico-color-slate-500);
-        }
-
-        .image-card.reviewed.positive {
-            border-left: 4px solid var(--pico-color-jade-500);
-        }
-
-        .image-card.reviewed.invalid {
+        .image-card:not(.reviewed).positive {
             border-left: 4px solid var(--pico-color-red-500);
         }
 
-        .image-card.reviewed::after {
-            content: "REVIEWED";
+        .image-card.reviewed:not(.positive) {
+            border-left: 4px solid var(--pico-color-jade-500);
+        }
+
+        .image-card.reviewed.positive:not(.invalid) {
+            border-left: 4px solid var(--pico-color-red-500);
+        }
+
+        .image-card.reviewed.positive.invalid {
+            border-left: 4px solid var(--pico-color-orange-500);
+        }
+
+        .image-card.reviewed.invalid:not(.positive) {
+            border-left: 4px solid var(--pico-color-orange-500);
+        }
+
+        .image-card.reviewed:not(.positive):not(.invalid)::after {
+            content: "REVIEWED NORMAL";
             position: absolute;
             top: 1rem;
             right: 2.5rem;
             font-size: 0.7rem;
             font-weight: 600;
             color: #ffffff;
-            background-color: #1e40af;
+            background-color: #15803d;
             border-radius: 0.25rem;
             padding: 0.25rem 0.5rem;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
             white-space: nowrap;
         }
 
-        .image-card.reviewed.positive::after {
-            content: "REVIEWED POSITIVE";
-            color: #ffffff;
-            background-color: #166534;
-        }
-
-        .image-card.reviewed.invalid::after {
-            content: "REVIEWED INVALID";
+        .image-card.reviewed.positive:not(.invalid)::after {
+            content: "POSITIVE FINDING";
             color: #ffffff;
             background-color: #b91c1c;
+        }
+
+        .image-card.reviewed.positive.invalid::after {
+            content: "FALSE POSITIVE";
+            color: #ffffff;
+            background-color: #c2410c;
+        }
+
+        .image-card.reviewed.invalid:not(.positive)::after {
+            content: "INVALID";
+            color: #ffffff;
+            background-color: #c2410c;
         }
 
         .image-card.queued::after {
