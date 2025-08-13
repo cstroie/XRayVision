@@ -1248,7 +1248,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
 
 # Threads
-async def start_dashboard():
+def start_dashboard():
     """ Start the dashboard web server """
     global web_runner
     app = web.Application(middlewares = [auth_middleware])
@@ -1266,9 +1266,9 @@ async def start_dashboard():
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
     web_runner = web.AppRunner(app)
-    await web_runner.setup()
+    web_runner.setup()
     site = web.TCPSite(web_runner, '0.0.0.0', DASHBOARD_PORT)
-    await site.start()
+    site.start()
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
 async def relay_to_openai_loop():
