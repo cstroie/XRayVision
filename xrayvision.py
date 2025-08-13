@@ -1227,11 +1227,9 @@ def validate_romanian_id(patient_id):
     try:
         # Ensure we have a string and clean it
         pid = str(patient_id).strip()
-        
         # Check if it's exactly 13 digits
         if not pid or len(pid) != 13 or not pid.isdigit():
             return False
-            
         # Extract components
         gender_digit = int(pid[0])
         year = int(pid[1:3])
@@ -1240,11 +1238,9 @@ def validate_romanian_id(patient_id):
         county = int(pid[7:9])
         serial = int(pid[9:12])
         checksum_digit = int(pid[12])
-        
         # Validate gender digit (1-9)
         if gender_digit < 1 or gender_digit > 9:
             return False
-            
         # Validate date components
         # Determine century based on gender digit
         if gender_digit in [1, 2]:
@@ -1259,40 +1255,31 @@ def validate_romanian_id(patient_id):
             full_year = 1900 + year  # Foreign residents
         else:
             return False
-            
         # Validate month (1-12)
         if month < 1 or month > 12:
             return False
-            
         # Validate day (1-31)
         if day < 1 or day > 31:
             return False
-            
         # More precise date validation
         try:
             datetime(full_year, month, day)
         except ValueError:
             return False
-            
         # Validate county code (01-52 or 99)
         if not ((1 <= county <= 52) or county == 99):
             return False
-            
         # Validate checksum using the official algorithm
         # Weights for each digit position
         weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
-        
         # Calculate weighted sum
         weighted_sum = sum(int(pid[i]) * weights[i] for i in range(12))
-        
         # Calculate checksum
         checksum = weighted_sum % 11
         if checksum == 10:
             checksum = 1
-            
         # Compare with provided checksum digit
         return checksum == checksum_digit
-        
     except Exception as e:
         logging.debug(f"Error validating Romanian ID {patient_id}: {e}")
         return False
