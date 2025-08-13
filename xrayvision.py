@@ -1250,6 +1250,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
 # Threads
 async def start_dashboard():
     """ Start the dashboard web server """
+    global web_runner
     app = web.Application(middlewares = [auth_middleware])
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
@@ -1264,9 +1265,9 @@ async def start_dashboard():
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
+    web_runner = web.AppRunner(app)
+    await web_runner.setup()
+    site = web.TCPSite(web_runner, '0.0.0.0', DASHBOARD_PORT)
     await site.start()
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
@@ -1372,8 +1373,9 @@ async def maintenance_loop():
         # Wait for 24 hours
         await asyncio.sleep(86400)
 
-# Global variable to store the DICOM server
+# Global variables to store the servers
 dicom_server = None
+web_runner = None
 
 def start_dicom_server():
     """ Start the DICOM Storage SCP """
@@ -1390,15 +1392,23 @@ def start_dicom_server():
     dicom_server = ae
     ae.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = True)
 
-def stop_dicom_server():
-    """ Stop the DICOM Storage SCP """
-    global dicom_server
+async def stop_servers():
+    """ Stop all servers gracefully """
+    global dicom_server, web_runner
+    # Stop DICOM server
     if dicom_server:
         try:
             dicom_server.shutdown()
             logging.info("DICOM server stopped.")
         except Exception as e:
             logging.error(f"Error stopping DICOM server: {e}")
+    # Stop web server
+    if web_runner:
+        try:
+            await web_runner.cleanup()
+            logging.info("Web server stopped.")
+        except Exception as e:
+            logging.error(f"Error stopping web server: {e}")
 
 async def main():
     """ The main thread """
@@ -1467,7 +1477,10 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
-        # Stop DICOM server
-        stop_dicom_server()
     finally:
+        # Stop all servers
+        try:
+            asyncio.run(stop_servers())
+        except Exception as e:
+            logging.error(f"Error during shutdown: {e}")
         logging.shutdown()
