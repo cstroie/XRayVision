@@ -1248,7 +1248,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
 
 # Threads
-def start_dashboard():
+async def start_dashboard():
     """ Start the dashboard web server """
     global web_runner
     app = web.Application(middlewares = [auth_middleware])
@@ -1266,9 +1266,9 @@ def start_dashboard():
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
     web_runner = web.AppRunner(app)
-    web_runner.setup()
+    await web_runner.setup()
     site = web.TCPSite(web_runner, '0.0.0.0', DASHBOARD_PORT)
-    site.start()
+    await site.start()
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
 async def relay_to_openai_loop():
@@ -1424,19 +1424,15 @@ async def main():
     # Print some data
     logging.info(f"Python SQLite version: {sqlite3.version}")
     logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
-     
     # Load exams
     exams, total = db_get_exams(status = 'done')
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
-
     tasks = []
-    # Start the web dashboard in a separate thread
-    dashboard_task = asyncio.create_task(asyncio.to_thread(start_dashboard))
-    tasks.append(dashboard_task)
     # Start the DICOM server in a separate thread
     dicom_task = asyncio.create_task(asyncio.to_thread(start_dicom_server))
     tasks.append(dicom_task)
     # Start the tasks
+    tasks.append(asyncio.create_task(start_dashboard()))
     tasks.append(asyncio.create_task(openai_health_check()))
     tasks.append(asyncio.create_task(relay_to_openai_loop()))
     tasks.append(asyncio.create_task(query_retrieve_loop()))
