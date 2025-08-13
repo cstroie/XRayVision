@@ -839,6 +839,13 @@ def get_dicom_info(ds):
             age = int(age)
         except Exception as e:
             logging.error(f"Cannot convert age to number: {e}")
+            # Try to compute age from PatientID if available
+            if 'PatientID' in ds:
+                age = compute_age_from_id(ds.PatientID)
+    else:
+        # Try to compute age from PatientID if PatientAge is not available
+        if 'PatientID' in ds:
+            age = compute_age_from_id(ds.PatientID)
     # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # Get the exam timestamp
@@ -1198,6 +1205,50 @@ async def send_ntfy_notification(uid, report, info):
         logging.error(f"Failed to send ntfy notification: {e}")
 
 # API operations
+def compute_age_from_id(patient_id):
+    """ 
+    Compute patient age based on Romanian personal identification number.
+    
+    Romanian personal IDs have the format:
+    - First digit: 1/2 for 1900s, 5/6 for 2000s, etc.
+    - Next 6 digits: YYMMDD (birth date)
+    
+    Args:
+        patient_id: Personal identification number as string
+        
+    Returns:
+        int: Age in years, or -1 if unable to compute
+    """
+    try:
+        # Ensure we have a string
+        pid = str(patient_id).strip()
+        if not pid or len(pid) < 7:
+            return -1
+        # Extract birth year based on first digit
+        first_digit = int(pid[0])
+        year_prefix = ""
+        if first_digit in [1, 2]:
+            year_prefix = "19"
+        elif first_digit in [5, 6, 7, 8]:
+            year_prefix = "20"
+        else:
+            return -1
+        # Extract birth date components
+        birth_year = int(year_prefix + pid[1:3])
+        birth_month = int(pid[3:5])
+        birth_day = int(pid[5:7])
+        # Calculate age
+        today = datetime.now()
+        birth_date = datetime(birth_year, birth_month, birth_day)
+        age = today.year - birth_date.year
+        # Adjust if birthday hasn't occurred this year
+        if (today.month, today.day) < (birth_date.month, birth_date.day):
+            age -= 1
+        return age
+    except Exception as e:
+        logging.debug(f"Could not compute age from ID {patient_id}: {e}")
+        return -1
+
 def check_any(string, *words):
     """ 
     Check if any of the specified words are present in the given string.
