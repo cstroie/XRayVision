@@ -784,25 +784,10 @@ def dicom_store(event):
         # Save the DICOM file
         ds.save_as(dicom_file, enforce_file_format = True)
         logging.info(f"DICOM file saved to {dicom_file}")
-        # Get some info for queueing
-        try:
-            info = get_dicom_info(ds)
-        except Exception as e:
-            logging.error(f"Error getting info {dicom_file}: {e}")
-            return 0x0000
-        # Try to convert to PNG
-        png_file = None
-        try:
-            png_file = dicom_to_png(dicom_file)
-        except Exception as e:
-            logging.error(f"Error converting DICOM file {dicom_file}: {e}")
-        # Check the result
-        if png_file:
-            # Add to processing queue
-            db_add_exam(info)
-            # Notify the queue
-            queue_event.set()
-            asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
+        # Process the DICOM file
+        _process_dicom_file(dicom_file, uid)
+        # Notify the queue
+        asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
     return 0x0000
 
@@ -823,30 +808,9 @@ async def load_existing_dicom_files():
                 logging.info(f"Skipping already processed image {uid}")
             else:
                 logging.info(f"Adding {uid} into processing queue...")
-                # Get the dataset
-                try:
-                    ds = dcmread(os.path.join(IMAGES_DIR, dicom_file))
-                except Exception as e:
-                    logging.error(f"Error reading the dataset from DICOM file {dicom_file}: {e}")
-                    continue
-                # Get some info for queueing
-                try:
-                    info = get_dicom_info(ds)
-                except Exception as e:
-                    logging.error(f"Error getting info {dicom_file}: {e}")
-                    continue
-                # Try to convert to PNG
-                png_file = None
-                try:
-                    png_file = dicom_to_png(os.path.join(IMAGES_DIR, dicom_file))
-                except Exception as e:
-                    logging.error(f"Error converting DICOM file {dicom_file}: {e}")
-                # Check the result
-                if png_file:
-                    # Add to processing queue
-                    db_add_exam(info)
-                    # Notify the queue
-                    queue_event.set()
+                full_path = os.path.join(IMAGES_DIR, dicom_file)
+                # Process the DICOM file
+                _process_dicom_file(full_path, uid)
     # At the end, update the dashboard
     await broadcast_dashboard_update()
 
@@ -1765,6 +1729,41 @@ async def stop_servers():
             logging.info("Web server stopped.")
         except Exception as e:
             logging.error(f"Error stopping web server: {e}")
+
+def _process_dicom_file(dicom_file, uid):
+    """ 
+    Process a DICOM file by extracting metadata, converting to PNG, and adding to queue.
+    
+    This helper function handles the common logic between dicom_store() and 
+    load_existing_dicom_files() to avoid code duplication.
+    
+    Args:
+        dicom_file: Path to the DICOM file
+        uid: Unique identifier for the exam
+    """
+    try:
+        # Get the dataset
+        ds = dcmread(dicom_file)
+        # Get some info for queueing
+        try:
+            info = get_dicom_info(ds)
+        except Exception as e:
+            logging.error(f"Error getting info {dicom_file}: {e}")
+            return
+        # Try to convert to PNG
+        png_file = None
+        try:
+            png_file = dicom_to_png(dicom_file)
+        except Exception as e:
+            logging.error(f"Error converting DICOM file {dicom_file}: {e}")
+        # Check the result
+        if png_file:
+            # Add to processing queue
+            db_add_exam(info)
+            # Notify the queue
+            queue_event.set()
+    except Exception as e:
+        logging.error(f"Error processing DICOM file {dicom_file}: {e}")
 
 async def main():
     """ 
