@@ -500,12 +500,29 @@ def db_backup():
     return backup_path
 
 def db_validate(uid, normal = True, valid = None, enqueue = False):
-    """ Mark the entry as valid or invalid """
+    """ 
+    Mark the entry as valid or invalid based on human review.
+    
+    When a radiologist reviews a case, they indicate if the finding is normal (negative)
+    or abnormal (positive). This function compares that human assessment with the AI's
+    prediction to determine if the AI was correct (valid=True) or incorrect (valid=False).
+    
+    Args:
+        uid: The unique identifier of the exam
+        normal: Whether the human reviewer marked the case as normal (True) or abnormal (False)
+        valid: Optional override for validity. If None, will be calculated based on comparison
+        enqueue: Whether to re-queue the exam for re-analysis
+    
+    Returns:
+        bool: The validity status (True if AI prediction matched human review)
+    """
     with sqlite3.connect(DB_FILE) as conn:
         if valid is None:
             # Check if the report is positive
             result = conn.execute("SELECT positive FROM exams WHERE uid = ?", (uid,)).fetchone()
             # Valid when review matches prediction
+            # If human says normal (True) and AI said negative (0), then valid
+            # If human says abnormal (False) and AI said positive (1), then valid
             if result and result[0] is not None:
                 valid = bool(normal) != bool(result[0])
             else:
@@ -533,7 +550,16 @@ def db_set_status(uid, status):
 
 # DICOM network operations
 async def query_and_retrieve(minutes = 15):
-    """ Query and Retrieve new studies """
+    """ 
+    Query and Retrieve new studies from the remote DICOM server.
+    
+    This function queries the remote PACS for studies performed within the last 'minutes' 
+    and requests them to be sent to our DICOM server. It handles the complexity of 
+    time ranges that cross midnight by splitting into two separate queries.
+    
+    Args:
+        minutes: Number of minutes to look back for new studies (default: 15)
+    """
     ae = AE(ae_title = AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
     ae.connection_timeout = 30
@@ -545,6 +571,7 @@ async def query_and_retrieve(minutes = 15):
         current_time = datetime.now()
         past_time = current_time - timedelta(minutes = minutes)
         # Check if the time span crosses midnight, split into two queries
+        # This is necessary because DICOM time ranges can't wrap around midnight
         if past_time.date() < current_time.date():
             date_yesterday = past_time.strftime('%Y%m%d')
             time_yesterday = f"{past_time.strftime('%H%M%S')}-235959"
@@ -716,8 +743,24 @@ def get_dicom_info(ds):
 
 # Image processing operations
 def adjust_gamma(image, gamma = 1.2):
-    """ Auto-adjust gamma """
-    # If gamma is None, compute it
+    """ 
+    Apply gamma correction to an image to adjust brightness and contrast.
+    
+    Gamma correction is a nonlinear operation used to encode and decode luminance
+    values in video or still image systems. It helps to optimize our images for
+    better visualization by the AI model.
+    
+    When gamma is None, it's automatically calculated based on the image's median value.
+    A gamma < 1 makes the image brighter, while gamma > 1 makes it darker.
+    
+    Args:
+        image: Input image as numpy array
+        gamma: Gamma value for correction. If None, will be automatically calculated
+        
+    Returns:
+        numpy array: Gamma-corrected image
+    """
+    # If gamma is None, compute it based on image statistics
     if gamma is None:
         if len(image.shape) > 2:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -734,7 +777,24 @@ def adjust_gamma(image, gamma = 1.2):
     return cv2.LUT(image, table)
 
 def dicom_to_png(dicom_file, max_size = 800):
-    """ Convert DICOM to PNG and return the PNG filename """
+    """ 
+    Convert DICOM to PNG with preprocessing for optimal AI analysis.
+    
+    This function performs several important preprocessing steps:
+    1. Reads the DICOM pixel data
+    2. Resizes the image while maintaining aspect ratio
+    3. Applies percentile clipping to remove outliers
+    4. Normalizes pixel values to 0-255 range
+    5. Applies automatic gamma correction for better visualization
+    6. Saves as PNG for efficient processing by the AI model
+    
+    Args:
+        dicom_file: Path to the DICOM file
+        max_size: Maximum dimension for the output image (default: 800)
+        
+    Returns:
+        str: Path to the saved PNG file
+    """
     # Get the dataset
     ds = dcmread(dicom_file)
     # Check for PixelData
@@ -752,7 +812,7 @@ def dicom_to_png(dicom_file, max_size = 800):
             new_width = max_size
             new_height = int(height * (max_size / width))
         image = cv2.resize(image, (new_width, new_height), interpolation = cv2.INTER_AREA)
-    # Clip to 1..99 percentiles
+    # Clip to 1..99 percentiles to remove outliers and improve contrast
     minval = np.percentile(image, 1)
     maxval = np.percentile(image, 99)
     image = np.clip(image, minval, maxval)
@@ -1278,7 +1338,19 @@ async def start_dashboard():
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
 async def relay_to_openai_loop():
-    """ Relay PNG files to OpenAI API with retries and dashboard update """
+    """ 
+    Main processing loop that sends queued exams to the OpenAI API.
+    
+    This is the core processing function that:
+    1. Continuously monitors the database for queued exams
+    2. Processes one exam at a time to avoid overwhelming the AI service
+    3. Updates dashboard status during processing
+    4. Handles success/failure cases and cleanup
+    5. Implements proper error handling and status updates
+    
+    The loop waits on a queue_event when there's nothing to process,
+    which gets signaled when new items are added to the queue.
+    """
     while True:
         # Get one file from queue
         exams, total = db_get_exams(limit = 1, status = 'queued')
