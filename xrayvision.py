@@ -359,6 +359,10 @@ async def db_get_stats():
     and error statistics. Computes precision, negative predictive value, sensitivity,
     and specificity for each anatomic region.
     
+    To reduce memory usage, temporal trends are limited to:
+    - Daily trends for the last 30 days
+    - Monthly trends for the last 12 months
+    
     Returns:
         dict: Dictionary containing all statistical data organized by category
     """
@@ -459,7 +463,7 @@ async def db_get_stats():
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
         
-        # Get temporal trends (last 30 days)
+        # Get temporal trends (last 30 days only to reduce memory usage)
         cursor.execute("""
             SELECT DATE(created) as date,
                    region,
@@ -484,7 +488,7 @@ async def db_get_stats():
                 "positive": positive
             })
         
-        # Get monthly trends (last 12 months)
+        # Get monthly trends (last 12 months only to reduce memory usage)
         cursor.execute("""
             SELECT strftime('%Y-%m', created) as month,
                    region,
