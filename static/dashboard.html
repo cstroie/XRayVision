@@ -134,26 +134,32 @@
 
         .image-card:not(.reviewed):not(.positive) {
             border-left: 4px solid var(--pico-color-slate-500);
+            border-right: 4px solid var(--pico-color-slate-500);
         }
 
         .image-card:not(.reviewed).positive {
             border-left: 4px solid var(--pico-color-red-500);
+            border-right: 4px solid var(--pico-color-red-500);
         }
 
         .image-card.reviewed:not(.positive) {
             border-left: 4px solid var(--pico-color-jade-500);
+            border-right: 4px solid var(--pico-color-jade-500);
         }
 
         .image-card.reviewed.positive:not(.invalid) {
             border-left: 4px solid var(--pico-color-red-500);
+            border-right: 4px solid var(--pico-color-red-500);
         }
 
         .image-card.reviewed.positive.invalid {
             border-left: 4px solid var(--pico-color-orange-500);
+            border-right: 4px solid var(--pico-color-orange-500);
         }
 
         .image-card.reviewed.invalid:not(.positive) {
             border-left: 4px solid var(--pico-color-orange-500);
+            border-right: 4px solid var(--pico-color-orange-500);
         }
 
         .image-card.reviewed:not(.positive):not(.invalid)::after {
