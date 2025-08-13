@@ -454,7 +454,7 @@ async def db_get_stats():
                 "snsi": '-',
                 "spci": '-',
             }
-            # AI optimize this block ...
+            # Calculate metrics safely
             if (row[5] + row[7]) != 0:
                 stats["region"][region]["ppv"] = int(100.0 * row[5] / (row[5] + row[7]))
             if (row[6] + row[8])  != 0:
@@ -463,7 +463,6 @@ async def db_get_stats():
                 stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
-            # ... until here, AI!
         
         # Get temporal trends (last 30 days only to reduce memory usage)
         cursor.execute("""
@@ -1590,7 +1589,7 @@ async def relay_to_openai_loop():
         await broadcast_dashboard_update()
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{exam['uid']}.dcm")
-        # Try to send to AI
+        # Send to AI for processing
         result = False
         try:
             result = await send_exam_to_openai(exam)
