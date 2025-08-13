@@ -127,7 +127,7 @@ def init_database():
     
     Creates the exams table with columns for patient info, exam details, 
     AI reports, validation status, and processing status.
-    Also creates an index for efficient cleanup operations.
+    Also creates indexes for efficient query operations.
     """
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
@@ -148,9 +148,35 @@ def init_database():
                 status TEXT DEFAULT 'none'
             )
         ''')
+        # Index for cleanup operations
         conn.execute('''
             CREATE INDEX IF NOT EXISTS idx_cleanup 
             ON exams(status, created)
+        ''')
+        # Indexes for common query filters
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_status 
+            ON exams(status)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_reviewed 
+            ON exams(reviewed)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_positive 
+            ON exams(positive)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_valid 
+            ON exams(valid)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_region 
+            ON exams(region)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_name 
+            ON exams(name)
         ''')
         logging.info("Initialized SQLite database.")
 
