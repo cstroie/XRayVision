@@ -1198,7 +1198,7 @@ async def send_ntfy_notification(uid, report, info):
     except Exception as e:
         logging.error(f"Failed to send ntfy notification: {e}")
 
-# AI API operations
+# API operations
 def check_any(string, *words):
     """ 
     Check if any of the specified words are present in the given string.
