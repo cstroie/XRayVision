@@ -179,20 +179,47 @@
 
         .image-card.reviewed.positive:not(.invalid)::after {
             content: "POSITIVE FINDING";
+            position: absolute;
+            top: 1rem;
+            right: 2.5rem;
+            font-size: 0.7rem;
+            font-weight: 600;
             color: #ffffff;
             background-color: #b91c1c;
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
         }
 
         .image-card.reviewed.positive.invalid::after {
             content: "FALSE POSITIVE";
+            position: absolute;
+            top: 1rem;
+            right: 2.5rem;
+            font-size: 0.7rem;
+            font-weight: 600;
             color: #ffffff;
             background-color: #c2410c;
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
         }
 
         .image-card.reviewed.invalid:not(.positive)::after {
             content: "INVALID";
+            position: absolute;
+            top: 1rem;
+            right: 2.5rem;
+            font-size: 0.7rem;
+            font-weight: 600;
             color: #ffffff;
             background-color: #c2410c;
+            border-radius: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            white-space: nowrap;
         }
 
         .image-card.queued::after {
