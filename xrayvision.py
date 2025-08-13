@@ -86,13 +86,20 @@ websocket_clients = set()
 queue_event = asyncio.Event()
 next_query = None
 
+# Global variables to store the servers
+dicom_server = None
+web_server = None
+
+# OpenAI health
 active_openai_url = None
 health_status = {
     OPENAI_URL_PRIMARY: False,
     OPENAI_URL_SECONDARY: False
 }
+# OpenAI timings
+timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
 
-# Global paramters
+# Global parameters
 PAGE_SIZE = 10
 KEEP_DICOM = False
 LOAD_DICOM = False
@@ -107,8 +114,6 @@ dashboard = {
     'error_count': 0,
     'ignore_count': 0
 }
-# OpenAI timings
-timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
 
 # Database operations
 def init_database():
@@ -1251,6 +1256,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
 # Threads
 async def start_dashboard():
     """ Start the dashboard web server """
+    global web_server
     app = web.Application(middlewares = [auth_middleware])
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
@@ -1265,9 +1271,9 @@ async def start_dashboard():
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', DASHBOARD_PORT)
+    web_server = web.AppRunner(app)
+    await web_server.setup()
+    site = web.TCPSite(web_server, '0.0.0.0', DASHBOARD_PORT)
     await site.start()
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
@@ -1375,16 +1381,35 @@ async def maintenance_loop():
 
 def start_dicom_server():
     """ Start the DICOM Storage SCP """
-    ae = AE(ae_title = AE_TITLE)
+    global dicom_server
+    dicom_server = AE(ae_title = AE_TITLE)
     # Accept everything
     #ae.supported_contexts = StoragePresentationContexts
     # Accept only XRays
-    ae.add_supported_context(ComputedRadiographyImageStorage)
-    ae.add_supported_context(DigitalXRayImageStorageForPresentation)
+    dicom_server.add_supported_context(ComputedRadiographyImageStorage)
+    dicom_server.add_supported_context(DigitalXRayImageStorageForPresentation)
     # C-Store handler
     handlers = [(evt.EVT_C_STORE, dicom_store)]
     logging.info(f"Starting DICOM server on port {AE_PORT} with AE Title '{AE_TITLE}'...")
-    ae.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = True)
+    dicom_server.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = False)
+
+async def stop_servers():
+    """ Stop all servers gracefully """
+    global dicom_server, web_server
+    # Stop DICOM server
+    if dicom_server:
+        try:
+            dicom_server.shutdown()
+            logging.info("DICOM server stopped.")
+        except Exception as e:
+            logging.error(f"Error stopping DICOM server: {e}")
+    # Stop web server
+    if web_server:
+        try:
+            await web_server.cleanup()
+            logging.info("Web server stopped.")
+        except Exception as e:
+            logging.error(f"Error stopping web server: {e}")
 
 async def main():
     """ The main thread """
@@ -1400,22 +1425,33 @@ async def main():
     # Print some data
     logging.info(f"Python SQLite version: {sqlite3.version}")
     logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
-     
     # Load exams
     exams, total = db_get_exams(status = 'done')
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
-
-    # Start the asynchronous tasks
-    asyncio.create_task(start_dashboard())
-    asyncio.create_task(openai_health_check())
-    asyncio.create_task(relay_to_openai_loop())
-    asyncio.create_task(query_retrieve_loop())
-    asyncio.create_task(maintenance_loop())
+    tasks = []
+    # Start the DICOM server in a separate thread
+    dicom_task = asyncio.create_task(asyncio.to_thread(start_dicom_server))
+    tasks.append(dicom_task)
+    # Start the tasks
+    tasks.append(asyncio.create_task(start_dashboard()))
+    tasks.append(asyncio.create_task(openai_health_check()))
+    tasks.append(asyncio.create_task(relay_to_openai_loop()))
+    tasks.append(asyncio.create_task(query_retrieve_loop()))
+    tasks.append(asyncio.create_task(maintenance_loop()))
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
-    # Start the DICOM server
-    await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
+    try:
+        # Wait for all tasks to complete
+        await asyncio.gather(*tasks)
+    except asyncio.CancelledError:
+        logging.info("Main task cancelled. Shutting down...")
+        # Cancel all tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        # Wait for tasks to finish cancellation
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # Command run
@@ -1439,5 +1475,10 @@ if __name__ == '__main__':
         asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
-
-    logging.shutdown()
+    finally:
+        # Stop all servers
+        try:
+            asyncio.run(stop_servers())
+        except Exception as e:
+            logging.error(f"Error during shutdown: {e}")
+        logging.shutdown()
