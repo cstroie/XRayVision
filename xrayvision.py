@@ -1429,8 +1429,21 @@ async def main():
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
-    # Start the DICOM server
-    await asyncio.get_running_loop().run_in_executor(None, start_dicom_server)
+    # Start the DICOM server in a separate thread
+    dicom_task = asyncio.create_task(asyncio.to_thread(start_dicom_server))
+    tasks.append(dicom_task)
+    
+    try:
+        # Wait for all tasks to complete
+        await asyncio.gather(*tasks)
+    except asyncio.CancelledError:
+        logging.info("Main task cancelled. Shutting down...")
+        # Cancel all tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        # Wait for tasks to finish cancellation
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 # Command run
