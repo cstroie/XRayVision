@@ -1301,6 +1301,9 @@ def compute_age_from_id(patient_id):
     Returns:
         int: Age in years, or -1 if unable to compute
     """
+    # First validate the Romanian ID format
+    if not validate_romanian_id(patient_id):
+        return -1
     try:
         # Ensure we have a string
         pid = str(patient_id).strip()
