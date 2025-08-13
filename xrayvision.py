@@ -1431,7 +1431,6 @@ async def main():
 
     # Start the asynchronous tasks
     tasks = []
-    tasks.append(asyncio.create_task(start_dashboard()))
     tasks.append(asyncio.create_task(openai_health_check()))
     tasks.append(asyncio.create_task(relay_to_openai_loop()))
     tasks.append(asyncio.create_task(query_retrieve_loop()))
@@ -1439,6 +1438,9 @@ async def main():
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
+    # Start the web dashboard in a separate thread
+    dashboard_task = asyncio.create_task(asyncio.to_thread(start_dashboard))
+    tasks.append(dashboard_task)
     # Start the DICOM server in a separate thread
     dicom_task = asyncio.create_task(asyncio.to_thread(start_dicom_server))
     tasks.append(dicom_task)
