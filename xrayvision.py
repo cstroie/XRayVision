@@ -785,7 +785,7 @@ def dicom_store(event):
         ds.save_as(dicom_file, enforce_file_format = True)
         logging.info(f"DICOM file saved to {dicom_file}")
         # Process the DICOM file
-        _process_dicom_file(dicom_file, uid)
+        process_dicom_file(dicom_file, uid)
         # Notify the queue
         asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
     # Return success
@@ -810,7 +810,7 @@ async def load_existing_dicom_files():
                 logging.info(f"Adding {uid} into processing queue...")
                 full_path = os.path.join(IMAGES_DIR, dicom_file)
                 # Process the DICOM file
-                _process_dicom_file(full_path, uid)
+                process_dicom_file(full_path, uid)
     # At the end, update the dashboard
     await broadcast_dashboard_update()
 
@@ -1730,7 +1730,7 @@ async def stop_servers():
         except Exception as e:
             logging.error(f"Error stopping web server: {e}")
 
-def _process_dicom_file(dicom_file, uid):
+def process_dicom_file(dicom_file, uid):
     """ 
     Process a DICOM file by extracting metadata, converting to PNG, and adding to queue.
     
