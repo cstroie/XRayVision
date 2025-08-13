@@ -349,6 +349,36 @@
             border-left: 3px solid var(--pico-color-red-500);
         }
 
+        .image-card:not(.reviewed):not(.positive) .report {
+            background-color: rgba(55, 55, 55, 0.3);
+            border-left: 3px solid var(--pico-color-slate-500);
+        }
+
+        .image-card:not(.reviewed).positive .report {
+            background-color: rgba(75, 25, 25, 0.3);
+            border-left: 3px solid var(--pico-color-red-500);
+        }
+
+        .image-card.reviewed:not(.positive) .report {
+            background-color: rgba(15, 55, 35, 0.3);
+            border-left: 3px solid var(--pico-color-jade-500);
+        }
+
+        .image-card.reviewed.positive:not(.invalid) .report {
+            background-color: rgba(15, 55, 35, 0.3);
+            border-left: 3px solid var(--pico-color-red-500);
+        }
+
+        .image-card.reviewed.positive.invalid .report {
+            background-color: rgba(75, 25, 25, 0.3);
+            border-left: 3px solid var(--pico-color-orange-500);
+        }
+
+        .image-card.reviewed.invalid:not(.positive) .report {
+            background-color: rgba(75, 25, 25, 0.3);
+            border-left: 3px solid var(--pico-color-orange-500);
+        }
+
         .lightbox {
             display: none;
             position: fixed;
