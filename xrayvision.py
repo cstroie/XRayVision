@@ -601,19 +601,23 @@ def db_backup():
     Returns:
         str: Path to the created backup file
     """
-    # Create backup directory if it doesn't exist
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-    # Create backup filename with timestamp
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_filename = f"xrayvision_{timestamp}.db"
-    backup_path = os.path.join(BACKUP_DIR, backup_filename)
-    # Create backup using SQLite backup API
-    with sqlite3.connect(DB_FILE) as conn:
-        backup_conn = sqlite3.connect(backup_path)
-        conn.backup(backup_conn)
-        backup_conn.close()
-    logging.info(f"Database backed up to {backup_path}")
-    return backup_path
+    try:
+        # Create backup directory if it doesn't exist
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        # Create backup filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_filename = f"xrayvision_{timestamp}.db"
+        backup_path = os.path.join(BACKUP_DIR, backup_filename)
+        # Create backup using SQLite backup API
+        with sqlite3.connect(DB_FILE) as conn:
+            backup_conn = sqlite3.connect(backup_path)
+            conn.backup(backup_conn)
+            backup_conn.close()
+        logging.info(f"Database backed up to {backup_path}")
+        return backup_path
+    except Exception as e:
+        logging.error(f"Failed to create database backup: {e}")
+        return None
 
 def db_validate(uid, normal = True, valid = None, enqueue = False):
     """ 
@@ -958,43 +962,47 @@ def dicom_to_png(dicom_file, max_size = 800):
     Returns:
         str: Path to the saved PNG file
     """
-    # Get the dataset
-    ds = dcmread(dicom_file)
-    # Check for PixelData
-    if 'PixelData' not in ds:
-        raise ValueError(f"DICOM file {dicom_file} has no pixel data!")
-    # Convert to float
-    image = ds.pixel_array.astype(np.float32)
-    # Resize while maintaining aspect ratio
-    height, width = image.shape[:2]
-    if max(height, width) > max_size:
-        if height > width:
-            new_height = max_size
-            new_width = int(width * (max_size / height))
-        else:
-            new_width = max_size
-            new_height = int(height * (max_size / width))
-        image = cv2.resize(image, (new_width, new_height), interpolation = cv2.INTER_AREA)
-    # Clip to 1..99 percentiles to remove outliers and improve contrast
-    minval = np.percentile(image, 1)
-    maxval = np.percentile(image, 99)
-    image = np.clip(image, minval, maxval)
-    # Normalize image to 0-255
-    image -= image.min()
-    if image.max() != 0:
-        image /= image.max()
-    image *= 255.0
-    # Save as 8 bit
-    image = image.astype(np.uint8)
-    # Auto adjust gamma
-    image = adjust_gamma(image, None)
-    # Save the PNG file
-    base_name = os.path.splitext(os.path.basename(dicom_file))[0]
-    png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
-    cv2.imwrite(png_file, image)
-    logging.info(f"Converted PNG saved to {png_file}")
-    # Return the PNG file name
-    return png_file
+    try:
+        # Get the dataset
+        ds = dcmread(dicom_file)
+        # Check for PixelData
+        if 'PixelData' not in ds:
+            raise ValueError(f"DICOM file {dicom_file} has no pixel data!")
+        # Convert to float
+        image = ds.pixel_array.astype(np.float32)
+        # Resize while maintaining aspect ratio
+        height, width = image.shape[:2]
+        if max(height, width) > max_size:
+            if height > width:
+                new_height = max_size
+                new_width = int(width * (max_size / height))
+            else:
+                new_width = max_size
+                new_height = int(height * (max_size / width))
+            image = cv2.resize(image, (new_width, new_height), interpolation = cv2.INTER_AREA)
+        # Clip to 1..99 percentiles to remove outliers and improve contrast
+        minval = np.percentile(image, 1)
+        maxval = np.percentile(image, 99)
+        image = np.clip(image, minval, maxval)
+        # Normalize image to 0-255
+        image -= image.min()
+        if image.max() != 0:
+            image /= image.max()
+        image *= 255.0
+        # Save as 8 bit
+        image = image.astype(np.uint8)
+        # Auto adjust gamma
+        image = adjust_gamma(image, None)
+        # Save the PNG file
+        base_name = os.path.splitext(os.path.basename(dicom_file))[0]
+        png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
+        cv2.imwrite(png_file, image)
+        logging.info(f"Converted PNG saved to {png_file}")
+        # Return the PNG file name
+        return png_file
+    except Exception as e:
+        logging.error(f"Error converting DICOM to PNG: {e}")
+        raise
 
 
 # WebSocket and WebServer operations
@@ -1194,27 +1202,31 @@ async def send_ntfy_notification(uid, report, info):
     if not ENABLE_NTFY:
         logging.info("NTFY notifications are disabled")
         return
-    # Construct image URL
-    image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
-    # Create headers and message body
-    message = f"Positive finding in {info['exam']['region']} study\nPatient: {info['patient']['name']}\nReport: {report}"
-    headers = {
-        "Title": "XRayVision Alert - Positive Finding",
-        "Tags": "warning,skull",
-        "Priority": "4",
-        "Attach": image_url
-    }
-    
-    # Post the notification
-    async with aiohttp.ClientSession() as session:
-        async with session.post(NTFY_URL,
-            data = message,
-            headers = headers
-        ) as resp:
-            if resp.status == 200:
-                logging.info("Successfully sent ntfy notification")
-            else:
-                logging.error(f"Notification failed with status {resp.status}: {await resp.text()}")
+        
+    try:
+        # Construct image URL
+        image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
+        # Create headers and message body
+        message = f"Positive finding in {info['exam']['region']} study\nPatient: {info['patient']['name']}\nReport: {report}"
+        headers = {
+            "Title": "XRayVision Alert - Positive Finding",
+            "Tags": "warning,skull",
+            "Priority": "4",
+            "Attach": image_url
+        }
+        
+        # Post the notification
+        async with aiohttp.ClientSession() as session:
+            async with session.post(NTFY_URL,
+                data = message,
+                headers = headers
+            ) as resp:
+                if resp.status == 200:
+                    logging.info("Successfully sent ntfy notification")
+                else:
+                    logging.error(f"Notification failed with status {resp.status}: {await resp.text()}")
+    except Exception as e:
+        logging.error(f"Failed to send ntfy notification: {e}")
 
 # AI API operations
 def check_any(string, *words):
