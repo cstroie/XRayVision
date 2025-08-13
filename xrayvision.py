@@ -405,7 +405,7 @@ async def db_get_stats():
             WHERE status LIKE 'done' 
               AND reported IS NOT NULL 
               AND created IS NOT NULL
-              AND reported >= datetime('now', '-7 days')
+              AND created >= datetime('now', '-7 days')
         """)
         timing_row = cursor.fetchone()
         if timing_row and timing_row[0] is not None:
@@ -454,6 +454,7 @@ async def db_get_stats():
                 "snsi": '-',
                 "spci": '-',
             }
+            # AI optimize this block ...
             if (row[5] + row[7]) != 0:
                 stats["region"][region]["ppv"] = int(100.0 * row[5] / (row[5] + row[7]))
             if (row[6] + row[8])  != 0:
@@ -462,6 +463,7 @@ async def db_get_stats():
                 stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
+            # ... until here, AI!
         
         # Get temporal trends (last 30 days only to reduce memory usage)
         cursor.execute("""
