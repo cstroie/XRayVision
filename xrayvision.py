@@ -81,43 +81,54 @@ os.makedirs(IMAGES_DIR, exist_ok = True)
 os.makedirs(STATIC_DIR, exist_ok = True)
 
 # Global variables
-main_loop = None
-websocket_clients = set()
-queue_event = asyncio.Event()
-next_query = None
+main_loop = None  # Main asyncio event loop reference
+websocket_clients = set()  # Set of connected WebSocket clients for dashboard updates
+queue_event = asyncio.Event()  # Event to signal when items are added to the processing queue
+next_query = None  # Timestamp for the next scheduled DICOM query operation
 
 # Global variables to store the servers
-dicom_server = None
-web_server = None
+dicom_server = None  # DICOM server instance for receiving studies
+web_server = None  # Web server instance for dashboard and API
 
 # OpenAI health
-active_openai_url = None
+active_openai_url = None  # Currently active OpenAI API endpoint
 health_status = {
-    OPENAI_URL_PRIMARY: False,
-    OPENAI_URL_SECONDARY: False
+    OPENAI_URL_PRIMARY: False,  # Health status of primary OpenAI endpoint
+    OPENAI_URL_SECONDARY: False  # Health status of secondary OpenAI endpoint
 }
 # OpenAI timings
-timings = {'prompt': 0, 'predicted': 0, 'total': 0, 'average': 0}
+timings = {
+    'prompt': 0,      # Time taken to process the prompt (milliseconds)
+    'predicted': 0,   # Time taken for model prediction (milliseconds)
+    'total': 0,       # Total processing time (milliseconds)
+    'average': 0      # Average processing time (milliseconds)
+}
 
 # Global parameters
-PAGE_SIZE = 10
-KEEP_DICOM = False
-LOAD_DICOM = False
-NO_QUERY = False
-ENABLE_NTFY = False
+PAGE_SIZE = 10      # Number of exams to display per page in the dashboard
+KEEP_DICOM = False  # Whether to keep DICOM files after processing
+LOAD_DICOM = False  # Whether to load existing DICOM files at startup
+NO_QUERY = False    # Whether to disable automatic DICOM query/retrieve
+ENABLE_NTFY = False # Whether to enable ntfy.sh notifications for positive findings
 
 # Dashboard state
 dashboard = {
-    'queue_size': 0,
-    'processing_file': None,
-    'success_count': 0,
-    'error_count': 0,
-    'ignore_count': 0
+    'queue_size': 0,        # Number of exams waiting in the processing queue
+    'processing_file': None, # Currently processing exam patient name
+    'success_count': 0,     # Number of successfully processed exams in the last week
+    'error_count': 0,       # Number of exams that failed processing
+    'ignore_count': 0       # Number of exams that were ignored (wrong region)
 }
 
 # Database operations
 def init_database():
-    """ Initialize the database """
+    """ 
+    Initialize the SQLite database with the exams table and indexes.
+    
+    Creates the exams table with columns for patient info, exam details, 
+    AI reports, validation status, and processing status.
+    Also creates an index for efficient cleanup operations.
+    """
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute('''
             CREATE TABLE IF NOT EXISTS exams (
@@ -144,7 +155,24 @@ def init_database():
         logging.info("Initialized SQLite database.")
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
-    """ Load the exams from the database, with filters and pagination """
+    """ 
+    Load exams from the database with optional filters and pagination.
+    
+    Args:
+        limit: Maximum number of exams to return (default: PAGE_SIZE)
+        offset: Number of exams to skip for pagination (default: 0)
+        **filters: Optional filters for querying exams:
+            - reviewed: Filter by review status (0/1)
+            - positive: Filter by AI prediction (0/1)
+            - valid: Filter by validation status (0/1)
+            - region: Filter by anatomic region (case-insensitive partial match)
+            - status: Filter by processing status (case-insensitive exact match)
+            - search: Filter by patient name (case-insensitive partial match)
+            
+    Returns:
+        tuple: (exams_list, total_count) where exams_list is a list of exam dictionaries
+               and total_count is the total number of exams matching the filters
+    """
     conditions = []
     params = []
     
@@ -220,7 +248,19 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     return exams, total
 
 def db_add_exam(info, report = None, positive = None):
-    """ Add one row to the database """
+    """ 
+    Add or update an exam entry in the database.
+    
+    This function handles both queuing new exams for processing and storing
+    completed AI reports. For new exams, it sets status to 'queued'. For
+    completed reports, it sets status to 'done' and handles validation logic
+    when re-analyzing previously processed exams.
+    
+    Args:
+        info: Dictionary containing exam metadata (uid, patient info, exam details)
+        report: AI-generated report text (None for new exams to be queued)
+        positive: AI prediction result (True/False, None for queued exams)
+    """
     # Check if we have a new report or just enqueue an exam
     if report:
         # We have a new report
@@ -269,7 +309,15 @@ def db_add_exam(info, report = None, positive = None):
         ''', values)
 
 def db_check_already_processed(uid):
-    """ Check if the file has already been processed, in queue or processing """
+    """ 
+    Check if an exam has already been processed, is queued, or is being processed.
+    
+    Args:
+        uid: Unique identifier of the exam (SOP Instance UID)
+        
+    Returns:
+        bool: True if exam exists with status 'done', 'queued', or 'processing'
+    """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute(
             "SELECT status FROM exams WHERE uid = ? AND status IN ('done', 'queued', 'processing')", (uid,)
@@ -277,7 +325,17 @@ def db_check_already_processed(uid):
         return result is not None
 
 async def db_get_stats():
-    """ Get statistics from database """
+    """ 
+    Retrieve comprehensive statistics from the database for dashboard display.
+    
+    Calculates various metrics including total exams, reviewed counts, positive findings,
+    invalid predictions, regional breakdowns, temporal trends, processing performance,
+    and error statistics. Computes precision, negative predictive value, sensitivity,
+    and specificity for each anatomic region.
+    
+    Returns:
+        dict: Dictionary containing all statistical data organized by category
+    """
     stats = {
         "total": 0,
         "reviewed": 0,
@@ -428,14 +486,24 @@ async def db_get_stats():
     return stats
 
 def db_get_queue_size():
-    """ Get the queue size """
+    """ 
+    Get the current number of exams waiting in the processing queue.
+    
+    Returns:
+        int: Number of exams with status 'queued'
+    """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute("SELECT COUNT(*) FROM exams WHERE status = 'queued'").fetchone()
         return result[0]
     return 0
 
 def db_get_error_stats():
-    """ Get error and ignore statistics """
+    """ 
+    Get statistics for exams that failed processing or were ignored.
+    
+    Returns:
+        dict: Dictionary with 'error' and 'ignore' counts
+    """
     stats = {'error': 0, 'ignore': 0}
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -450,7 +518,12 @@ def db_get_error_stats():
     return stats
 
 def db_get_weekly_processed_count():
-    """ Get the count of successfully processed exams in the last week """
+    """ 
+    Get the count of successfully processed exams in the last 7 days.
+    
+    Returns:
+        int: Number of exams with status 'done' reported in the last week
+    """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute("""
             SELECT COUNT(*) 
@@ -461,7 +534,15 @@ def db_get_weekly_processed_count():
         return result[0] if result else 0
 
 def db_purge_ignored_errors():
-    """ Delete ignored and erroneous records older than 1 week and their associated files """
+    """ 
+    Delete ignored and erroneous records older than 1 week and their associated files.
+    
+    Removes database entries with status 'ignore' or 'error' that are older than
+    1 week, along with their corresponding DICOM and PNG files from the filesystem.
+    
+    Returns:
+        int: Number of records deleted
+    """
     deleted_uids = []
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.execute('''
@@ -484,7 +565,16 @@ def db_purge_ignored_errors():
     return deleted_count
 
 def db_backup():
-    """ Create a backup of the database with timestamp """
+    """ 
+    Create a timestamped backup of the database.
+    
+    Creates a backup copy of the SQLite database file with a timestamp in the filename
+    and stores it in the backup directory. Uses SQLite's built-in backup API for
+    consistent backups.
+    
+    Returns:
+        str: Path to the created backup file
+    """
     # Create backup directory if it doesn't exist
     os.makedirs(BACKUP_DIR, exist_ok=True)
     # Create backup filename with timestamp
@@ -541,7 +631,16 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
     return valid
 
 def db_set_status(uid, status):
-    """ Set the specified satatus for uid """
+    """ 
+    Set the processing status for a specific exam.
+    
+    Args:
+        uid: Unique identifier of the exam
+        status: New status value (e.g., 'queued', 'processing', 'done', 'error', 'ignore')
+        
+    Returns:
+        str: The status that was set
+    """
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("UPDATE exams SET status = ? WHERE uid = ?", (status, uid))
     # Return the status
@@ -604,7 +703,16 @@ async def query_and_retrieve(minutes = 15):
         logging.error("Could not establish QueryRetrieve association.")
 
 async def send_c_move(ae, study_instance_uid):
-    """ Ask for a study to be sent """
+    """ 
+    Request a study to be sent from the remote PACS to our DICOM server.
+    
+    Sends a C-MOVE request to the remote DICOM server to transfer a specific
+    study (identified by Study Instance UID) to our AE.
+    
+    Args:
+        ae: Application Entity instance
+        study_instance_uid: Unique identifier of the study to retrieve
+    """
     # Create the association
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
     if assoc.is_established:
@@ -620,7 +728,19 @@ async def send_c_move(ae, study_instance_uid):
         logging.error("Could not establish C-MOVE association.")
 
 def dicom_store(event):
-    """ Callback for receiving a DICOM file """
+    """ 
+    Callback function for handling received DICOM C-STORE requests.
+    
+    This function is called whenever a DICOM file is sent to our DICOM server.
+    It saves the DICOM file, extracts metadata, converts to PNG, and adds the
+    exam to the processing queue.
+    
+    Args:
+        event: pynetdicom event containing the DICOM dataset
+        
+    Returns:
+        int: DICOM status code (0x0000 for success)
+    """
     # Get the dataset
     ds = event.dataset
     ds.file_meta = event.file_meta
@@ -659,7 +779,13 @@ def dicom_store(event):
 
 # DICOM files operations
 async def load_existing_dicom_files():
-    """ Load existing .dcm files into queue """
+    """ 
+    Load existing DICOM files from the images directory into the processing queue.
+    
+    Scans the images directory for .dcm files that haven't been processed yet,
+    converts them to PNG format, extracts metadata, and adds them to the queue
+    for AI analysis. Updates the dashboard after processing.
+    """
     for dicom_file in os.listdir(IMAGES_DIR):
         uid, ext = os.path.splitext(os.path.basename(dicom_file.lower()))
         if ext == '.dcm':
@@ -695,7 +821,18 @@ async def load_existing_dicom_files():
     await broadcast_dashboard_update()
 
 def get_dicom_info(ds):
-    """ Read and return the info from a DICOM file """
+    """ 
+    Extract relevant information from a DICOM dataset.
+    
+    Parses patient demographics, exam details, and timestamps from a DICOM dataset.
+    Handles missing or malformed data gracefully with fallback values.
+    
+    Args:
+        ds: pydicom Dataset object
+        
+    Returns:
+        dict: Dictionary containing structured exam information
+    """
     age = -1
     if 'PatientAge' in ds:
         age = str(ds.PatientAge).lower().replace("y", "").strip()
@@ -1055,11 +1192,33 @@ async def send_ntfy_notification(uid, report, info):
 
 # AI API operations
 def check_any(string, *words):
-    """ Check if any of the words are present in the string """
+    """ 
+    Check if any of the specified words are present in the given string.
+    
+    Args:
+        string: String to search in
+        *words: Variable number of words to search for
+        
+    Returns:
+        bool: True if any word is found in the string, False otherwise
+    """
     return any(i in string for i in words)
 
 def get_region(info):
-    """ Try to identify the region. Return the region and the question. """
+    """ 
+    Identify the anatomic region and appropriate question based on protocol name.
+    
+    Maps DICOM protocol names to anatomic regions and formulates region-specific
+    questions for the AI to analyze. Uses pattern matching to handle variations
+    in naming conventions.
+    
+    Args:
+        info: Dictionary containing exam information with protocol name
+        
+    Returns:
+        tuple: (region, question) where region is the identified anatomic region
+               and question is the region-specific query for AI analysis
+    """
     desc = info["exam"]["protocol"].lower()
     if check_any(desc, 'torace', 'pulmon',
                  'thorax'):
@@ -1139,7 +1298,18 @@ def get_region(info):
     return region, question
 
 def get_projection(info):
-    """ Try to identify the projection """
+    """ 
+    Identify the imaging projection based on protocol name.
+    
+    Determines if the X-ray view is frontal (AP/PA), lateral, or oblique
+    based on keywords in the protocol name.
+    
+    Args:
+        info: Dictionary containing exam information with protocol name
+        
+    Returns:
+        str: Identified projection ('frontal', 'lateral', 'oblique', or '')
+    """
     desc = info["exam"]["protocol"].lower()
     if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
         projection = "frontal"
@@ -1154,7 +1324,17 @@ def get_projection(info):
     return projection
 
 def get_gender(info):
-    """ Try to identify the gender """
+    """ 
+    Determine patient gender description based on DICOM sex field.
+    
+    Maps DICOM patient sex codes to descriptive terms for use in AI prompts.
+    
+    Args:
+        info: Dictionary containing patient information with sex field
+        
+    Returns:
+        str: Gender description ('boy', 'girl', or 'child')
+    """
     patient_sex = info["patient"]["sex"].lower()
     if "m" in patient_sex:
         gender = "boy"
@@ -1167,7 +1347,20 @@ def get_gender(info):
     return gender
 
 async def send_to_openai(session, headers, payload):
-    """ Try the healty OpenAI API endpoint """
+    """ 
+    Send a request to the currently active OpenAI API endpoint.
+    
+    Attempts to send a POST request to the active OpenAI endpoint with the
+    provided headers and payload. Handles HTTP errors and exceptions.
+    
+    Args:
+        session: aiohttp ClientSession instance
+        headers: HTTP headers for the request
+        payload: JSON payload containing the request data
+        
+    Returns:
+        dict or None: JSON response from API if successful, None otherwise
+    """
     try:
         async with session.post(active_openai_url, headers = headers, json = payload, timeout = 300) as resp:
             if resp.status == 200:
@@ -1179,7 +1372,21 @@ async def send_to_openai(session, headers, payload):
     return None
 
 async def send_exam_to_openai(exam, max_retries = 3):
-    """Send PNG to OpenAI API with retries and save response to text file."""
+    """ 
+    Send an exam's PNG image to the OpenAI API for analysis.
+    
+    Processes the exam by identifying region/projection, preparing AI prompts,
+    encoding the image, sending requests with retries, parsing responses,
+    storing results in the database, and sending notifications for positive
+    findings. Implements exponential backoff for retry attempts.
+    
+    Args:
+        exam: Dictionary containing exam information and metadata
+        max_retries: Maximum number of retry attempts (default: 3)
+        
+    Returns:
+        bool: True if successfully processed, False otherwise
+    """
     # Read the PNG file
     with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
         image_bytes = f.read()
@@ -1315,7 +1522,13 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
 # Threads
 async def start_dashboard():
-    """ Start the dashboard web server """
+    """ 
+    Start the dashboard web server with all routes and middleware.
+    
+    Configures and starts the aiohttp web server that serves the dashboard
+    frontend, API endpoints, and static files. Sets up authentication
+    middleware and all required routes.
+    """
     global web_server
     app = web.Application(middlewares = [auth_middleware])
     app.router.add_get('/', serve_dashboard_page)
@@ -1394,7 +1607,14 @@ async def relay_to_openai_loop():
                 logging.debug(f"Keeping DICOM file: {dicom_file}")
 
 async def openai_health_check():
-    """ Health check coroutine """
+    """ 
+    Periodically check the health status of OpenAI API endpoints.
+    
+    Tests both primary and secondary OpenAI endpoints every 5 minutes,
+    updates health status tracking, selects the active endpoint based
+    on health status, and signals the processing queue when endpoints
+    become available.
+    """
     global active_openai_url
     while True:
         for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
@@ -1425,7 +1645,13 @@ async def openai_health_check():
         await asyncio.sleep(300)
 
 async def query_retrieve_loop():
-    """ Async thread to periodically poll the server for new studies """
+    """ 
+    Periodically query the remote DICOM server for new studies.
+    
+    Runs an infinite loop that queries the remote PACS for new CR studies
+    every 15 minutes (900 seconds). Can be disabled with the --no-query flag.
+    Updates the next_query timestamp for dashboard display.
+    """
     if NO_QUERY:
         logging.warning(f"Automatic Query/Retrieve disabled.")
     while not NO_QUERY:
@@ -1437,7 +1663,14 @@ async def query_retrieve_loop():
         await asyncio.sleep(900)
 
 async def maintenance_loop():
-    """ Daily maintenance tasks: cleanup and database backup """
+    """ 
+    Perform daily maintenance tasks including database cleanup and backup.
+    
+    Runs an infinite loop that performs daily maintenance operations:
+    1. Purges old ignored/error records and their associated files
+    2. Creates a timestamped backup of the database
+    Waits 24 hours between runs.
+    """
     while True:
         # Purge old ignored/error records
         db_purge_ignored_errors()
@@ -1452,7 +1685,14 @@ async def maintenance_loop():
         await asyncio.sleep(86400)
 
 def start_dicom_server():
-    """ Start the DICOM Storage SCP """
+    """ 
+    Start the DICOM Storage SCP (Service Class Provider) server.
+    
+    Configures and starts the pynetdicom AE server that listens for incoming
+    DICOM C-STORE requests. Supports Computed Radiography and Digital X-Ray
+    storage SOP classes. Runs in a separate thread to avoid blocking the
+    main asyncio event loop.
+    """
     global dicom_server
     dicom_server = AE(ae_title = AE_TITLE)
     # Accept everything
@@ -1466,7 +1706,12 @@ def start_dicom_server():
     dicom_server.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = False)
 
 async def stop_servers():
-    """ Stop all servers gracefully """
+    """ 
+    Stop all servers gracefully during shutdown.
+    
+    Attempts to gracefully shutdown both the DICOM server and web server,
+    handling any exceptions that may occur during the shutdown process.
+    """
     global dicom_server, web_server
     # Stop DICOM server
     if dicom_server:
@@ -1484,7 +1729,14 @@ async def stop_servers():
             logging.error(f"Error stopping web server: {e}")
 
 async def main():
-    """ The main thread """
+    """ 
+    Main application entry point and orchestrator.
+    
+    Initializes the database, loads existing exams, starts all server components
+    (DICOM, web dashboard, AI processing, health checks, query/retrieve, maintenance),
+    loads existing DICOM files if requested, and manages the asyncio event loop.
+    Handles graceful shutdown on KeyboardInterrupt.
+    """
     # Main event loop
     global main_loop
     main_loop = asyncio.get_running_loop()
