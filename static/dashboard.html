@@ -715,8 +715,8 @@
                         if (currentPage === 1) {
                             loadPage(1);
                         }
-                        // Play chime if positive
-                        if (data.event.payload.positive) {
+                        // Play chime if positive and not reviewed (new finding)
+                        if (data.event.payload.positive && !data.event.payload.reviewed) {
                             playChime();
                         }
                     } else if (data.event.name === "connected") {
