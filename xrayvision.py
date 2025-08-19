@@ -114,7 +114,7 @@ ENABLE_NTFY = False # Whether to enable ntfy.sh notifications for positive findi
 # Dashboard state
 dashboard = {
     'queue_size': 0,        # Number of exams waiting in the processing queue
-    'processing_file': None, # Currently processing exam patient name
+    'processing': None,     # Currently processing exam patient name
     'success_count': 0,     # Number of successfully processed exams in the last week
     'error_count': 0,       # Number of exams that failed processing
     'ignore_count': 0       # Number of exams that were ignored (wrong region)
@@ -1646,7 +1646,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     timings['average'] = timings['total']
                 logging.info(f"OpenAI API response timings: last {timings['total']} ms, average {timings['average']} ms")
                 # Notify the dashboard frontend to reload first page
-                await broadcast_dashboard_update(event = "new_item", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
+                await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
                 # Success
                 return True
         except Exception as e:
@@ -1720,7 +1720,7 @@ async def relay_to_openai_loop():
         db_set_status(exam['uid'], "processing")
         # Update the dashboard
         dashboard['queue_size'] = total
-        dashboard['processing_file'] = exam['patient']['name']
+        dashboard['processing'] = exam['patient']['name']
         await broadcast_dashboard_update()
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{exam['uid']}.dcm")
@@ -1732,7 +1732,7 @@ async def relay_to_openai_loop():
             logging.error(f"OpenAI error processing {exam['uid']}: {e}")
             db_set_status(exam['uid'], "error")
         finally:
-            dashboard['processing_file'] = None
+            dashboard['processing'] = None
             await broadcast_dashboard_update()
         # Check the result
         if result:

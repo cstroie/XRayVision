@@ -686,7 +686,7 @@
                 let data = JSON.parse(event.data);
                 if (data.dashboard !== undefined) {
                     document.getElementById('queue').innerHTML = data.dashboard.queue_size;
-                    document.getElementById('processing').innerHTML = data.dashboard.processing_file || 'Idle';
+                    document.getElementById('processing').innerHTML = data.dashboard.processing || 'Idle';
                     document.getElementById('success').innerHTML = data.dashboard.success_count || 0;
                     document.getElementById('errors').innerHTML = data.dashboard.error_count || 0;
                     document.getElementById('ignored').innerHTML = data.dashboard.ignore_count || 0;
@@ -709,7 +709,7 @@
                     updateQueryCountdown(data.next_query);
                 }
                 if (data.event !== undefined) {
-                    if (data.event.name === "new_item") {
+                    if (data.event.name === "new_exam") {
                         showToast("New image processed");
                         // Reload page 1, if viewing it
                         if (currentPage === 1) {
