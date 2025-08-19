@@ -396,7 +396,7 @@ async def db_get_stats():
         stats["positive"] = row[2] or 0
         stats["invalid"] = row[3] or 0
 
-        # Get processing time statistics (last week only)
+        # Get processing time statistics (last day only)
         cursor.execute("""
             SELECT 
                 AVG(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) AS avg_processing_time,
@@ -405,7 +405,7 @@ async def db_get_stats():
             WHERE status LIKE 'done' 
               AND reported IS NOT NULL 
               AND created IS NOT NULL
-              AND created >= datetime('now', '-7 days')
+              AND created >= datetime('now', '-1 days')
         """)
         timing_row = cursor.fetchone()
         if timing_row and timing_row[0] is not None:
