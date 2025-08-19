@@ -1151,20 +1151,19 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     else:
         clients = websocket_clients.copy()
     # Create the json object
-    data = {'dashboard': dashboard,
-            'openai': {
-                "url": active_openai_url,
-                "health": {
-                    'pri': health_status.get(OPENAI_URL_PRIMARY,  False),
-                    'sec': health_status.get(OPENAI_URL_SECONDARY, False)
-                }
-            },
-            'timings': timings,
-    }
-    if next_query:
-        data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
+    data = {}
     if event:
         data['event'] = {'name': event, 'payload': payload}
+    data['dashboard'] = dashboard
+    data['openai'] = {'url': active_openai_url,
+                      'health': {
+                        'pri': health_status.get(OPENAI_URL_PRIMARY,  False),
+                        'sec': health_status.get(OPENAI_URL_SECONDARY, False)
+                       }
+                     }
+    data['timings'] = timings
+    if next_query:
+        data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
     # Send the update to all clients
     for client in clients:
         # Send the update to the client
