@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# 
+#
 # XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
 # Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
-# 
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -12,26 +12,32 @@
 import asyncio
 import os
 import base64
+import json
+import logging
+import math
+import re
+import sqlite3
+from datetime import datetime, timedelta
+
 import aiohttp
 import cv2
 import numpy as np
-import math
-import json
-import re
-import sqlite3
-import logging
 from aiohttp import web
 from pydicom import dcmread
 from pydicom.dataset import Dataset
 from pynetdicom import AE, evt, StoragePresentationContexts, QueryRetrievePresentationContexts
-from pynetdicom.sop_class import ComputedRadiographyImageStorage, DigitalXRayImageStorageForPresentation, PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
-from datetime import datetime, timedelta
+from pynetdicom.sop_class import (
+    ComputedRadiographyImageStorage,
+    DigitalXRayImageStorageForPresentation,
+    PatientRootQueryRetrieveInformationModelFind,
+    PatientRootQueryRetrieveInformationModelMove
+)
 
 # Logger config
 logging.basicConfig(
-    level = logging.INFO,
-    format = '%(asctime)s | %(levelname)8s | %(message)s',
-    handlers = [
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)8s | %(message)s',
+    handlers=[
         logging.FileHandler("xrayvision.log"),
         logging.StreamHandler()
     ]
@@ -76,9 +82,9 @@ Update the JSON report according to the template."""
 REGIONS = ["chest", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
 
 # Images directory
-os.makedirs(IMAGES_DIR, exist_ok = True)
+os.makedirs(IMAGES_DIR, exist_ok=True)
 # Static directory
-os.makedirs(STATIC_DIR, exist_ok = True)
+os.makedirs(STATIC_DIR, exist_ok=True)
 
 # Global variables
 main_loop = None  # Main asyncio event loop reference
@@ -986,16 +992,16 @@ def dicom_to_png(dicom_file, max_size = 800):
 
 # WebSocket and WebServer operations
 async def serve_dashboard_page(request):
-    return web.FileResponse(path = os.path.join(STATIC_DIR, "dashboard.html"))
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "dashboard.html"))
 
 async def serve_stats_page(request):
-    return web.FileResponse(path = os.path.join(STATIC_DIR, "stats.html"))
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "stats.html"))
 
 async def serve_about_page(request):
-    return web.FileResponse(path = os.path.join(STATIC_DIR, "about.html"))
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "about.html"))
 
 async def serve_favicon(request):
-    return web.FileResponse(path = os.path.join(STATIC_DIR, "favicon.ico"))
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "favicon.ico"))
 
 async def websocket_handler(request):
     """ Handle each WebSocket client """
