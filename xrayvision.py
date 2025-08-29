@@ -1201,9 +1201,10 @@ async def send_ntfy_notification(uid, report, info):
         
         # Post the notification
         async with aiohttp.ClientSession() as session:
-            async with session.post(NTFY_URL,
-                data = message,
-                headers = headers
+            async with session.post(
+                NTFY_URL,
+                data=message,
+                headers=headers
             ) as resp:
                 if resp.status == 200:
                     logging.info("Successfully sent ntfy notification")
