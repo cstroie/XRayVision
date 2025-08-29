@@ -10,11 +10,11 @@
 # any later version.
 
 import asyncio
-import os
 import base64
 import json
 import logging
 import math
+import os
 import re
 import sqlite3
 from datetime import datetime, timedelta
@@ -25,7 +25,7 @@ import numpy as np
 from aiohttp import web
 from pydicom import dcmread
 from pydicom.dataset import Dataset
-from pynetdicom import AE, evt, StoragePresentationContexts, QueryRetrievePresentationContexts
+from pynetdicom import AE, evt, QueryRetrievePresentationContexts, StoragePresentationContexts
 from pynetdicom.sop_class import (
     ComputedRadiographyImageStorage,
     DigitalXRayImageStorageForPresentation,
@@ -49,8 +49,14 @@ logging.getLogger('pynetdicom').setLevel(logging.WARNING)  # DICOM network opera
 logging.getLogger('pydicom').setLevel(logging.WARNING)     # DICOM file operations
 
 # Configuration
-OPENAI_URL_PRIMARY = os.getenv("OPENAI_URL_PRIMARY", "http://192.168.3.239:8080/v1/chat/completions")
-OPENAI_URL_SECONDARY = os.getenv("OPENAI_URL_SECONDARY", "http://127.0.0.1:8080/v1/chat/completions")
+OPENAI_URL_PRIMARY = os.getenv(
+    "OPENAI_URL_PRIMARY", 
+    "http://192.168.3.239:8080/v1/chat/completions"
+)
+OPENAI_URL_SECONDARY = os.getenv(
+    "OPENAI_URL_SECONDARY", 
+    "http://127.0.0.1:8080/v1/chat/completions"
+)
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')
 XRAYVISION_USER = os.getenv('XRAYVISION_USER', 'admin')
 XRAYVISION_PASS = os.getenv('XRAYVISION_PASS', 'admin')
@@ -66,20 +72,35 @@ STATIC_DIR = 'static'
 DB_FILE = os.getenv("XRAYVISION_DB_PATH", "xrayvision.db")
 BACKUP_DIR = os.getenv("XRAYVISION_BACKUP_DIR", "backup")
 
-SYS_PROMPT = """You are a smart radiologist working in ER. 
-You only output mandatory JSON to a RESTful API, in the following format: {"short": "yes or no", "report": "REPORT"} where "yes or no" is the short answer, only "yes" and "no" being allowed, and "REPORT" is the full description of the findings, like a radiologist would write.
-It is important to identify all lesions in the xray and respond with 'yes' if there is anything pathological and 'no' if there is nothing to report.
-If in doubt, do not assume, stick to the facts.
-Look again at the xray if you think there is something ambiguous.
-The output format is JSON, keys and values require double-quotes, the keys are "short", "report", value types are escaped string, int, truth value.
-No explanation or other text is allowed."""
+SYS_PROMPT = (
+    "You are a smart radiologist working in ER. "
+    "You only output mandatory JSON to a RESTful API, in the following format: "
+    '{"short": "yes or no", "report": "REPORT"} where "yes or no" is the short '
+    "answer, only 'yes' and 'no' being allowed, and 'REPORT' is the full "
+    "description of the findings, like a radiologist would write. "
+    "It is important to identify all lesions in the xray and respond with 'yes' "
+    "if there is anything pathological and 'no' if there is nothing to report. "
+    "If in doubt, do not assume, stick to the facts. "
+    "Look again at the xray if you think there is something ambiguous. "
+    "The output format is JSON, keys and values require double-quotes, "
+    'the keys are "short", "report", value types are escaped string, int, truth value. '
+    "No explanation or other text is allowed."
+)
 USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
-REV_PROMPT = """There is something inaccurate in your report.
-Analyse the xray again and look for any other possible lesions.
-Do not apologize or explain yourself.
-No explanation or other text is allowed. Only JSON is allowed as an answer.
-Update the JSON report according to the template."""
-REGIONS = ["chest", "abdominal", "nasal bones", "maxilar and frontal sinus", "clavicle"]
+REV_PROMPT = (
+    "There is something inaccurate in your report. "
+    "Analyse the xray again and look for any other possible lesions. "
+    "Do not apologize or explain yourself. "
+    "No explanation or other text is allowed. Only JSON is allowed as an answer. "
+    "Update the JSON report according to the template."
+)
+REGIONS = [
+    "chest", 
+    "abdominal", 
+    "nasal bones", 
+    "maxilar and frontal sinus", 
+    "clavicle"
+]
 
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
@@ -689,7 +710,7 @@ def db_set_status(uid, status):
 
 
 # DICOM network operations
-async def query_and_retrieve(minutes = 15):
+async def query_and_retrieve(minutes=15):
     """ 
     Query and Retrieve new studies from the remote DICOM server.
     
@@ -700,16 +721,19 @@ async def query_and_retrieve(minutes = 15):
     Args:
         minutes: Number of minutes to look back for new studies (default: 15)
     """
-    ae = AE(ae_title = AE_TITLE)
+    ae = AE(ae_title=AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
     ae.connection_timeout = 30
     # Create the association
-    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
+    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
     if assoc.is_established:
-        logging.info(f"QueryRetrieve association established. Asking for studies in the last {minutes} minutes.")
+        logging.info(
+            f"QueryRetrieve association established. "
+            f"Asking for studies in the last {minutes} minutes."
+        )
         # Prepare the timespan
         current_time = datetime.now()
-        past_time = current_time - timedelta(minutes = minutes)
+        past_time = current_time - timedelta(minutes=minutes)
         # Check if the time span crosses midnight, split into two queries
         # This is necessary because DICOM time ranges can't wrap around midnight
         if past_time.date() < current_time.date():
@@ -721,7 +745,7 @@ async def query_and_retrieve(minutes = 15):
         else:
             time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
             date_today = current_time.strftime('%Y%m%d')
-            queries = [(date_today, time_range),]
+            queries = [(date_today, time_range)]
         # Perform one or two queries, as needed
         for study_date, time_range in queries:
             # The query dataset
@@ -731,7 +755,10 @@ async def query_and_retrieve(minutes = 15):
             ds.StudyTime = time_range
             ds.Modality = "CR"
             # Get the responses list
-            responses = assoc.send_c_find(ds, PatientRootQueryRetrieveInformationModelFind)
+            responses = assoc.send_c_find(
+                ds, 
+                PatientRootQueryRetrieveInformationModelFind
+            )
             # Ask for each one to be sent
             for (status, identifier) in responses:
                 if status and status.Status in (0xFF00, 0xFF01):
@@ -755,14 +782,18 @@ async def send_c_move(ae, study_instance_uid):
         study_instance_uid: Unique identifier of the study to retrieve
     """
     # Create the association
-    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title = REMOTE_AE_TITLE)
+    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
     if assoc.is_established:
         # The retrieval dataset
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
         ds.StudyInstanceUID = study_instance_uid
         # Get the response
-        responses = assoc.send_c_move(ds, AE_TITLE, PatientRootQueryRetrieveInformationModelMove)
+        responses = assoc.send_c_move(
+            ds, 
+            AE_TITLE, 
+            PatientRootQueryRetrieveInformationModelMove
+        )
         # Release the association
         assoc.release()
     else:
