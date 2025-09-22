@@ -1670,14 +1670,17 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         logging.error(f"Failed to send ntfy notification: {e}")
                 # Get some timing statistics
                 global timings
-                timings['prompt'] = int(result['timings']['prompt_ms'])
-                timings['predicted'] = int(result['timings']['predicted_ms'])
-                timings['total'] = timings['prompt'] + timings['predicted']
-                if timings['average'] > 0:
-                    timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                if 'timings' in result and result['timings']:
+                    timings['prompt'] = int(result['timings'].get('prompt_ms', 0))
+                    timings['predicted'] = int(result['timings'].get('predicted_ms', 0))
+                    timings['total'] = timings['prompt'] + timings['predicted']
+                    if timings['average'] > 0:
+                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                    else:
+                        timings['average'] = timings['total']
+                    logging.info(f"OpenAI API response timings: last {timings['total']} ms, average {timings['average']} ms")
                 else:
-                    timings['average'] = timings['total']
-                logging.info(f"OpenAI API response timings: last {timings['total']} ms, average {timings['average']} ms")
+                    logging.warning("No timing information in OpenAI API response")
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
                 # Success
