@@ -1622,23 +1622,18 @@ async def send_exam_to_openai(exam, max_retries = 3):
         "temperature": 0.6,
         "cache_prompt": True,
         "stream": False,
-        "messages": [
-            {
-                "role": "system",
-                "content": [{"type": "text", "text": SYS_PROMPT}]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_url}}
-                ]
-            }
-        ]
+        "messages": []
     }
+    # Add the system prompt
+    data['messages'].append({'role': 'system', 'content': {"type": "text", "text": SYS_PROMPT}})
+    # Add the user prompt
+    data['messages'].append({'role': 'user', 'content': {"type": "text", "text": prompt}})
+    # Add the review prompt, if needed
     if 'json' in exam['report']:
         data['messages'].append({'role': 'assistant', 'content': exam['report']['json']})
         data['messages'].append({'role': 'user', 'content': REV_PROMPT})
+    # Add the image
+    data['messages'].append({'role': 'user', 'content': {"type": "image_url", "image_url": {"url": image_url}}})
     # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
     attempt = 1
     while attempt <= max_retries:
