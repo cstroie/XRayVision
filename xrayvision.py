@@ -873,7 +873,7 @@ async def load_existing_dicom_files():
     # At the end, update the dashboard
     await broadcast_dashboard_update()
 
-def get_dicom_info(ds):
+def extract_dicom_metadata(ds):
     """ 
     Extract relevant information from a DICOM dataset.
     
@@ -1389,7 +1389,7 @@ def compute_age_from_id(patient_id):
         logging.debug(f"Could not compute age from ID {patient_id}: {e}")
         return -1
 
-def check_any(string, *words):
+def contains_any_word(string, *words):
     """ 
     Check if any of the specified words are present in the given string.
     
@@ -1402,7 +1402,7 @@ def check_any(string, *words):
     """
     return any(i in string for i in words)
 
-def get_region(info):
+def identify_anatomic_region(info):
     """ 
     Identify the anatomic region and appropriate question based on protocol name.
     
@@ -1418,74 +1418,74 @@ def get_region(info):
                and question is the region-specific query for AI analysis
     """
     desc = info["exam"]["protocol"].lower()
-    if check_any(desc, 'torace', 'pulmon',
-                 'thorax'):
+    if contains_any_word(desc, 'torace', 'pulmon',
+                         'thorax'):
         region = 'chest'
         question = "Are there any lung consolidations, infitrates, opacities, pleural effusion, pneumothorax or pneumoperitoneum"
-    elif check_any(desc, 'grilaj', 'coaste'):
+    elif contains_any_word(desc, 'grilaj', 'coaste'):
         region = 'ribs'
         question = "Are there any ribs or clavicles fractures"
-    elif check_any(desc, 'stern'):
+    elif contains_any_word(desc, 'stern'):
         region = 'sternum'
         question = "Are there any fractures"
-    elif check_any(desc, 'abdomen', 'abdominal'):
+    elif contains_any_word(desc, 'abdomen', 'abdominal'):
         region = 'abdominal'
         #question = "Are there any fluid levels, free gas or metallic foreign bodies"
         question = "Are there any signs of bowel obstruction, pneumoperitoneum or foreign bodies"
-    elif check_any(desc, 'cap', 'craniu', 'occiput',
-                   'skull'):
+    elif contains_any_word(desc, 'cap', 'craniu', 'occiput',
+                           'skull'):
         region = 'skull'
         question = "Are there any fractures"
-    elif check_any(desc, 'mandibula'):
+    elif contains_any_word(desc, 'mandibula'):
         region = 'mandible'
         question = "Are there any fractures"
-    elif check_any(desc, 'nazal', 'piramida'):
+    elif contains_any_word(desc, 'nazal', 'piramida'):
         region = 'nasal bones'
         question = "Are there any fractures"
-    elif check_any(desc, 'sinus'):
+    elif contains_any_word(desc, 'sinus'):
         region = 'maxilar and frontal sinus'
         question = "Are the sinuses normally aerated or are they opaque or are there fluid levels"
-    elif check_any(desc, 'col.',
-                   'spine', 'dens', 'sacrat'):
+    elif contains_any_word(desc, 'col.',
+                           'spine', 'dens', 'sacrat'):
         region = 'spine'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'bazin', 'pelvis'):
+    elif contains_any_word(desc, 'bazin', 'pelvis'):
         region = 'pelvis'
         question = "Are there any fractures"
-    elif check_any(desc, 'clavicula',
-                   'clavicle'):
+    elif contains_any_word(desc, 'clavicula',
+                           'clavicle'):
         region = 'clavicle'
         question = "Are there any fractures"
-    elif check_any(desc, 'humerus', 'antebrat',
-                   'forearm'):
+    elif contains_any_word(desc, 'humerus', 'antebrat',
+                           'forearm'):
         region = 'upper limb'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif check_any(desc, 'pumn', 'mana', 'deget',
-                   'hand', 'finger'):
+    elif contains_any_word(desc, 'pumn', 'mana', 'deget',
+                           'hand', 'finger'):
         region = 'hand'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif check_any(desc, 'umar',
-                   'shoulder'):
+    elif contains_any_word(desc, 'umar',
+                           'shoulder'):
         region = 'shoulder'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'cot',
-                   'elbow'):
+    elif contains_any_word(desc, 'cot',
+                           'elbow'):
         region = 'elbow'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'sold',
-                   'hip'):
+    elif contains_any_word(desc, 'sold',
+                           'hip'):
         region = 'hip'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'femur', 'tibie', 'picior', 'gamba', 'calcai',
-                   'leg', 'foot'):
+    elif contains_any_word(desc, 'femur', 'tibie', 'picior', 'gamba', 'calcai',
+                           'leg', 'foot'):
         region = 'lower limb'
         question = "Are there any fractures, dislocations or bone tumors"
-    elif check_any(desc, 'genunchi', 'patella',
-                   'knee'):
+    elif contains_any_word(desc, 'genunchi', 'patella',
+                           'knee'):
         region = 'knee'
         question = "Are there any fractures or dislocations"
-    elif check_any(desc, 'glezna', 'calcaneu',
-                   'ankle'):
+    elif contains_any_word(desc, 'glezna', 'calcaneu',
+                           'ankle'):
         region = 'ankle'
         question = "Are there any fractures or dislocations"
     else:
@@ -1495,7 +1495,7 @@ def get_region(info):
     # Return the region and the question
     return region, question
 
-def get_projection(info):
+def identify_imaging_projection(info):
     """ 
     Identify the imaging projection based on protocol name.
     
@@ -1509,11 +1509,11 @@ def get_projection(info):
         str: Identified projection ('frontal', 'lateral', 'oblique', or '')
     """
     desc = info["exam"]["protocol"].lower()
-    if check_any(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
+    if contains_any_word(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
         projection = "frontal"
-    elif check_any(desc, "lat.", "pr."):
+    elif contains_any_word(desc, "lat.", "pr."):
         projection = "lateral"
-    elif check_any(desc, "oblic"):
+    elif contains_any_word(desc, "oblic"):
         projection = "oblique"
     else:
         # Fallback
@@ -1521,7 +1521,7 @@ def get_projection(info):
     # Return the projection
     return projection
 
-def get_gender(info):
+def determine_patient_gender_description(info):
     """ 
     Determine patient gender description based on DICOM sex field.
     
@@ -1589,15 +1589,15 @@ async def send_exam_to_openai(exam, max_retries = 3):
     with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
         image_bytes = f.read()
     # Identify the region
-    region, question = get_region(exam)
+    region, question = identify_anatomic_region(exam)
     # Filter on specific region
     if not region in REGIONS:
         logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
         db_set_status(exam['uid'], 'ignore')
         return False
     # Identify the prjection, gender and age
-    projection = get_projection(exam)
-    gender = get_gender(exam)
+    projection = identify_imaging_projection(exam)
+    gender = determine_patient_gender_description(exam)
     age = exam["patient"]["age"]
     if age > 0:
         txtAge = f"{age} years old"
@@ -1942,7 +1942,7 @@ def process_dicom_file(dicom_file, uid):
         ds = dcmread(dicom_file)
         # Get some info for queueing
         try:
-            info = get_dicom_info(ds)
+            info = extract_dicom_metadata(ds)
         except Exception as e:
             logging.error(f"Error getting info {dicom_file}: {e}")
             return
