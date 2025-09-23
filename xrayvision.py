@@ -314,6 +314,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         total = conn.execute(count_query, count_params).fetchone()[0]
     return exams, total
 
+
 def db_add_exam(info, report = None, positive = None):
     """ 
     Add or update an exam entry in the database.
@@ -375,6 +376,7 @@ def db_add_exam(info, report = None, positive = None):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', values)
 
+
 def db_check_already_processed(uid):
     """ 
     Check if an exam has already been processed, is queued, or is being processed.
@@ -390,6 +392,7 @@ def db_check_already_processed(uid):
             "SELECT status FROM exams WHERE uid = ? AND status IN ('done', 'queued', 'processing')", (uid,)
         ).fetchone()
         return result is not None
+
 
 async def db_get_stats():
     """ 
@@ -560,6 +563,7 @@ async def db_get_stats():
     # Return stats
     return stats
 
+
 def db_get_queue_size():
     """ 
     Get the current number of exams waiting in the processing queue.
@@ -571,6 +575,7 @@ def db_get_queue_size():
         result = conn.execute("SELECT COUNT(*) FROM exams WHERE status = 'queued'").fetchone()
         return result[0]
     return 0
+
 
 def db_get_error_stats():
     """ 
@@ -592,6 +597,7 @@ def db_get_error_stats():
             stats[row[0]] = row[1]
     return stats
 
+
 def db_get_weekly_processed_count():
     """ 
     Get the count of successfully processed exams in the last 7 days.
@@ -607,6 +613,7 @@ def db_get_weekly_processed_count():
             AND reported >= datetime('now', '-7 days')
         """).fetchone()
         return result[0] if result else 0
+
 
 def db_purge_ignored_errors():
     """ 
@@ -639,6 +646,7 @@ def db_purge_ignored_errors():
     logging.info(f"Purged {deleted_count} old records from database and their files.")
     return deleted_count
 
+
 def db_backup():
     """ 
     Create a timestamped backup of the database.
@@ -667,6 +675,7 @@ def db_backup():
     except Exception as e:
         logging.error(f"Failed to create database backup: {e}")
         return None
+
 
 def db_validate(uid, normal = True, valid = None, enqueue = False):
     """ 
@@ -708,6 +717,7 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
         set_clause = 'SET ' + ','.join(columns)
         conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
     return valid
+
 
 def db_set_status(uid, status):
     """ 
@@ -816,6 +826,7 @@ async def send_c_move(ae, study_instance_uid):
     else:
         logging.error("Could not establish C-MOVE association.")
 
+
 def dicom_store(event):
     """ 
     Callback function for handling received DICOM C-STORE requests.
@@ -872,6 +883,7 @@ async def load_existing_dicom_files():
                 process_dicom_file(full_path, uid)
     # At the end, update the dashboard
     await broadcast_dashboard_update()
+
 
 def extract_dicom_metadata(ds):
     """ 
@@ -941,6 +953,7 @@ def extract_dicom_metadata(ds):
     # Return the dicom info
     return info
 
+
 # Image processing operations
 def apply_gamma_correction(image, gamma = 1.2):
     """ 
@@ -975,6 +988,7 @@ def apply_gamma_correction(image, gamma = 1.2):
         for i in np.arange(0, 256)]).astype("uint8")
     # Apply gamma correction using the lookup table
     return cv2.LUT(image, table)
+
 
 def convert_dicom_to_png(dicom_file, max_size = 800):
     """ 
@@ -1051,6 +1065,7 @@ async def serve_about_page(request):
 async def serve_favicon(request):
     return web.FileResponse(path=os.path.join(STATIC_DIR, "favicon.ico"))
 
+
 async def websocket_handler(request):
     """ Handle each WebSocket client """
     ws = web.WebSocketResponse()
@@ -1065,6 +1080,7 @@ async def websocket_handler(request):
         websocket_clients.remove(ws)
         logging.info("Dashboard WebSocket disconnected.")
     return ws
+
 
 async def exams_handler(request):
     """ Provide a page of exams """
@@ -1091,6 +1107,7 @@ async def exams_handler(request):
         logging.error(f"Exams page error: {e}")
         return web.json_response([], status = 500)
 
+
 async def stats_handler(request):
     """ Provide a page of statistics """
     try:
@@ -1098,6 +1115,7 @@ async def stats_handler(request):
     except Exception as e:
         logging.error(f"Exams page error: {e}")
         return web.json_response([], status = 500)
+
 
 async def config_handler(request):
     """ Provide global configuration parameters """
@@ -1117,6 +1135,7 @@ async def config_handler(request):
         logging.error(f"Config endpoint error: {e}")
         return web.json_response({}, status = 500)
 
+
 async def manual_query(request):
     """ Trigger a manual query/retrieve operation """
     try:
@@ -1130,6 +1149,7 @@ async def manual_query(request):
         logging.error(f"Error processing manual query: {e}")
         return web.json_response({'status': 'error',
                                   'message': str(e)})
+
 
 async def validate(request):
     """ Mark a study valid or invalid """
@@ -1145,6 +1165,7 @@ async def validate(request):
     response = {'status': 'success'}
     response.update(payload)
     return web.json_response(response)
+
 
 async def lookagain(request):
     """ Send an exam back to the queue """
@@ -1162,6 +1183,7 @@ async def lookagain(request):
     response = {'status': 'success'}
     response.update(payload)
     return web.json_response(response)
+
 
 @web.middleware
 async def auth_middleware(request, handler):
@@ -1185,6 +1207,7 @@ async def auth_middleware(request, handler):
             text = "401: Invalid authentication",
             headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
     return await handler(request)
+
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """ Update the dashboard for all clients """
@@ -1260,6 +1283,7 @@ async def send_ntfy_notification(uid, report, info):
                     logging.error(f"Notification failed with status {resp.status}: {await resp.text()}")
     except Exception as e:
         logging.error(f"Failed to send ntfy notification: {e}")
+
 
 # API operations
 def validate_romanian_id(patient_id):
@@ -1342,6 +1366,7 @@ def validate_romanian_id(patient_id):
         logging.debug(f"Error validating Romanian ID {patient_id}: {e}")
         return False
 
+
 def compute_age_from_id(patient_id):
     """ 
     Compute patient age based on Romanian personal identification number.
@@ -1389,6 +1414,7 @@ def compute_age_from_id(patient_id):
         logging.debug(f"Could not compute age from ID {patient_id}: {e}")
         return -1
 
+
 def contains_any_word(string, *words):
     """ 
     Check if any of the specified words are present in the given string.
@@ -1401,6 +1427,7 @@ def contains_any_word(string, *words):
         bool: True if any word is found in the string, False otherwise
     """
     return any(i in string for i in words)
+
 
 def identify_anatomic_region(info):
     """ 
@@ -1495,6 +1522,7 @@ def identify_anatomic_region(info):
     # Return the region and the question
     return region, question
 
+
 def identify_imaging_projection(info):
     """ 
     Identify the imaging projection based on protocol name.
@@ -1521,6 +1549,7 @@ def identify_imaging_projection(info):
     # Return the projection
     return projection
 
+
 def determine_patient_gender_description(info):
     """ 
     Determine patient gender description based on DICOM sex field.
@@ -1543,6 +1572,7 @@ def determine_patient_gender_description(info):
         gender = "child"
     # Return the gender
     return gender
+
 
 async def send_to_openai(session, headers, payload):
     """ 
@@ -1568,6 +1598,7 @@ async def send_to_openai(session, headers, payload):
         logging.error(f"{active_openai_url} request error: {e}")
     # Failed
     return None
+
 
 async def send_exam_to_openai(exam, max_retries = 3):
     """ 
@@ -1748,6 +1779,7 @@ async def start_dashboard():
     await site.start()
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
+
 async def relay_to_openai_loop():
     """ 
     Main processing loop that sends queued exams to the OpenAI API.
@@ -1804,6 +1836,7 @@ async def relay_to_openai_loop():
             else:
                 logging.debug(f"Keeping DICOM file: {dicom_file}")
 
+
 async def openai_health_check():
     """ 
     Periodically check the health status of OpenAI API endpoints.
@@ -1842,6 +1875,7 @@ async def openai_health_check():
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 
+
 async def query_retrieve_loop():
     """ 
     Periodically query the remote DICOM server for new studies.
@@ -1859,6 +1893,7 @@ async def query_retrieve_loop():
         next_query = current_time + timedelta(seconds = 900)
         logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
         await asyncio.sleep(900)
+
 
 async def maintenance_loop():
     """ 
@@ -1882,6 +1917,7 @@ async def maintenance_loop():
         # Wait for 24 hours
         await asyncio.sleep(86400)
 
+
 def start_dicom_server():
     """ 
     Start the DICOM Storage SCP (Service Class Provider) server.
@@ -1902,6 +1938,7 @@ def start_dicom_server():
     handlers = [(evt.EVT_C_STORE, dicom_store)]
     logging.info(f"Starting DICOM server on port {AE_PORT} with AE Title '{AE_TITLE}'...")
     dicom_server.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = False)
+
 
 async def stop_servers():
     """ 
@@ -1925,6 +1962,7 @@ async def stop_servers():
             logging.info("Web server stopped.")
         except Exception as e:
             logging.error(f"Error stopping web server: {e}")
+
 
 def process_dicom_file(dicom_file, uid):
     """ 
@@ -1960,6 +1998,7 @@ def process_dicom_file(dicom_file, uid):
             QUEUE_EVENT.set()
     except Exception as e:
         logging.error(f"Error processing DICOM file {dicom_file}: {e}")
+
 
 async def main():
     """ 
