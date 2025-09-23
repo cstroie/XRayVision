@@ -217,6 +217,7 @@ def init_database():
         ''')
         logging.info("Initialized SQLite database.")
 
+
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     """ 
     Load exams from the database with optional filters and pagination.
