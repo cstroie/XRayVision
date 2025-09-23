@@ -89,7 +89,7 @@ SYS_PROMPT = (
 USR_PROMPT = (
     "{} in this {} xray of a {}? Are there any other lesions?"
     "Write the report in Romanian, using a formal, professional medical tone. "
-    "Use the following Romanian terms: opacitate, hipertransparență, nodulară, "
+    "This is a glossary of Romanian terms: opacitate, hipertransparență, nodulară, "
     "micronodulară, liniară, benzi, în bandă, opacitate sistematizată, "
     "hipertransparență circumscrisă, opacitate inelară, pleurezie, pneumotorax, "
     "diseminate, intensitate costală, subcostală, discret, leziune, fractură, "
@@ -134,8 +134,6 @@ health_status = {
 }
 # OpenAI timings
 timings = {
-    'prompt': 0,      # Time taken to process the prompt (milliseconds)
-    'predicted': 0,   # Time taken for model prediction (milliseconds)
     'total': 0,       # Total processing time (milliseconds)
     'average': 0      # Average processing time (milliseconds)
 }
@@ -1692,15 +1690,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
                 else:
                     timings['average'] = timings['total']
-                # Get prompt and predicted timings if available
-                if 'timings' in result and result['timings']:
-                    timings['prompt'] = int(result['timings'].get('prompt_ms', 0))
-                    timings['predicted'] = int(result['timings'].get('predicted_ms', 0))
-                    logging.info(f"OpenAI API response timings: last {timings['total']} ms, average {timings['average']} ms")
-                else:
-                    logging.warning("No timing information in OpenAI API response")
-                    timings['prompt'] = 0
-                    timings['predicted'] = 0
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
                 # Success
