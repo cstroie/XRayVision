@@ -1156,7 +1156,7 @@ async def lookagain(request):
     valid = db_validate(uid, valid = False, enqueue = True)
     logging.info(f"Exam {uid} sent to the processing queue (look again).")
     # Notify the queue
-    queue_event.set()
+    QUEUE_EVENT.set()
     payload = {'uid': uid, 'valid': valid}
     await broadcast_dashboard_update(event = "lookagain", payload = payload)
     response = {'status': 'success'}
@@ -1712,7 +1712,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
             attempt += 1
     # Failure after max_retries
     db_set_status(exam['uid'], 'error')
-    queue_event.clear()
+    QUEUE_EVENT.clear()
     logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
     await broadcast_dashboard_update()
     return False
