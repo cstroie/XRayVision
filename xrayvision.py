@@ -86,13 +86,22 @@ SYS_PROMPT = (
     'the keys are "short", "report", value types are escaped string, int, truth value. '
     "No explanation or other text is allowed."
 )
-USR_PROMPT = "{} in this {} xray of a {}? Are there any other lesions?"
+USR_PROMPT = (
+    "{} in this {} xray of a {}? Are there any other lesions?"
+    "Write the report in Romanian, using a formal, professional medical tone. "
+    "Use the following Romanian terms: opacitate, hipertransparență, nodulară, "
+    "micronodulară, liniară, benzi, în bandă, opacitate sistematizată, "
+    "hipertransparență circumscrisă, opacitate inelară, pleurezie, pneumotorax, "
+    "diseminate, intensitate costală, subcostală, discret, leziune, fractură, "
+    "opacifiere, transparență, arii pulmonare, difuz, infiltrat, sistematizat."
+)
 REV_PROMPT = (
     "There is something inaccurate in your report. "
     "Analyse the xray again and look for any other possible lesions. "
     "Do not apologize or explain yourself. "
     "No explanation or other text is allowed. Only JSON is allowed as an answer. "
     "Update the JSON report according to the template."
+    "Write the new report in Romanian, using a professional medical tone. "
 )
 REGIONS = [
     "chest", 
@@ -606,7 +615,7 @@ def db_purge_ignored_errors():
         cursor = conn.execute('''
             DELETE FROM exams 
             WHERE status IN ('ignore', 'error')
-            AND created < datetime('now', '-1 week')
+            AND created < datetime('now', '-7 days')
             RETURNING uid
         ''')
         deleted_uids = [row[0] for row in cursor.fetchall()]
