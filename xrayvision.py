@@ -1949,7 +1949,7 @@ def process_dicom_file(dicom_file, uid):
         # Try to convert to PNG
         png_file = None
         try:
-            png_file = dicom_to_png(dicom_file)
+            png_file = convert_dicom_to_png(dicom_file)
         except Exception as e:
             logging.error(f"Error converting DICOM file {dicom_file}: {e}")
         # Check the result
