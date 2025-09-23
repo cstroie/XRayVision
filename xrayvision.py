@@ -1652,6 +1652,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
     attempt = 1
     while attempt <= max_retries:
         try:
+            # Start timing
+            start_time = asyncio.get_event_loop().time()
             async with aiohttp.ClientSession() as session:
                 result = await send_to_openai(session, headers, data)
                 if not result:
@@ -1682,19 +1684,23 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         await send_ntfy_notification(exam['uid'], report, exam)
                     except Exception as e:
                         logging.error(f"Failed to send ntfy notification: {e}")
-                # Get some timing statistics
+                # Calculate timing statistics
                 global timings
+                end_time = asyncio.get_event_loop().time()
+                timings['total'] = int((end_time - start_time) * 1000)  # Convert to milliseconds
+                if timings['average'] > 0:
+                    timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                else:
+                    timings['average'] = timings['total']
+                # Get prompt and predicted timings if available
                 if 'timings' in result and result['timings']:
                     timings['prompt'] = int(result['timings'].get('prompt_ms', 0))
                     timings['predicted'] = int(result['timings'].get('predicted_ms', 0))
-                    timings['total'] = timings['prompt'] + timings['predicted']
-                    if timings['average'] > 0:
-                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
-                    else:
-                        timings['average'] = timings['total']
                     logging.info(f"OpenAI API response timings: last {timings['total']} ms, average {timings['average']} ms")
                 else:
                     logging.warning("No timing information in OpenAI API response")
+                    timings['prompt'] = 0
+                    timings['predicted'] = 0
                 # Notify the dashboard frontend to reload first page
                 await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
                 # Success
