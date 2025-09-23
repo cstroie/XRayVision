@@ -120,9 +120,9 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 os.makedirs(STATIC_DIR, exist_ok=True)
 
 # Global variables
-main_loop = None  # Main asyncio event loop reference
+MAIN_LOOP = None  # Main asyncio event loop reference
 websocket_clients = set()  # Set of connected WebSocket clients for dashboard updates
-queue_event = asyncio.Event()  # Event to signal when items are added to the processing queue
+QUEUE_EVENT = asyncio.Event()  # Event to signal when items are added to the processing queue
 next_query = None  # Timestamp for the next scheduled DICOM query operation
 
 # Global variables to store the servers
@@ -846,7 +846,7 @@ def dicom_store(event):
         # Process the DICOM file
         process_dicom_file(dicom_file, uid)
         # Notify the queue
-        asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), main_loop)
+        asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), MAIN_LOOP)
     # Return success
     return 0x0000
 
@@ -1759,7 +1759,7 @@ async def relay_to_openai_loop():
     4. Handles success/failure cases and cleanup
     5. Implements proper error handling and status updates
     
-    The loop waits on a queue_event when there's nothing to process,
+    The loop waits on a QUEUE_EVENT when there's nothing to process,
     which gets signaled when new items are added to the queue.
     """
     while True:
@@ -1767,8 +1767,8 @@ async def relay_to_openai_loop():
         exams, total = db_get_exams(limit = 1, status = 'queued')
         # Wait here if there are no items in queue or there is no OpenAI server
         if not exams or active_openai_url is None:
-            queue_event.clear()
-            await queue_event.wait()
+            QUEUE_EVENT.clear()
+            await QUEUE_EVENT.wait()
             continue
         # Get only one exam, if any
         exam = exams[0]
@@ -1836,7 +1836,7 @@ async def openai_health_check():
             logging.error("No OpenAI backend is currently healthy")
         # Signal the queue
         if active_openai_url:
-            queue_event.set()
+            QUEUE_EVENT.set()
         # WebSocket broadcast
         await broadcast_dashboard_update()
         # Sleep for 5 minutes
@@ -1957,7 +1957,7 @@ def process_dicom_file(dicom_file, uid):
             # Add to processing queue
             db_add_exam(info)
             # Notify the queue
-            queue_event.set()
+            QUEUE_EVENT.set()
     except Exception as e:
         logging.error(f"Error processing DICOM file {dicom_file}: {e}")
 
@@ -1971,8 +1971,8 @@ async def main():
     Handles graceful shutdown on KeyboardInterrupt.
     """
     # Main event loop
-    global main_loop
-    main_loop = asyncio.get_running_loop()
+    global MAIN_LOOP
+    MAIN_LOOP = asyncio.get_running_loop()
     # Init the database if not found
     if not os.path.exists(DB_FILE):
         logging.info("SQLite database not found. Creating a new one...")
