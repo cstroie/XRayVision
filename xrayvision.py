@@ -102,8 +102,8 @@ REV_PROMPT = (
     "There is something inaccurate in your report. "
     "Analyse the xray again and look for any other possible lesions. "
     "Do not apologize or explain yourself. "
-    "No explanation or other text is allowed. Only JSON is allowed as an answer. "
-    "Update the JSON report according to the template."
+    "No explanation or other text is allowed. Only JSON is allowed as an "
+    "answer. Update the JSON report according to the template."
     "Write the new report in Romanian, using a professional medical tone. "
 )
 REGIONS = [
@@ -1965,10 +1965,11 @@ async def main():
     """ 
     Main application entry point and orchestrator.
     
-    Initializes the database, loads existing exams, starts all server components
-    (DICOM, web dashboard, AI processing, health checks, query/retrieve, maintenance),
-    loads existing DICOM files if requested, and manages the asyncio event loop.
-    Handles graceful shutdown on KeyboardInterrupt.
+    Initializes the database, loads existing exams, starts all server 
+    components (DICOM, web dashboard, AI processing, health checks, 
+    query/retrieve, maintenance), loads existing DICOM files if requested, 
+    and manages the asyncio event loop. Handles graceful shutdown on 
+    KeyboardInterrupt.
     """
     # Main event loop
     global MAIN_LOOP
