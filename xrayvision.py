@@ -942,7 +942,7 @@ def extract_dicom_metadata(ds):
     return info
 
 # Image processing operations
-def adjust_gamma(image, gamma = 1.2):
+def apply_gamma_correction(image, gamma = 1.2):
     """ 
     Apply gamma correction to an image to adjust brightness and contrast.
     
@@ -976,7 +976,7 @@ def adjust_gamma(image, gamma = 1.2):
     # Apply gamma correction using the lookup table
     return cv2.LUT(image, table)
 
-def dicom_to_png(dicom_file, max_size = 800):
+def convert_dicom_to_png(dicom_file, max_size = 800):
     """ 
     Convert DICOM to PNG with preprocessing for optimal AI analysis.
     
@@ -1025,7 +1025,7 @@ def dicom_to_png(dicom_file, max_size = 800):
         # Save as 8 bit
         image = image.astype(np.uint8)
         # Auto adjust gamma
-        image = adjust_gamma(image, None)
+        image = apply_gamma_correction(image, None)
         # Save the PNG file
         base_name = os.path.splitext(os.path.basename(dicom_file))[0]
         png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
