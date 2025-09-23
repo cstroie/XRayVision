@@ -45,8 +45,10 @@ logging.basicConfig(
 # Filter out noisy module logs
 logging.getLogger('aiohttp').setLevel(logging.WARNING)
 logging.getLogger('asyncio').setLevel(logging.WARNING)
-logging.getLogger('pynetdicom').setLevel(logging.WARNING)  # DICOM network operations
-logging.getLogger('pydicom').setLevel(logging.WARNING)     # DICOM file operations
+# DICOM network operations
+logging.getLogger('pynetdicom').setLevel(logging.WARNING)
+# DICOM file operations
+logging.getLogger('pydicom').setLevel(logging.WARNING)
 
 # Configuration
 OPENAI_URL_PRIMARY = os.getenv(
@@ -74,26 +76,27 @@ BACKUP_DIR = os.getenv("XRAYVISION_BACKUP_DIR", "backup")
 
 SYS_PROMPT = (
     "You are a smart radiologist working in ER. "
-    "You only output mandatory JSON to a RESTful API, in the following format: "
-    '{"short": "yes or no", "report": "REPORT"} where "yes or no" is the short '
-    "answer, only 'yes' and 'no' being allowed, and 'REPORT' is the full "
-    "description of the findings, like a radiologist would write. "
-    "It is important to identify all lesions in the xray and respond with 'yes' "
-    "if there is anything pathological and 'no' if there is nothing to report. "
-    "If in doubt, do not assume, stick to the facts. "
+    "You only output mandatory JSON to a RESTful API, in the following "
+    'format: {"short": "yes or no", "report": "REPORT"} where "yes or no" '
+    "is the short answer, only 'yes' and 'no' being allowed, and 'REPORT' "
+    "is the full description of the findings, like a radiologist would write. "
+    "It is important to identify all lesions in the xray and respond with "
+    "'yes' if there is anything pathological and 'no' if there is nothing "
+    "to report. If in doubt, do not assume, stick to the facts. "
     "Look again at the xray if you think there is something ambiguous. "
     "The output format is JSON, keys and values require double-quotes, "
-    'the keys are "short", "report", value types are escaped string, int, truth value. '
-    "No explanation or other text is allowed."
+    'the keys are "short", "report", value types are escaped string, int, '
+    "truth value. No explanation or other text is allowed."
 )
 USR_PROMPT = (
     "{} in this {} xray of a {}? Are there any other lesions?"
     "Write the report in Romanian, using a formal, professional medical tone. "
-    "This is a glossary of Romanian terms: opacitate, hipertransparență, nodulară, "
-    "micronodulară, liniară, benzi, în bandă, opacitate sistematizată, "
-    "hipertransparență circumscrisă, opacitate inelară, pleurezie, pneumotorax, "
-    "diseminate, intensitate costală, subcostală, discret, leziune, fractură, "
-    "opacifiere, transparență, arii pulmonare, difuz, infiltrat, sistematizat."
+    "This is a glossary of Romanian terms: opacitate, hipertransparență, "
+    "nodulară, micronodulară, liniară, benzi, în bandă, opacitate "
+    "sistematizată, hipertransparență circumscrisă, opacitate inelară, "
+    "pleurezie, pneumotorax, diseminate, intensitate costală, subcostală, "
+    "discret, leziune, fractură, opacifiere, transparență, arii pulmonare, "
+    "difuz, infiltrat, sistematizat."
 )
 REV_PROMPT = (
     "There is something inaccurate in your report. "
@@ -217,7 +220,7 @@ def init_database():
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     """ 
     Load exams from the database with optional filters and pagination.
-    
+        
     Args:
         limit: Maximum number of exams to return (default: PAGE_SIZE)
         offset: Number of exams to skip for pagination (default: 0)
@@ -225,13 +228,17 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             - reviewed: Filter by review status (0/1)
             - positive: Filter by AI prediction (0/1)
             - valid: Filter by validation status (0/1)
-            - region: Filter by anatomic region (case-insensitive partial match)
-            - status: Filter by processing status (case-insensitive exact match)
-            - search: Filter by patient name (case-insensitive partial match)
-            
+            - region: Filter by anatomic region (case-insensitive partial 
+              match)
+            - status: Filter by processing status (case-insensitive exact 
+              match)
+            - search: Filter by patient name (case-insensitive partial 
+              match)
+                
     Returns:
-        tuple: (exams_list, total_count) where exams_list is a list of exam dictionaries
-               and total_count is the total number of exams matching the filters
+        tuple: (exams_list, total_count) where exams_list is a list of 
+               exam dictionaries and total_count is the total number of 
+               exams matching the filters
     """
     conditions = []
     params = []
@@ -386,19 +393,22 @@ def db_check_already_processed(uid):
 
 async def db_get_stats():
     """ 
-    Retrieve comprehensive statistics from the database for dashboard display.
-    
-    Calculates various metrics including total exams, reviewed counts, positive findings,
-    invalid predictions, regional breakdowns, temporal trends, processing performance,
-    and error statistics. Computes precision, negative predictive value, sensitivity,
-    and specificity for each anatomic region.
-    
+    Retrieve comprehensive statistics from the database for dashboard 
+    display.
+        
+    Calculates various metrics including total exams, reviewed counts, 
+    positive findings, invalid predictions, regional breakdowns, temporal 
+    trends, processing performance, and error statistics. Computes 
+    precision, negative predictive value, sensitivity, and specificity 
+    for each anatomic region.
+        
     To reduce memory usage, temporal trends are limited to:
     - Daily trends for the last 30 days
     - Monthly trends for the last 12 months
-    
+        
     Returns:
-        dict: Dictionary containing all statistical data organized by category
+        dict: Dictionary containing all statistical data organized by 
+              category
     """
     stats = {
         "total": 0,
@@ -1257,7 +1267,8 @@ def validate_romanian_id(patient_id):
     Validate Romanian personal identification number (CNP) format and checksum.
     
     Romanian personal IDs (CNP) have 13 digits with the following structure:
-    - Position 1: Gender/Sector (1-8 for born 1900-2099, 9 for foreign residents)
+    - Position 1: Gender/Sector (1-8 for born 1900-2099, 9 for foreign 
+      residents)
     - Positions 2-3: Year of birth (00-99)
     - Positions 4-5: Month of birth (01-12)
     - Positions 6-7: Day of birth (01-31)
