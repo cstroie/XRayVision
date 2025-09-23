@@ -1058,20 +1058,62 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
 
 # WebSocket and WebServer operations
 async def serve_dashboard_page(request):
+    """Serve the main dashboard HTML page.
+    
+    Args:
+        request: aiohttp request object
+        
+    Returns:
+        web.FileResponse: Dashboard HTML file response
+    """
     return web.FileResponse(path=os.path.join(STATIC_DIR, "dashboard.html"))
 
 async def serve_stats_page(request):
+    """Serve the statistics HTML page.
+    
+    Args:
+        request: aiohttp request object
+        
+    Returns:
+        web.FileResponse: Statistics HTML file response
+    """
     return web.FileResponse(path=os.path.join(STATIC_DIR, "stats.html"))
 
 async def serve_about_page(request):
+    """Serve the about HTML page.
+    
+    Args:
+        request: aiohttp request object
+        
+    Returns:
+        web.FileResponse: About HTML file response
+    """
     return web.FileResponse(path=os.path.join(STATIC_DIR, "about.html"))
 
 async def serve_favicon(request):
+    """Serve the favicon.ico file.
+    
+    Args:
+        request: aiohttp request object
+        
+    Returns:
+        web.FileResponse: Favicon file response
+    """
     return web.FileResponse(path=os.path.join(STATIC_DIR, "favicon.ico"))
 
 
 async def websocket_handler(request):
-    """ Handle each WebSocket client """
+    """Handle WebSocket connections for real-time dashboard updates.
+    
+    Manages WebSocket connections from dashboard clients, adds them to the
+    client set, sends connection notifications, and handles disconnections.
+    
+    Args:
+        request: aiohttp request object containing connection info
+        
+    Returns:
+        web.WebSocketResponse: WebSocket response object
+    """
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     websocket_clients.add(ws)
@@ -1087,7 +1129,18 @@ async def websocket_handler(request):
 
 
 async def exams_handler(request):
-    """ Provide a page of exams """
+    """Provide paginated exam data with optional filters.
+    
+    Retrieves exams from database with pagination and filtering options.
+    Supports filtering by review status, positivity, validity, region,
+    processing status, and patient name search.
+    
+    Args:
+        request: aiohttp request object with query parameters
+        
+    Returns:
+        web.json_response: JSON response with exams data and pagination info
+    """
     try:
         page = int(request.query.get("page", "1"))
         filters = {}
@@ -1113,7 +1166,17 @@ async def exams_handler(request):
 
 
 async def stats_handler(request):
-    """ Provide a page of statistics """
+    """Provide statistical data for the dashboard.
+    
+    Retrieves comprehensive statistics from the database including totals,
+    regional breakdowns, temporal trends, and processing performance metrics.
+    
+    Args:
+        request: aiohttp request object
+        
+    Returns:
+        web.json_response: JSON response with statistical data
+    """
     try:
         return web.json_response(await db_get_stats())
     except Exception as e:
@@ -1122,7 +1185,17 @@ async def stats_handler(request):
 
 
 async def config_handler(request):
-    """ Provide global configuration parameters """
+    """Provide global configuration parameters to the frontend.
+    
+    Returns configuration values that the frontend may need to display
+    or use for various operations.
+    
+    Args:
+        request: aiohttp request object
+        
+    Returns:
+        web.json_response: JSON response with configuration parameters
+    """
     try:
         config = {
             "OPENAI_URL_PRIMARY": OPENAI_URL_PRIMARY,
@@ -1141,7 +1214,17 @@ async def config_handler(request):
 
 
 async def manual_query(request):
-    """ Trigger a manual query/retrieve operation """
+    """Trigger a manual DICOM query/retrieve operation.
+    
+    Allows manual triggering of DICOM query operations for specified time
+    periods through the dashboard interface.
+    
+    Args:
+        request: aiohttp request object with JSON body containing hours parameter
+        
+    Returns:
+        web.json_response: JSON response with operation status
+    """
     try:
         data = await request.json()
         hours = int(data.get('hours', 3))
@@ -1156,7 +1239,18 @@ async def manual_query(request):
 
 
 async def validate(request):
-    """ Mark a study valid or invalid """
+    """Mark a study as valid or invalid based on human review.
+    
+    Updates the validation status of an exam in the database based on
+    radiologist review. Compares human assessment with AI prediction
+    to determine validity.
+    
+    Args:
+        request: aiohttp request object with JSON body containing uid and normal status
+        
+    Returns:
+        web.json_response: JSON response with validation result
+    """
     data = await request.json()
     # Get 'uid' and 'normal' from request
     uid = data.get('uid')
@@ -1172,7 +1266,17 @@ async def validate(request):
 
 
 async def lookagain(request):
-    """ Send an exam back to the queue """
+    """Send an exam back to the processing queue for re-analysis.
+    
+    Marks an exam as reviewed but invalid, then re-queues it for
+    re-analysis by the AI system.
+    
+    Args:
+        request: aiohttp request object with JSON body containing uid and optional prompt
+        
+    Returns:
+        web.json_response: JSON response with re-queue status
+    """
     data = await request.json()
     # Get 'uid' and custom 'prompt' from request
     uid = data.get('uid')
@@ -1191,7 +1295,19 @@ async def lookagain(request):
 
 @web.middleware
 async def auth_middleware(request, handler):
-    """ Basic authentication middleware """
+    """Basic authentication middleware for API endpoints.
+    
+    Implements HTTP Basic authentication for all API endpoints except
+    static files and OPTIONS requests. Validates credentials against
+    environment variables.
+    
+    Args:
+        request: aiohttp request object
+        handler: Request handler function
+        
+    Returns:
+        Response from the handler if authenticated, or HTTP 401 if not
+    """
     # Skip auth for static files and OPTIONS requests
     if request.path.startswith('/static/') or request.path.startswith('/images/') or request.method == 'OPTIONS':
         return await handler(request)
@@ -1214,7 +1330,16 @@ async def auth_middleware(request, handler):
 
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
-    """ Update the dashboard for all clients """
+    """Broadcast dashboard updates to all connected WebSocket clients.
+    
+    Sends real-time updates to dashboard clients including queue status,
+    processing information, statistics, and OpenAI health status.
+    
+    Args:
+        event: Optional event name for specific update types
+        payload: Optional data payload for the event
+        client: Optional specific client to send update to (instead of all)
+    """
     # Check if there are any clients
     if not (websocket_clients or client):
         return
