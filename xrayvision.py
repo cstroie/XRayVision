@@ -9,6 +9,8 @@
 # the Free Software Foundation, either version 3 of the License, or
 # any later version.
 
+# Standard library imports
+import argparse
 import asyncio
 import base64
 import json
@@ -19,6 +21,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 
+# Third-party imports
 import aiohttp
 import cv2
 import numpy as np
@@ -2055,7 +2058,6 @@ async def main():
 # Command run
 if __name__ == '__main__':
     # Need to process the arguments
-    import argparse
     parser = argparse.ArgumentParser(description = "XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard")
     parser.add_argument("--keep-dicom", action = "store_true", help = "Do not delete .dcm files after conversion")
     parser.add_argument("--load-dicom", action = "store_true", help = "Load existing .dcm files in queue")
