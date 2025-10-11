@@ -143,6 +143,7 @@ KEEP_DICOM = False  # Whether to keep DICOM files after processing
 LOAD_DICOM = False  # Whether to load existing DICOM files at startup
 NO_QUERY = False    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = False # Whether to enable ntfy.sh notifications for positive findings
+MODEL_NAME = "medgemma-4b-it"  # Default model name
 
 # Dashboard state
 dashboard = {
@@ -1786,7 +1787,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
     }
     # Prepare the JSON data
     data = {
-        "model": "medgemma-4b-it",
+        "model": MODEL_NAME,
         "timings_per_token": True,
         "min_p": 0.05,
         "top_k": 40,
@@ -2183,12 +2184,14 @@ if __name__ == '__main__':
     parser.add_argument("--load-dicom", action = "store_true", help = "Load existing .dcm files in queue")
     parser.add_argument("--no-query", action = "store_true", help = "Do not query the DICOM server automatically")
     parser.add_argument("--enable-ntfy", action = "store_true", help = "Enable ntfy.sh notifications")
+    parser.add_argument("--model", type=str, default="medgemma-4b-it", help="Model name to use for analysis")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
     LOAD_DICOM = args.load_dicom
     NO_QUERY = args.no_query
     ENABLE_NTFY = args.enable_ntfy
+    MODEL_NAME = args.model
 
     # Run
     try:
