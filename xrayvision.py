@@ -93,13 +93,6 @@ SYS_PROMPT = (
 )
 USR_PROMPT = (
     "{} in this {} xray of a {}? Are there any other lesions?"
-    "Write the report in Romanian, using a formal, professional medical tone. "
-    "This is a glossary of Romanian terms: opacitate, hipertransparență, "
-    "nodulară, micronodulară, liniară, benzi, în bandă, opacitate "
-    "sistematizată, hipertransparență circumscrisă, opacitate inelară, "
-    "pleurezie, pneumotorax, diseminate, intensitate costală, subcostală, "
-    "discret, leziune, fractură, opacifiere, transparență, arii pulmonare, "
-    "difuz, infiltrat, sistematizat."
 )
 REV_PROMPT = (
     "There is something inaccurate in your report. "
