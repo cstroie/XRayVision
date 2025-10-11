@@ -1795,7 +1795,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         "temperature": 0.6,
         "cache_prompt": True,
         "stream": False,
-        "keep_alive": -1,
+        "keep_alive": 1800,
         "messages": [
             {
                 "role": "system",
