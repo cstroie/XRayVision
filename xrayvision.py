@@ -98,6 +98,10 @@ config.read_dict(DEFAULT_CONFIG)
 try:
     config.read('xrayvision.cfg')
     logging.info("Configuration loaded from xrayvision.cfg")
+    # Check for local configuration file to override settings
+    local_config_files = config.read('local.cfg')
+    if local_config_files:
+        logging.info("Local configuration loaded from local.cfg")
 except Exception as e:
     logging.info("Using default configuration values")
 
