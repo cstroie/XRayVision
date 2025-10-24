@@ -118,7 +118,7 @@ USR_PROMPT = ("""
 <user_prompt_initial>
   <clinical_question>{}</clinical_question>
   <study_type>{} xray</study_type>
-  <patient_info>{BODY_PART}</patient_info>
+  <patient_info>{}</patient_info>
   <additional_instructions>
     Identify any other lesions or abnormalities beyond the primary clinical question.
   </additional_instructions>
