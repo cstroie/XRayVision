@@ -226,6 +226,12 @@ LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load ex
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
 
+# Load region identification rules from config
+REGION_RULES = {}
+region_config = config['regions']
+for key in region_config:
+    REGION_RULES[key] = [word.strip() for word in region_config[key].split(',')]
+
 # Dashboard state
 dashboard = {
     'queue_size': 0,        # Number of exams waiting in the processing queue
@@ -1650,80 +1656,35 @@ def identify_anatomic_region(info):
                and question is the region-specific query for AI analysis
     """
     desc = info["exam"]["protocol"].lower()
-    if contains_any_word(desc, 'torace', 'pulmon',
-                         'thorax'):
-        region = 'chest'
-        question = "Are there any lung consolidations, infitrates, opacities, pleural effusion, pneumothorax or pneumoperitoneum"
-    elif contains_any_word(desc, 'grilaj', 'coaste'):
-        region = 'ribs'
-        question = "Are there any ribs or clavicles fractures"
-    elif contains_any_word(desc, 'stern'):
-        region = 'sternum'
-        question = "Are there any fractures"
-    elif contains_any_word(desc, 'abdomen', 'abdominal'):
-        region = 'abdominal'
-        #question = "Are there any fluid levels, free gas or metallic foreign bodies"
-        question = "Are there any signs of bowel obstruction, pneumoperitoneum or foreign bodies"
-    elif contains_any_word(desc, 'cap', 'craniu', 'occiput',
-                           'skull'):
-        region = 'skull'
-        question = "Are there any fractures"
-    elif contains_any_word(desc, 'mandibula'):
-        region = 'mandible'
-        question = "Are there any fractures"
-    elif contains_any_word(desc, 'nazal', 'piramida'):
-        region = 'nasal bones'
-        question = "Are there any fractures"
-    elif contains_any_word(desc, 'sinus'):
-        region = 'maxilar and frontal sinus'
-        question = "Are the sinuses normally aerated or are they opaque or are there fluid levels"
-    elif contains_any_word(desc, 'col.',
-                           'spine', 'dens', 'sacrat'):
-        region = 'spine'
-        question = "Are there any fractures or dislocations"
-    elif contains_any_word(desc, 'bazin', 'pelvis'):
-        region = 'pelvis'
-        question = "Are there any fractures"
-    elif contains_any_word(desc, 'clavicula',
-                           'clavicle'):
-        region = 'clavicle'
-        question = "Are there any fractures"
-    elif contains_any_word(desc, 'humerus', 'antebrat',
-                           'forearm'):
-        region = 'upper limb'
-        question = "Are there any fractures, dislocations or bone tumors"
-    elif contains_any_word(desc, 'pumn', 'mana', 'deget',
-                           'hand', 'finger'):
-        region = 'hand'
-        question = "Are there any fractures, dislocations or bone tumors"
-    elif contains_any_word(desc, 'umar',
-                           'shoulder'):
-        region = 'shoulder'
-        question = "Are there any fractures or dislocations"
-    elif contains_any_word(desc, 'cot',
-                           'elbow'):
-        region = 'elbow'
-        question = "Are there any fractures or dislocations"
-    elif contains_any_word(desc, 'sold',
-                           'hip'):
-        region = 'hip'
-        question = "Are there any fractures or dislocations"
-    elif contains_any_word(desc, 'femur', 'tibie', 'picior', 'gamba', 'calcai',
-                           'leg', 'foot'):
-        region = 'lower limb'
-        question = "Are there any fractures, dislocations or bone tumors"
-    elif contains_any_word(desc, 'genunchi', 'patella',
-                           'knee'):
-        region = 'knee'
-        question = "Are there any fractures or dislocations"
-    elif contains_any_word(desc, 'glezna', 'calcaneu',
-                           'ankle'):
-        region = 'ankle'
-        question = "Are there any fractures or dislocations"
+    
+    # Check each region rule from config
+    for region_key, keywords in REGION_RULES.items():
+        if contains_any_word(desc, *keywords):
+            region = region_key
+            break
     else:
         # Fallback
         region = desc
+    
+    # Set question based on region
+    if region == 'chest':
+        question = "Are there any lung consolidations, infitrates, opacities, pleural effusion, pneumothorax or pneumoperitoneum"
+    elif region == 'ribs':
+        question = "Are there any ribs or clavicles fractures"
+    elif region in ['sternum', 'skull', 'mandible', 'nasal_bones', 'pelvis', 'clavicle', 'shoulder', 'elbow', 'hip', 'knee', 'ankle']:
+        question = "Are there any fractures"
+    elif region == 'abdominal':
+        question = "Are there any signs of bowel obstruction, pneumoperitoneum or foreign bodies"
+    elif region == 'maxilar_and_frontal_sinus':
+        question = "Are the sinuses normally aerated or are they opaque or are there fluid levels"
+    elif region == 'spine':
+        question = "Are there any fractures or dislocations"
+    elif region in ['upper_limb', 'lower_limb', 'hand']:
+        question = "Are there any fractures, dislocations or bone tumors"
+    else:
+        # Fallback
         question = "Is there anything abnormal"
+    
     # Return the region and the question
     return region, question
 
