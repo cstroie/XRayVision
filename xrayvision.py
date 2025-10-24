@@ -77,31 +77,70 @@ STATIC_DIR = 'static'
 DB_FILE = os.getenv("XRAYVISION_DB_PATH", "xrayvision.db")
 BACKUP_DIR = os.getenv("XRAYVISION_BACKUP_DIR", "backup")
 
-SYS_PROMPT = (
-    "You are a smart radiologist working in ER. "
-    "You only output mandatory JSON to a RESTful API, in the following "
-    'format: {"short": "yes or no", "report": "REPORT"} where "yes or no" '
-    "is the short answer, only 'yes' and 'no' being allowed, and 'REPORT' "
-    "is the full description of the findings, like a radiologist would write. "
-    "It is important to identify all lesions in the xray and respond with "
-    "'yes' if there is anything pathological and 'no' if there is nothing "
-    "to report. If in doubt, do not assume, stick to the facts. "
-    "Look again at the xray if you think there is something ambiguous. "
-    "The output format is JSON, keys and values require double-quotes, "
-    'the keys are "short", "report", value types are escaped string, int, '
-    "truth value. No explanation or other text is allowed."
-)
-USR_PROMPT = (
-    "{} in this {} xray of a {}? Are there any other lesions?"
-)
-REV_PROMPT = (
-    "There is something inaccurate in your report. "
-    "Analyse the xray again and look for any other possible lesions. "
-    "Do not apologize or explain yourself. "
-    "No explanation or other text is allowed. Only JSON is allowed as an "
-    "answer. Update the JSON report according to the template, "
-    "using a professional medical tone."
-)
+SYS_PROMPT = ("""
+<system_prompt>
+  <role>
+    You are an experienced emergency radiologist analyzing imaging studies.
+  </role>
+  <output_requirements>
+    <format>JSON</format>
+    <schema>
+      {
+        "short": "yes" | "no",
+        "report": "string"
+      }
+    </schema>
+    <rules>
+      <rule>Output ONLY valid JSON - no additional text, explanations, or apologies</rule>
+      <rule>The "short" field must be exactly "yes" or "no"</rule>
+      <rule>"yes" = pathological findings present</rule>
+      <rule>"no" = no significant findings</rule>
+      <rule>Use double quotes for all keys and string values</rule>
+      <rule>Properly escape special characters in strings</rule>
+    </rules>
+  </output_requirements>
+  <analysis_guidelines>
+    <guideline>Systematically examine the entire image for all abnormalities</guideline>
+    <guideline>Report all identified lesions and pathological findings</guideline>
+    <guideline>Be factual - if uncertain, describe what you observe without assuming</guideline>
+    <guideline>Use professional radiological terminology</guideline>
+    <guideline>Review the image multiple times if findings are ambiguous</guideline>
+  </analysis_guidelines>
+  <report_structure>
+    The "report" field should contain a complete radiological description including:
+    - Primary findings related to the clinical question
+    - Additional incidental findings or lesions
+    - Relevant negative findings if clinically important
+  </report_structure>
+</system_prompt>
+""")
+USR_PROMPT = ("""
+<user_prompt_initial>
+  <clinical_question>{}</clinical_question>
+  <study_type>{} xray</study_type>
+  <patient_info>{BODY_PART}</patient_info>
+  <additional_instructions>
+    Identify any other lesions or abnormalities beyond the primary clinical question.
+  </additional_instructions>
+</user_prompt_initial>
+""")
+REV_PROMPT = ("""
+<user_prompt_review>
+  <instruction>
+    Your previous report contains inaccuracies. Re-analyze the imaging study carefully.
+  </instruction>
+  <focus_areas>
+    <area>Verify all previously reported findings</area>
+    <area>Search systematically for any missed lesions or abnormalities</area>
+    <area>Ensure measurements and descriptions are precise</area>
+  </focus_areas>
+  <output_reminder>
+    <reminder>Output ONLY valid JSON matching the schema</reminder>
+    <reminder>No explanations, apologies, or additional text</reminder>
+    <reminder>Maintain professional medical terminology</reminder>
+  </output_reminder>
+</user_prompt_review>
+""")
 REGIONS = [
     "chest", 
     "abdominal", 
@@ -1811,10 +1850,28 @@ async def send_exam_to_openai(exam, max_retries = 3):
     
     # Append previous reports if any exist
     if previous_reports:
-        prompt += "\n\nThese are the previous reports for this patient in the same region:"
+        prompt += (
+            "\n\n<previous_studies>"
+            "\n  <context>Previous imaging studies for this patient in the same anatomical region:</context>"
+        )
         for i, (report, date) in enumerate(previous_reports, 1):
-            prompt += f"\n{i}. {date}: {report}"
-    
+            prompt += (
+                f"\n  <study index='{i}'>"
+                f"\n    <date>{date}</date>"
+                f"\n    <report>{report}</report>"
+                f"\n  </study>"
+            )
+        prompt += (
+            "\n  <comparison_instructions>"
+            "\n    - Compare current findings with previous studies"
+            "\n    - Note any interval changes (new, resolved, stable, or progressive findings)"
+            "\n    - Mention the comparison date when describing changes"
+            "\n    - If findings are stable, state 'stable compared to [date]'"
+            "\n    - If this is the first abnormal finding, state 'not present on [date]'"
+            "\n  </comparison_instructions>"
+            "\n</previous_studies>"
+        )  
+          
     logging.debug(f"Prompt: {prompt}")
     logging.info(f"Processing {exam['uid']} with {region} x-ray.")
     if exam['report']['text']:
