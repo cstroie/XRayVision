@@ -67,13 +67,13 @@ DEFAULT_CONFIG = {
     'dicom': {
         'AE_TITLE': 'XRAYVISION',
         'AE_PORT': '4010',
-        'REMOTE_AE_TITLE': '3DNETCLOUD',
-        'REMOTE_AE_IP': '192.168.3.50',
+        'REMOTE_AE_TITLE': 'DICOM_SERVER',
+        'REMOTE_AE_IP': '192.168.1.1',
         'REMOTE_AE_PORT': '104'
     },
     'openai': {
-        'OPENAI_URL_PRIMARY': 'http://192.168.3.239:8080/v1/chat/completions',
-        'OPENAI_URL_SECONDARY': 'http://127.0.0.1:8080/v1/chat/completions',
+        'OPENAI_URL_PRIMARY': 'http://127.0.0.1:8080/v1/chat/completions',
+        'OPENAI_URL_SECONDARY': 'http://127.0.0.1:11434/v1/chat/completions',
         'OPENAI_API_KEY': 'sk-your-api-key',
         'MODEL_NAME': 'medgemma-4b-it'
     },
