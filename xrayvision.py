@@ -188,13 +188,6 @@ REV_PROMPT = ("""
   </output_reminder>
 </user_prompt_review>
 """)
-REGIONS = [
-    "chest", 
-    "abdominal", 
-    "nasal bones", 
-    "maxilar and frontal sinus", 
-    "clavicle"
-]
 
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
@@ -241,6 +234,13 @@ REGION_QUESTIONS = {}
 question_config = config['questions']
 for key in question_config:
     REGION_QUESTIONS[key] = question_config[key]
+
+# Load supported regions from config
+REGIONS = []
+region_config = config['supported_regions']
+for key in region_config:
+    if config.getboolean('supported_regions', key):
+        REGIONS.append(key)
 
 # Dashboard state
 dashboard = {
