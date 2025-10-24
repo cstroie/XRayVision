@@ -1846,7 +1846,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
     previous_reports = db_get_previous_reports(exam['patient']['id'], region, months=3)
     
     # Create the prompt
-    prompt = USR_PROMPT.format(question, anatomy, subject)
+    prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
     
     # Append previous reports if any exist
     if previous_reports:
