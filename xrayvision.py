@@ -1647,6 +1647,41 @@ def identify_anatomic_region(info):
     return region, question
 
 
+def db_get_previous_reports(patient_id, region, months=3):
+    """ 
+    Get previous reports for the same patient and region from the last few months.
+    
+    Args:
+        patient_id: Patient identifier
+        region: Anatomic region to match
+        months: Number of months to look back (default: 3)
+        
+    Returns:
+        list: List of tuples containing (report_text, created_timestamp)
+    """
+    from datetime import datetime, timedelta
+    
+    cutoff_date = datetime.now() - timedelta(days=months*30)
+    cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT report, created 
+            FROM exams 
+            WHERE id = ? 
+            AND region = ? 
+            AND created >= ? 
+            AND report IS NOT NULL
+            AND positive IS NOT NULL
+            ORDER BY created DESC
+        """
+        cursor.execute(query, (patient_id, region, cutoff_date_str))
+        results = cursor.fetchall()
+    
+    return results
+
+
 def identify_imaging_projection(info):
     """ 
     Identify the imaging projection based on protocol name.
@@ -1768,8 +1803,18 @@ async def send_exam_to_openai(exam, max_retries = 3):
         anatomy = " ".join([projection, region])
     else:
         anatomy = ""
+    # Get previous reports for the same patient and region
+    previous_reports = db_get_previous_reports(exam['patient']['id'], region, months=3)
+    
     # Create the prompt
     prompt = USR_PROMPT.format(question, anatomy, subject)
+    
+    # Append previous reports if any exist
+    if previous_reports:
+        prompt += "\n\nThese are the previous reports for this patient in the same region:"
+        for i, (report, date) in enumerate(previous_reports, 1):
+            prompt += f"\n{i}. {date}: {report}"
+    
     logging.debug(f"Prompt: {prompt}")
     logging.info(f"Processing {exam['uid']} with {region} x-ray.")
     if exam['report']['text']:
