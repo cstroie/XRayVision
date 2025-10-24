@@ -54,28 +54,71 @@ logging.getLogger('pynetdicom').setLevel(logging.WARNING)
 logging.getLogger('pydicom').setLevel(logging.WARNING)
 
 # Configuration
-OPENAI_URL_PRIMARY = os.getenv(
-    "OPENAI_URL_PRIMARY", 
-    "http://192.168.3.239:8080/v1/chat/completions"
-)
-OPENAI_URL_SECONDARY = os.getenv(
-    "OPENAI_URL_SECONDARY", 
-    "http://127.0.0.1:8080/v1/chat/completions"
-)
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', 'sk-your-api-key')
-XRAYVISION_USER = os.getenv('XRAYVISION_USER', 'admin')
-XRAYVISION_PASS = os.getenv('XRAYVISION_PASS', 'admin')
-NTFY_URL = os.getenv('NTFY_URL', 'https://ntfy.sh/xrayvision-alerts')
-DASHBOARD_PORT = int(os.getenv('DASHBOARD_PORT', '8000'))
-AE_TITLE = os.getenv('AE_TITLE', 'XRAYVISION')
-AE_PORT = int(os.getenv('AE_PORT', '4010'))
-REMOTE_AE_TITLE = os.getenv('REMOTE_AE_TITLE', '3DNETCLOUD')
-REMOTE_AE_IP = os.getenv('REMOTE_AE_IP', '192.168.3.50')
-REMOTE_AE_PORT = int(os.getenv('REMOTE_AE_PORT', '104'))
+import configparser
+
+# Default configuration values
+DEFAULT_CONFIG = {
+    'general': {
+        'XRAYVISION_USER': 'admin',
+        'XRAYVISION_PASS': 'admin',
+        'XRAYVISION_DB_PATH': 'xrayvision.db',
+        'XRAYVISION_BACKUP_DIR': 'backup'
+    },
+    'dicom': {
+        'AE_TITLE': 'XRAYVISION',
+        'AE_PORT': '4010',
+        'REMOTE_AE_TITLE': '3DNETCLOUD',
+        'REMOTE_AE_IP': '192.168.3.50',
+        'REMOTE_AE_PORT': '104'
+    },
+    'openai': {
+        'OPENAI_URL_PRIMARY': 'http://192.168.3.239:8080/v1/chat/completions',
+        'OPENAI_URL_SECONDARY': 'http://127.0.0.1:8080/v1/chat/completions',
+        'OPENAI_API_KEY': 'sk-your-api-key',
+        'MODEL_NAME': 'medgemma-4b-it'
+    },
+    'dashboard': {
+        'DASHBOARD_PORT': '8000'
+    },
+    'notifications': {
+        'NTFY_URL': 'https://ntfy.sh/xrayvision-alerts'
+    },
+    'processing': {
+        'PAGE_SIZE': '10',
+        'KEEP_DICOM': 'False',
+        'LOAD_DICOM': 'False',
+        'NO_QUERY': 'False',
+        'ENABLE_NTFY': 'False'
+    }
+}
+
+# Load configuration from file if it exists, otherwise use defaults
+config = configparser.ConfigParser()
+config.read_dict(DEFAULT_CONFIG)
+try:
+    config.read('xrayvision.cfg')
+    logging.info("Configuration loaded from xrayvision.cfg")
+except Exception as e:
+    logging.info("Using default configuration values")
+
+# Extract configuration values
+OPENAI_URL_PRIMARY = config.get('openai', 'OPENAI_URL_PRIMARY')
+OPENAI_URL_SECONDARY = config.get('openai', 'OPENAI_URL_SECONDARY')
+OPENAI_API_KEY = config.get('openai', 'OPENAI_API_KEY')
+XRAYVISION_USER = config.get('general', 'XRAYVISION_USER')
+XRAYVISION_PASS = config.get('general', 'XRAYVISION_PASS')
+NTFY_URL = config.get('notifications', 'NTFY_URL')
+DASHBOARD_PORT = config.getint('dashboard', 'DASHBOARD_PORT')
+AE_TITLE = config.get('dicom', 'AE_TITLE')
+AE_PORT = config.getint('dicom', 'AE_PORT')
+REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
+REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
+REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
 IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
-DB_FILE = os.getenv("XRAYVISION_DB_PATH", "xrayvision.db")
-BACKUP_DIR = os.getenv("XRAYVISION_BACKUP_DIR", "backup")
+DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
+BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
+MODEL_NAME = config.get('openai', 'MODEL_NAME')
 
 SYS_PROMPT = ("""
 <system_prompt>
@@ -177,12 +220,11 @@ timings = {
 }
 
 # Global parameters
-PAGE_SIZE = 10      # Number of exams to display per page in the dashboard
-KEEP_DICOM = False  # Whether to keep DICOM files after processing
-LOAD_DICOM = False  # Whether to load existing DICOM files at startup
-NO_QUERY = False    # Whether to disable automatic DICOM query/retrieve
-ENABLE_NTFY = False # Whether to enable ntfy.sh notifications for positive findings
-MODEL_NAME = "medgemma-4b-it"  # Default model name
+PAGE_SIZE = config.getint('processing', 'PAGE_SIZE')      # Number of exams to display per page in the dashboard
+KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DICOM files after processing
+LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
+NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
+ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
 
 # Dashboard state
 dashboard = {
@@ -2282,11 +2324,11 @@ async def main():
 if __name__ == '__main__':
     # Need to process the arguments
     parser = argparse.ArgumentParser(description = "XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard")
-    parser.add_argument("--keep-dicom", action = "store_true", help = "Do not delete .dcm files after conversion")
-    parser.add_argument("--load-dicom", action = "store_true", help = "Load existing .dcm files in queue")
-    parser.add_argument("--no-query", action = "store_true", help = "Do not query the DICOM server automatically")
-    parser.add_argument("--enable-ntfy", action = "store_true", help = "Enable ntfy.sh notifications")
-    parser.add_argument("--model", type=str, default="medgemma-4b-it", help="Model name to use for analysis")
+    parser.add_argument("--keep-dicom", action = "store_true", default=KEEP_DICOM, help = "Do not delete .dcm files after conversion")
+    parser.add_argument("--load-dicom", action = "store_true", default=LOAD_DICOM, help = "Load existing .dcm files in queue")
+    parser.add_argument("--no-query", action = "store_true", default=NO_QUERY, help = "Do not query the DICOM server automatically")
+    parser.add_argument("--enable-ntfy", action = "store_true", default=ENABLE_NTFY, help = "Enable ntfy.sh notifications")
+    parser.add_argument("--model", type=str, default=MODEL_NAME, help="Model name to use for analysis")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
