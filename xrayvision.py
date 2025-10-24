@@ -232,6 +232,12 @@ region_config = config['regions']
 for key in region_config:
     REGION_RULES[key] = [word.strip() for word in region_config[key].split(',')]
 
+# Load region-specific questions from config
+REGION_QUESTIONS = {}
+question_config = config['questions']
+for key in question_config:
+    REGION_QUESTIONS[key] = question_config[key]
+
 # Dashboard state
 dashboard = {
     'queue_size': 0,        # Number of exams waiting in the processing queue
@@ -1666,24 +1672,8 @@ def identify_anatomic_region(info):
         # Fallback
         region = desc
     
-    # Set question based on region
-    if region == 'chest':
-        question = "Are there any lung consolidations, infitrates, opacities, pleural effusion, pneumothorax or pneumoperitoneum"
-    elif region == 'ribs':
-        question = "Are there any ribs or clavicles fractures"
-    elif region in ['sternum', 'skull', 'mandible', 'nasal_bones', 'pelvis', 'clavicle', 'shoulder', 'elbow', 'hip', 'knee', 'ankle']:
-        question = "Are there any fractures"
-    elif region == 'abdominal':
-        question = "Are there any signs of bowel obstruction, pneumoperitoneum or foreign bodies"
-    elif region == 'maxilar_and_frontal_sinus':
-        question = "Are the sinuses normally aerated or are they opaque or are there fluid levels"
-    elif region == 'spine':
-        question = "Are there any fractures or dislocations"
-    elif region in ['upper_limb', 'lower_limb', 'hand']:
-        question = "Are there any fractures, dislocations or bone tumors"
-    else:
-        # Fallback
-        question = "Is there anything abnormal"
+    # Get question from config or use fallback
+    question = REGION_QUESTIONS.get(region, "Is there anything abnormal")
     
     # Return the region and the question
     return region, question
