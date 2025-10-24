@@ -99,8 +99,8 @@ REV_PROMPT = (
     "Analyse the xray again and look for any other possible lesions. "
     "Do not apologize or explain yourself. "
     "No explanation or other text is allowed. Only JSON is allowed as an "
-    "answer. Update the JSON report according to the template."
-    "Write the new report in Romanian, using a professional medical tone. "
+    "answer. Update the JSON report according to the template, "
+    "using a professional medical tone."
 )
 REGIONS = [
     "chest", 
