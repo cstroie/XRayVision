@@ -903,10 +903,14 @@
             if (queryTimerInterval) clearInterval(queryTimerInterval);
             const nextQuery = document.getElementById("next-query");
             if (nextQuery) {
-                nextQuery.innerText = formatCountdown(targetTime);
-                queryTimerInterval = setInterval(() => {
+                if (targetTime === 'Disabled') {
+                    nextQuery.innerText = 'Disabled';
+                } else {
                     nextQuery.innerText = formatCountdown(targetTime);
-                }, 1000);
+                    queryTimerInterval = setInterval(() => {
+                        nextQuery.innerText = formatCountdown(targetTime);
+                    }, 1000);
+                }
             };
         }
 
