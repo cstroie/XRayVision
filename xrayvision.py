@@ -1460,7 +1460,9 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
                        }
                      }
     data['timings'] = timings
-    if next_query:
+    if NO_QUERY:
+        data['next_query'] = 'Disabled'
+    elif next_query:
         data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
     # Send the update to all clients
     for client in clients:
