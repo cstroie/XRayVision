@@ -282,6 +282,13 @@
                 </div>
             </section>
             
+            <section>
+                <h2>Confusion Matrices by Region</h2>
+                <div id="confusionMatrices" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+                    <!-- dynamically populated -->
+                </div>
+            </section>
+            
             <section class="grid charts-grid">
                 <article class="chart-container">
                     <h3>
@@ -445,6 +452,57 @@
                 <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
                 <td>${totalPpv}%</td><td>${totalPnv}%</td><td>${totalSnsi}%</td><td>${totalSpci}%</td>
             </tr>`;
+
+            // Populate confusion matrices
+            const matricesContainer = document.getElementById('confusionMatrices');
+            matricesContainer.innerHTML = '';
+            
+            for (const [region, counts] of Object.entries(data.region)) {
+                const tpos = counts.tpos || 0;
+                const tneg = counts.tneg || 0;
+                const fpos = counts.fpos || 0;
+                const fneg = counts.fneg || 0;
+                
+                const matrixHtml = `
+                    <article class="confusion-matrix" style="padding: 1rem;">
+                        <h3 style="margin-top: 0; text-align: center;">${region}</h3>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center;">
+                            <div></div>
+                            <div style="font-weight: bold; padding: 0.5rem;">Predicted</div>
+                            <div></div>
+                            
+                            <div style="font-weight: bold; padding: 0.5rem;">Actual</div>
+                            <div style="background-color: rgba(45, 212, 191, 0.2); padding: 0.5rem; border: 1px solid #2dd4bf;">
+                                <div>Positive</div>
+                                <div style="font-size: 1.2rem; font-weight: bold;">${tpos}</div>
+                                <div style="font-size: 0.8rem;">TP</div>
+                            </div>
+                            <div style="background-color: rgba(248, 113, 113, 0.2); padding: 0.5rem; border: 1px solid #f87171;">
+                                <div>Positive</div>
+                                <div style="font-size: 1.2rem; font-weight: bold;">${fneg}</div>
+                                <div style="font-size: 0.8rem;">FN</div>
+                            </div>
+                            
+                            <div></div>
+                            <div style="background-color: rgba(248, 113, 113, 0.2); padding: 0.5rem; border: 1px solid #f87171;">
+                                <div>Negative</div>
+                                <div style="font-size: 1.2rem; font-weight: bold;">${fpos}</div>
+                                <div style="font-size: 0.8rem;">FP</div>
+                            </div>
+                            <div style="background-color: rgba(100, 116, 139, 0.2); padding: 0.5rem; border: 1px solid #64748b;">
+                                <div>Negative</div>
+                                <div style="font-size: 1.2rem; font-weight: bold;">${tneg}</div>
+                                <div style="font-size: 0.8rem;">TN</div>
+                            </div>
+                        </div>
+                        <div style="margin-top: 1rem; font-size: 0.9rem; text-align: center;">
+                            <div>Accuracy: ${Math.round(((tpos + tneg) / (tpos + tneg + fpos + fneg)) * 100) || 0}%</div>
+                        </div>
+                    </article>
+                `;
+                
+                matricesContainer.innerHTML += matrixHtml;
+            }
 
             // Destroy existing charts if they exist
             if (regionChart) regionChart.destroy();
