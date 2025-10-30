@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
+# qr.py - DICOM Query/Retrieve utility for XRayVision
+# 
+# This script queries a remote DICOM PACS for CR (Computed Radiography) studies
+# for a specified date range and requests them to be sent to the local AE.
+# It's designed to work with the XRayVision system configuration.
+
 import argparse
 import logging
 import time
@@ -54,7 +60,23 @@ REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
 REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
 
 def send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid):
-    """ Ask for a study to be sent """
+    """
+    Send a C-MOVE request to retrieve a study from a remote DICOM server.
+    
+    This function establishes a DICOM association with a remote PACS and sends
+    a C-MOVE request to have a specific study (identified by Study Instance UID)
+    sent to our local AE.
+    
+    Args:
+        ae (AE): Local Application Entity
+        peer_ae (str): Remote AE title
+        peer_ip (str): Remote AE IP address
+        peer_port (int): Remote AE port
+        study_instance_uid (str): Study Instance UID to retrieve
+        
+    Returns:
+        None
+    """
     # Create the association
     assoc = ae.associate(peer_ip, peer_port, ae_title = peer_ae)
     if assoc.is_established:
@@ -77,7 +99,25 @@ def send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid):
         logging.error("Could not establish C-MOVE association.")
 
 def query_retrieve_monthly_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month, day = None):
-    """ Query and Retrieve studies """
+    """
+    Query and retrieve CR studies for a specified date range.
+    
+    This function queries a remote DICOM PACS for CR studies for either a full month
+    or a specific day, and requests each found study to be sent to the local AE.
+    It processes one day at a time with appropriate delays between requests.
+    
+    Args:
+        local_ae (str): Local AE title
+        peer_ae (str): Remote AE title
+        peer_ip (str): Remote AE IP address
+        peer_port (int): Remote AE port
+        year (int): Year to query
+        month (int): Month to query (1-12)
+        day (int, optional): Specific day to query (1-31). If None, queries entire month.
+        
+    Returns:
+        None
+    """
     ae = AE(ae_title = local_ae)
     ae.requested_contexts = QueryRetrievePresentationContexts
     ae.connection_timeout = 30
