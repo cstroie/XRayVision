@@ -237,28 +237,36 @@
                             <td id="openai-secondary" class="loading">Loading...</td>
                         </tr>
                         <tr>
+                            <td>Model Name</td>
+                            <td id="model-name" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
                             <td>Notification URL</td>
                             <td id="ntfy-url" class="loading">Loading...</td>
                         </tr>
                         <tr>
-                            <td>DICOM Title</td>
+                            <td>Local AE Title</td>
                             <td id="ae-title" class="loading">Loading...</td>
                         </tr>
                         <tr>
-                            <td>DICOM Port</td>
+                            <td>Local AE Port</td>
                             <td id="ae-port" class="loading">Loading...</td>
                         </tr>
                         <tr>
-                            <td>Remote DICOM Title</td>
+                            <td>Remote AE Title</td>
                             <td id="remote-ae-title" class="loading">Loading...</td>
                         </tr>
                         <tr>
-                            <td>Remote Server IP</td>
+                            <td>Remote AE IP</td>
                             <td id="remote-ae-ip" class="loading">Loading...</td>
                         </tr>
                         <tr>
-                            <td>Remote Server Port</td>
+                            <td>Remote AE Port</td>
                             <td id="remote-ae-port" class="loading">Loading...</td>
+                        </tr>
+                        <tr>
+                            <td>Dashboard Port</td>
+                            <td id="dashboard-port" class="loading">Loading...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -276,12 +284,14 @@
             .then(data => {
                 document.getElementById('openai-primary').textContent = data.OPENAI_URL_PRIMARY || 'Not configured';
                 document.getElementById('openai-secondary').textContent = data.OPENAI_URL_SECONDARY || 'Not configured';
+                document.getElementById('model-name').textContent = data.MODEL_NAME || 'Not configured';
                 document.getElementById('ntfy-url').textContent = data.NTFY_URL || 'Not configured';
                 document.getElementById('ae-title').textContent = data.AE_TITLE || 'Not configured';
                 document.getElementById('ae-port').textContent = data.AE_PORT || 'Not configured';
                 document.getElementById('remote-ae-title').textContent = data.REMOTE_AE_TITLE || 'Not configured';
                 document.getElementById('remote-ae-ip').textContent = data.REMOTE_AE_IP || 'Not configured';
                 document.getElementById('remote-ae-port').textContent = data.REMOTE_AE_PORT || 'Not configured';
+                document.getElementById('dashboard-port').textContent = data.DASHBOARD_PORT || 'Not configured';
             })
             .catch(error => {
                 console.error('Error fetching config:', error);
