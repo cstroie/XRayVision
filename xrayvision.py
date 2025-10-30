@@ -1813,166 +1813,172 @@ async def send_exam_to_openai(exam, max_retries = 3):
     Returns:
         bool: True if successfully processed, False otherwise
     """
-    # Read the PNG file
-    with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
-        image_bytes = f.read()
-    # Identify the region
-    region, question = identify_anatomic_region(exam)
-    # Filter on specific region
-    if not region in REGIONS:
-        logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
-        db_set_status(exam['uid'], 'ignore')
-        return False
-    # Identify the prjection, gender and age
-    projection = identify_imaging_projection(exam)
-    gender = determine_patient_gender_description(exam)
-    age = exam["patient"]["age"]
-    if age > 0:
-        txtAge = f"{age} years old"
-    elif age == 0:
-        txtAge = "newborn"
-    else:
-        txtAge = ""
-    # Update exam info
-    exam['exam'].update({'region': region, 'projection': projection})
-    # Get the subject of the study and the studied region
-    subject = " ".join([txtAge, gender])
-    if region:
-        anatomy = " ".join([projection, region])
-    else:
-        anatomy = ""
-    # Get previous reports for the same patient and region
-    previous_reports = db_get_previous_reports(exam['patient']['id'], region, months=3)
-    
-    # Create the prompt
-    prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
-    
-    # Append previous reports if any exist
-    if previous_reports:
-        prompt += (
-            "\n\n<previous_studies>"
-            "\n  <context>Previous imaging studies for this patient in the same anatomical region:</context>"
-        )
-        for i, (report, date) in enumerate(previous_reports, 1):
+    try:
+        # Read the PNG file
+        with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
+            image_bytes = f.read()
+        # Identify the region
+        region, question = identify_anatomic_region(exam)
+        # Filter on specific region
+        if not region in REGIONS:
+            logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
+            db_set_status(exam['uid'], 'ignore')
+            return False
+        # Identify the prjection, gender and age
+        projection = identify_imaging_projection(exam)
+        gender = determine_patient_gender_description(exam)
+        age = exam["patient"]["age"]
+        if age > 0:
+            txtAge = f"{age} years old"
+        elif age == 0:
+            txtAge = "newborn"
+        else:
+            txtAge = ""
+        # Update exam info
+        exam['exam'].update({'region': region, 'projection': projection})
+        # Get the subject of the study and the studied region
+        subject = " ".join([txtAge, gender])
+        if region:
+            anatomy = " ".join([projection, region])
+        else:
+            anatomy = ""
+        # Get previous reports for the same patient and region
+        previous_reports = db_get_previous_reports(exam['patient']['id'], region, months=3)
+        
+        # Create the prompt
+        prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
+        
+        # Append previous reports if any exist
+        if previous_reports:
             prompt += (
-                f"\n  <study index='{i}'>"
-                f"\n    <date>{date}</date>"
-                f"\n    <report>{report}</report>"
-                f"\n  </study>"
+                "\n\n<previous_studies>"
+                "\n  <context>Previous imaging studies for this patient in the same anatomical region:</context>"
             )
-        prompt += (
-            "\n  <comparison_instructions>"
-            "\n    - Compare current findings with previous studies"
-            "\n    - Note any interval changes (new, resolved, stable, or progressive findings)"
-            "\n    - Mention the comparison date when describing changes"
-            "\n    - If findings are stable, state 'stable compared to [date]'"
-            "\n    - If this is the first abnormal finding, state 'not present on [date]'"
-            "\n  </comparison_instructions>"
-            "\n</previous_studies>"
-        )  
-          
-    logging.debug(f"Prompt: {prompt}")
-    logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-    if exam['report']['text']:
-        json_report = {'short': exam['report']['short'],
-                       'report': exam['report']['text']}
-        exam['report']['json'] = json.dumps(json_report)
-        logging.info(f"Previous report: {exam['report']['json']}")
-    # Base64 encode the PNG to comply with OpenAI Vision API
-    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-    image_url = f"data:image/png;base64,{image_b64}"
-    # Prepare the request headers
-    headers = {
-        'Authorization': f'Bearer {OPENAI_API_KEY}',
-        'Content-Type': 'application/json',
-    }
-    # Prepare the JSON data
-    data = {
-        "model": MODEL_NAME,
-        "timings_per_token": True,
-        "min_p": 0.05,
-        "top_k": 40,
-        "top_p": 0.95,
-        "temperature": 0.6,
-        "cache_prompt": True,
-        "stream": False,
-        "keep_alive": 1800,
-        "messages": [
-            {
-                "role": "system",
-                "content": [{"type": "text", "text": SYS_PROMPT}]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_url}}
-                ]
-            }
-        ]
-    }
-    if 'json' in exam['report']:
-        data['messages'].append({'role': 'assistant', 'content': exam['report']['json']})
-        data['messages'].append({'role': 'user', 'content': REV_PROMPT})
-    # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
-    attempt = 1
-    while attempt <= max_retries:
-        try:
-            # Start timing
-            start_time = asyncio.get_event_loop().time()
-            async with aiohttp.ClientSession() as session:
-                result = await send_to_openai(session, headers, data)
-                if not result:
-                    break
-                response = result["choices"][0]["message"]["content"].strip()
-                # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
-                response = re.sub(r"^```(?:json)?\s*", "", response, flags = re.IGNORECASE | re.MULTILINE)
-                response = re.sub(r"\s*```$", "", response, flags = re.MULTILINE)
-                # Clean up any text before '{'
-                response = re.sub(r"^[^{]*{", "{", response, flags = re.IGNORECASE | re.MULTILINE)
-                try:
-                    parsed = json.loads(response)
-                    short = parsed["short"].strip().lower()
-                    report = parsed["report"].strip()
-                    if short not in ("yes", "no") or not report:
-                        raise ValueError("Invalid json format in OpenAI response")
-                except Exception as e:
-                    logging.error(f"Rejected malformed OpenAI response: {e}")
-                    logging.error(response)
-                    break
-                logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report}")
-                # Save to exams database
-                is_positive = short == "yes"
-                db_add_exam(exam, report = report, positive = is_positive)
-                # Send notification for positive cases
-                if is_positive:
+            for i, (report, date) in enumerate(previous_reports, 1):
+                prompt += (
+                    f"\n  <study index='{i}'>"
+                    f"\n    <date>{date}</date>"
+                    f"\n    <report>{report}</report>"
+                    f"\n  </study>"
+                )
+            prompt += (
+                "\n  <comparison_instructions>"
+                "\n    - Compare current findings with previous studies"
+                "\n    - Note any interval changes (new, resolved, stable, or progressive findings)"
+                "\n    - Mention the comparison date when describing changes"
+                "\n    - If findings are stable, state 'stable compared to [date]'"
+                "\n    - If this is the first abnormal finding, state 'not present on [date]'"
+                "\n  </comparison_instructions>"
+                "\n</previous_studies>"
+            )  
+              
+        logging.debug(f"Prompt: {prompt}")
+        logging.info(f"Processing {exam['uid']} with {region} x-ray.")
+        if exam['report']['text']:
+            json_report = {'short': exam['report']['short'],
+                           'report': exam['report']['text']}
+            exam['report']['json'] = json.dumps(json_report)
+            logging.info(f"Previous report: {exam['report']['json']}")
+        # Base64 encode the PNG to comply with OpenAI Vision API
+        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+        image_url = f"data:image/png;base64,{image_b64}"
+        # Prepare the request headers
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+        # Prepare the JSON data
+        data = {
+            "model": MODEL_NAME,
+            "timings_per_token": True,
+            "min_p": 0.05,
+            "top_k": 40,
+            "top_p": 0.95,
+            "temperature": 0.6,
+            "cache_prompt": True,
+            "stream": False,
+            "keep_alive": 1800,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": SYS_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    ]
+                }
+            ]
+        }
+        if 'json' in exam['report']:
+            data['messages'].append({'role': 'assistant', 'content': exam['report']['json']})
+            data['messages'].append({'role': 'user', 'content': REV_PROMPT})
+        # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
+        attempt = 1
+        while attempt <= max_retries:
+            try:
+                # Start timing
+                start_time = asyncio.get_event_loop().time()
+                async with aiohttp.ClientSession() as session:
+                    result = await send_to_openai(session, headers, data)
+                    if not result:
+                        break
+                    response = result["choices"][0]["message"]["content"].strip()
+                    # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
+                    response = re.sub(r"^```(?:json)?\s*", "", response, flags = re.IGNORECASE | re.MULTILINE)
+                    response = re.sub(r"\s*```$", "", response, flags = re.MULTILINE)
+                    # Clean up any text before '{'
+                    response = re.sub(r"^[^{]*{", "{", response, flags = re.IGNORECASE | re.MULTILINE)
                     try:
-                        await send_ntfy_notification(exam['uid'], report, exam)
+                        parsed = json.loads(response)
+                        short = parsed["short"].strip().lower()
+                        report = parsed["report"].strip()
+                        if short not in ("yes", "no") or not report:
+                            raise ValueError("Invalid json format in OpenAI response")
                     except Exception as e:
-                        logging.error(f"Failed to send ntfy notification: {e}")
-                # Calculate timing statistics
-                global timings
-                end_time = asyncio.get_event_loop().time()
-                timings['total'] = int((end_time - start_time) * 1000)  # Convert to milliseconds
-                if timings['average'] > 0:
-                    timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
-                else:
-                    timings['average'] = timings['total']
-                # Notify the dashboard frontend to reload first page
-                await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
-                # Success
-                return True
-        except Exception as e:
-            logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
-            # Exponential backoff
-            await asyncio.sleep(2 ** attempt)
-            attempt += 1
-    # Failure after max_retries
-    db_set_status(exam['uid'], 'error')
-    QUEUE_EVENT.clear()
-    logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
-    await broadcast_dashboard_update()
-    return False
+                        logging.error(f"Rejected malformed OpenAI response: {e}")
+                        logging.error(response)
+                        break
+                    logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report}")
+                    # Save to exams database
+                    is_positive = short == "yes"
+                    db_add_exam(exam, report = report, positive = is_positive)
+                    # Send notification for positive cases
+                    if is_positive:
+                        try:
+                            await send_ntfy_notification(exam['uid'], report, exam)
+                        except Exception as e:
+                            logging.error(f"Failed to send ntfy notification: {e}")
+                    # Calculate timing statistics
+                    global timings
+                    end_time = asyncio.get_event_loop().time()
+                    timings['total'] = int((end_time - start_time) * 1000)  # Convert to milliseconds
+                    if timings['average'] > 0:
+                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                    else:
+                        timings['average'] = timings['total']
+                    # Notify the dashboard frontend to reload first page
+                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
+                    # Success
+                    return True
+            except Exception as e:
+                logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
+                # Exponential backoff
+                await asyncio.sleep(2 ** attempt)
+                attempt += 1
+        # Failure after max_retries
+        db_set_status(exam['uid'], 'error')
+        QUEUE_EVENT.clear()
+        logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
+        await broadcast_dashboard_update()
+        return False
+    except Exception as e:
+        logging.error(f"Critical error in send_exam_to_openai for {exam['uid']}: {e}")
+        db_set_status(exam['uid'], 'error')
+        await broadcast_dashboard_update()
+        return False
 
 
 # Threads
@@ -2030,37 +2036,39 @@ async def relay_to_openai_loop():
             continue
         # Get only one exam, if any
         exam = exams[0]
-        # Set the status
-        db_set_status(exam['uid'], "processing")
-        # Update the dashboard
-        dashboard['queue_size'] = total
-        dashboard['processing'] = exam['patient']['name']
-        await broadcast_dashboard_update()
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{exam['uid']}.dcm")
-        # Send to AI for processing
-        result = False
         try:
+            # Set the status
+            db_set_status(exam['uid'], "processing")
+            # Update the dashboard
+            dashboard['queue_size'] = total
+            dashboard['processing'] = exam['patient']['name']
+            await broadcast_dashboard_update()
+            # Send to AI for processing
             result = await send_exam_to_openai(exam)
+            # Check the result
+            if result:
+                # Set the status
+                db_set_status(exam['uid'], "done")
+                # Remove the DICOM file
+                if not KEEP_DICOM:
+                    try:
+                        os.remove(dicom_file)
+                        logging.info(f"DICOM file {dicom_file} deleted after processing.")
+                    except Exception as e:
+                        logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+                else:
+                    logging.debug(f"Keeping DICOM file: {dicom_file}")
+            else:
+                # Error already set in send_exam_to_openai
+                pass
         except Exception as e:
-            logging.error(f"OpenAI error processing {exam['uid']}: {e}")
+            logging.error(f"Unexpected error processing {exam['uid']}: {e}")
             db_set_status(exam['uid'], "error")
         finally:
             dashboard['processing'] = None
             await broadcast_dashboard_update()
-        # Check the result
-        if result:
-            # Set the status
-            db_set_status(exam['uid'], "done")
-            # Remove the DICOM file
-            if not KEEP_DICOM:
-                try:
-                    os.remove(dicom_file)
-                    logging.info(f"DICOM file {dicom_file} deleted after processing.")
-                except Exception as e:
-                    logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
-            else:
-                logging.debug(f"Keeping DICOM file: {dicom_file}")
 
 
 async def openai_health_check():
@@ -2209,6 +2217,7 @@ def process_dicom_file(dicom_file, uid):
             info = extract_dicom_metadata(ds)
         except Exception as e:
             logging.error(f"Error getting info {dicom_file}: {e}")
+            db_set_status(uid, "error")
             return
         # Try to convert to PNG
         png_file = None
@@ -2216,14 +2225,20 @@ def process_dicom_file(dicom_file, uid):
             png_file = convert_dicom_to_png(dicom_file)
         except Exception as e:
             logging.error(f"Error converting DICOM file {dicom_file}: {e}")
+            db_set_status(uid, "error")
+            return
         # Check the result
         if png_file:
             # Add to processing queue
             db_add_exam(info)
             # Notify the queue
             QUEUE_EVENT.set()
+        else:
+            # Set error status if no PNG was created
+            db_set_status(uid, "error")
     except Exception as e:
         logging.error(f"Error processing DICOM file {dicom_file}: {e}")
+        db_set_status(uid, "error")
 
 
 async def main():
