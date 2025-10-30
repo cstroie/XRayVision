@@ -1945,13 +1945,14 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         parsed = json.loads(response)
                         short = parsed["short"].strip().lower()
                         report = parsed["report"].strip()
+                        confidence = parsed.get("confidence", 0)
                         if short not in ("yes", "no") or not report:
                             raise ValueError("Invalid json format in OpenAI response")
                     except Exception as e:
                         logging.error(f"Rejected malformed OpenAI response: {e}")
                         logging.error(response)
                         break
-                    logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report}")
+                    logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
                     # Save to exams database
                     is_positive = short == "yes"
                     db_add_exam(exam, report = report, positive = is_positive)
