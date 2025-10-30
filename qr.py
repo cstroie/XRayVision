@@ -5,10 +5,14 @@ import argparse
 import logging
 import time
 from datetime import datetime, timedelta
+import configparser
+import os
+
 from pynetdicom import AE, QueryRetrievePresentationContexts
 from pynetdicom.sop_class import PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
 from pydicom.dataset import Dataset
 
+# Logger config
 logging.basicConfig(
     level = logging.INFO,
     format = '%(asctime)s | %(levelname)8s | %(message)s',
@@ -17,6 +21,37 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# Default configuration values
+DEFAULT_CONFIG = {
+    'dicom': {
+        'AE_TITLE': 'XRAYVISION',
+        'AE_PORT': '4010',
+        'REMOTE_AE_TITLE': 'DICOM_SERVER',
+        'REMOTE_AE_IP': '192.168.1.1',
+        'REMOTE_AE_PORT': '104'
+    }
+}
+
+# Load configuration from file if it exists, otherwise use defaults
+config = configparser.ConfigParser()
+config.read_dict(DEFAULT_CONFIG)
+try:
+    config.read('xrayvision.cfg')
+    logging.info("Configuration loaded from xrayvision.cfg")
+    # Check for local configuration file to override settings
+    local_config_files = config.read('local.cfg')
+    if local_config_files:
+        logging.info("Local configuration loaded from local.cfg")
+except Exception as e:
+    logging.info("Using default configuration values")
+
+# Extract configuration values
+AE_TITLE = config.get('dicom', 'AE_TITLE')
+AE_PORT = config.getint('dicom', 'AE_PORT')
+REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
+REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
+REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
 
 def send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid):
     """ Ask for a study to be sent """
@@ -90,10 +125,10 @@ if __name__ == "__main__":
     parser.add_argument("--day", type = int, help = "Day number (1-31)")
     parser.add_argument("--month", type = int, required = True, help = "Month number (1-12)")
     parser.add_argument("--year", type = int, required = True, help = "Year (e.g. 2025)")
-    parser.add_argument("--ae", default = "XRAYVISION", help = "Local AE Title")
-    parser.add_argument("--peer-ae", default = "3DNETCLOUD", help = "Peer AE Title")
-    parser.add_argument("--peer-ip", default = "192.168.3.50", help = "Peer IP address")
-    parser.add_argument("--peer-port", type = int, default = 104, help = "Peer port")
+    parser.add_argument("--ae", default = AE_TITLE, help = "Local AE Title")
+    parser.add_argument("--peer-ae", default = REMOTE_AE_TITLE, help = "Peer AE Title")
+    parser.add_argument("--peer-ip", default = REMOTE_AE_IP, help = "Peer IP address")
+    parser.add_argument("--peer-port", type = int, default = REMOTE_AE_PORT, help = "Peer port")
 
     args = parser.parse_args()
     query_retrieve_monthly_cr_studies(
