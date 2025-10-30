@@ -134,7 +134,8 @@ SYS_PROMPT = ("""
     <schema>
       {
         "short": "yes" | "no",
-        "report": "string"
+        "report": "string",
+        "confidence": integer (0-100)
       }
     </schema>
     <rules>
@@ -142,6 +143,7 @@ SYS_PROMPT = ("""
       <rule>The "short" field must be exactly "yes" or "no"</rule>
       <rule>"yes" = pathological findings present</rule>
       <rule>"no" = no significant findings</rule>
+      <rule>The "confidence" field must be an integer between 0-100</rule>
       <rule>Use double quotes for all keys and string values</rule>
       <rule>Properly escape special characters in strings</rule>
     </rules>
@@ -152,6 +154,7 @@ SYS_PROMPT = ("""
     <guideline>Be factual - if uncertain, describe what you observe without assuming</guideline>
     <guideline>Use professional radiological terminology</guideline>
     <guideline>Review the image multiple times if findings are ambiguous</guideline>
+    <guideline>Provide a confidence score (0-100) reflecting certainty in your assessment</guideline>
   </analysis_guidelines>
   <report_structure>
     The "report" field should contain a complete radiological description including:
@@ -159,6 +162,13 @@ SYS_PROMPT = ("""
     - Additional incidental findings or lesions
     - Relevant negative findings if clinically important
   </report_structure>
+  <confidence_guidelines>
+    The "confidence" field should reflect your certainty:
+    - 90-100: High confidence in findings
+    - 70-89: Moderate confidence, some uncertainty
+    - 50-69: Low confidence, significant uncertainty
+    - 0-49: Very low confidence, speculative findings
+  </confidence_guidelines>
 </system_prompt>
 """)
 USR_PROMPT = ("""
