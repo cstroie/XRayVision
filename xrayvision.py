@@ -755,13 +755,13 @@ def db_get_weekly_processed_count():
 
 def db_get_regions():
     """
-    Get distinct regions from the database.
+    Get distinct regions from the database for exams with status 'done'.
 
     Returns:
-        list: List of distinct regions that have been processed
+        list: List of distinct regions that have been processed with status 'done'
     """
     with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.execute("SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' ORDER BY region")
+        cursor = conn.execute("SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' AND status = 'done' ORDER BY region")
         regions = [row[0] for row in cursor.fetchall()]
     return regions
 
