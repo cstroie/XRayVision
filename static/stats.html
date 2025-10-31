@@ -487,7 +487,16 @@
                             </div>
                         </div>
                         <div style="margin-top: 1rem; font-size: 0.9rem; text-align: center;">
-                            <div>MCC: ${counts.mcc !== undefined ? counts.mcc + '%' : '-'}</div>
+                            <div>MCC: ${(() => {
+                                const tp = tpos;
+                                const tn = tneg;
+                                const fp = fpos;
+                                const fn = fneg;
+                                const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
+                                if (denominator === 0) return '0%';
+                                const mcc = (tp * tn - fp * fn) / denominator;
+                                return Math.round(mcc * 100) + '%';
+                            })()}</div>
                         </div>
                     </article>
                 `;
