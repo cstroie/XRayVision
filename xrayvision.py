@@ -173,9 +173,7 @@ SYS_PROMPT = ("""
 """)
 USR_PROMPT = ("""
 <user_prompt_initial>
-  <clinical_question>{question}</clinical_question>
-  <study_type>{anatomy} xray</study_type>
-  <patient_info>{subject}</patient_info>
+  <question>{question} in this {anatomy} xray of {subject}?</question>
   <additional_instructions>
     Identify any other lesions or abnormalities beyond the primary clinical question.
   </additional_instructions>
@@ -189,7 +187,6 @@ REV_PROMPT = ("""
   <focus_areas>
     <area>Verify all previously reported findings</area>
     <area>Search systematically for any missed lesions or abnormalities</area>
-    <area>Ensure measurements and descriptions are precise</area>
   </focus_areas>
   <output_reminder>
     <reminder>Output ONLY valid JSON matching the schema</reminder>
@@ -1899,7 +1896,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         # Append previous reports if any exist
         if previous_reports:
             prompt += (
-                "\n\n<previous_studies>"
+                "\n<previous_studies>"
                 "\n  <context>Previous imaging studies for this patient in the same anatomical region:</context>"
             )
             for i, (report, date) in enumerate(previous_reports, 1):
