@@ -1350,7 +1350,7 @@ async def config_handler(request):
 async def regions_handler(request):
     """Provide supported regions for the frontend dropdown.
 
-    Returns the list of supported regions that can be used in the dashboard
+    Returns the list of regions from the database that can be used in the dashboard
     filter dropdown.
 
     Args:
@@ -1360,8 +1360,11 @@ async def regions_handler(request):
         web.json_response: JSON response with regions list
     """
     try:
-        # Return the supported regions
-        return web.json_response(REGIONS)
+        # Get distinct regions from the database
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.execute("SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' ORDER BY region")
+            regions = [row[0] for row in cursor.fetchall()]
+        return web.json_response(regions)
     except Exception as e:
         logging.error(f"Regions endpoint error: {e}")
         return web.json_response([], status = 500)
