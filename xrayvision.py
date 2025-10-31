@@ -637,6 +637,19 @@ async def db_get_stats():
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
             
+            # Calculate Matthews Correlation Coefficient (MCC)
+            tp = row[5] or 0
+            tn = row[6] or 0
+            fp = row[7] or 0
+            fn = row[8] or 0
+            denominator = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
+            if denominator == 0:
+                stats["region"][region]["mcc"] = 0
+            else:
+                mcc = (tp * tn - fp * fn) / denominator
+                # Convert to percentage and round to integer
+                stats["region"][region]["mcc"] = int(mcc * 100)
+            
             # Store raw values for MCC calculation in frontend
             stats["region"][region]["tpos"] = row[5] or 0
             stats["region"][region]["tneg"] = row[6] or 0
