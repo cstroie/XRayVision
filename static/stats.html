@@ -424,6 +424,18 @@
             const totalSnsi = (totalTpos + totalFneg) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFneg)) : '-';
             const totalSpci = (totalTneg + totalFpos) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFpos)) : '-';
             
+            // Calculate Matthews Correlation Coefficient (MCC) for totals
+            const tp = totalTpos;
+            const tn = totalTneg;
+            const fp = totalFpos;
+            const fn = totalFneg;
+            let totalMcc = '-';
+            const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
+            if (denominator !== 0) {
+                const mcc = (tp * tn - fp * fn) / denominator;
+                totalMcc = Math.round(mcc * 100);
+            }
+            
             tfoot.innerHTML = `
             <tr>
                 <th scope="row">Total</th>
