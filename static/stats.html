@@ -250,15 +250,15 @@
                         <thead>
                             <tr>
                                 <th>Region</th>
-                                <th>Total</th>
-                                <th>Reviewed</th>
-                                <th>Positive</th>
-                                <th>Invalid</th>
-                                <th>PPV (%)</th>
-                                <th>PNV (%)</th>
-                                <th>Sensitivity (%)</th>
-                                <th>Specificity (%)</th>
-                                <th>MCC (%)</th>
+                                <th style="text-align: right;">Total</th>
+                                <th style="text-align: right;">Reviewed</th>
+                                <th style="text-align: right;">Positive</th>
+                                <th style="text-align: right;">Invalid</th>
+                                <th style="text-align: right;">PPV (%)</th>
+                                <th style="text-align: right;">PNV (%)</th>
+                                <th style="text-align: right;">Sensitivity (%)</th>
+                                <th style="text-align: right;">Specificity (%)</th>
+                                <th style="text-align: right;">MCC</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -397,15 +397,15 @@
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <th scope="row">${region}</th>
-                    <td>${counts.total}</td>
-                    <td>${counts.reviewed}</td>
-                    <td>${counts.positive}</td>
-                    <td>${counts.invalid}</td>
-                    <td>${counts.ppv !== '-' ? counts.ppv + '%' : '-'}</td>
-                    <td>${counts.pnv !== '-' ? counts.pnv + '%' : '-'}</td>
-                    <td>${counts.snsi !== '-' ? counts.snsi + '%' : '-'}</td>
-                    <td>${counts.spci !== '-' ? counts.spci + '%' : '-'}</td>
-                    <td>${counts.mcc !== undefined ? (() => {
+                    <td style="text-align: right;">${counts.total}</td>
+                    <td style="text-align: right;">${counts.reviewed}</td>
+                    <td style="text-align: right;">${counts.positive}</td>
+                    <td style="text-align: right;">${counts.invalid}</td>
+                    <td style="text-align: right;">${counts.ppv !== '-' ? counts.ppv + '%' : '-'}</td>
+                    <td style="text-align: right;">${counts.pnv !== '-' ? counts.pnv + '%' : '-'}</td>
+                    <td style="text-align: right;">${counts.snsi !== '-' ? counts.snsi + '%' : '-'}</td>
+                    <td style="text-align: right;">${counts.spci !== '-' ? counts.spci + '%' : '-'}</td>
+                    <td style="text-align: right;">${counts.mcc !== undefined ? (() => {
                         const mcc = counts.mcc;
                         let color = '';
                         if (mcc >= 0.9) color = '#34d399';  // green
@@ -450,9 +450,15 @@
             tfoot.innerHTML = `
             <tr>
                 <th scope="row">Total</th>
-                <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
-                <td>${totalPpv}%</td><td>${totalPnv}%</td><td>${totalSnsi}%</td><td>${totalSpci}%</td>
-                <td>${(() => {
+                <td style="text-align: right;">${data.total}</td>
+                <td style="text-align: right;">${data.reviewed}</td>
+                <td style="text-align: right;">${data.positive}</td>
+                <td style="text-align: right;">${data.invalid}</td>
+                <td style="text-align: right;">${totalPpv}%</td>
+                <td style="text-align: right;">${totalPnv}%</td>
+                <td style="text-align: right;">${totalSnsi}%</td>
+                <td style="text-align: right;">${totalSpci}%</td>
+                <td style="text-align: right;">${(() => {
                     if (totalMcc === '-') return '-';
                     const mcc = parseFloat(totalMcc);
                     let color = '';
