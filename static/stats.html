@@ -493,9 +493,18 @@
                                 const fp = fpos;
                                 const fn = fneg;
                                 const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
-                                if (denominator === 0) return '0.00';
+                                if (denominator === 0) return '0.00 (Poor)';
                                 const mcc = (tp * tn - fp * fn) / denominator;
-                                return mcc.toFixed(2);
+                                const mccValue = mcc.toFixed(2);
+                                let interpretation = '';
+                                if (mcc >= 0.9) interpretation = ' (Excellent)';
+                                else if (mcc >= 0.8) interpretation = ' (Very Good)';
+                                else if (mcc >= 0.7) interpretation = ' (Good)';
+                                else if (mcc >= 0.5) interpretation = ' (Moderate)';
+                                else if (mcc >= 0.3) interpretation = ' (Fair)';
+                                else if (mcc >= 0.0) interpretation = ' (Poor)';
+                                else interpretation = ' (Very Poor)';
+                                return `${mccValue}${interpretation}`;
                             })()}</div>
                         </div>
                     </article>
