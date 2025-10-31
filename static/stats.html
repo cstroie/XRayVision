@@ -516,18 +516,40 @@
                                 const fp = fpos;
                                 const fn = fneg;
                                 const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
-                                if (denominator === 0) return '0.00 (Poor)';
+                                if (denominator === 0) return '<span style="color: #f87171;">0.00 (Poor)</span>';
                                 const mcc = (tp * tn - fp * fn) / denominator;
                                 const mccValue = mcc.toFixed(2);
                                 let interpretation = '';
-                                if (mcc >= 0.9) interpretation = ' (Excellent)';
-                                else if (mcc >= 0.8) interpretation = ' (Very Good)';
-                                else if (mcc >= 0.7) interpretation = ' (Good)';
-                                else if (mcc >= 0.5) interpretation = ' (Moderate)';
-                                else if (mcc >= 0.3) interpretation = ' (Fair)';
-                                else if (mcc >= 0.0) interpretation = ' (Poor)';
-                                else interpretation = ' (Very Poor)';
-                                return `${mccValue}${interpretation}`;
+                                let color = '';
+                                if (mcc >= 0.9) {
+                                    interpretation = ' (Excellent)';
+                                    color = '#34d399';  // green
+                                }
+                                else if (mcc >= 0.8) {
+                                    interpretation = ' (Very Good)';
+                                    color = '#2dd4bf';  // teal
+                                }
+                                else if (mcc >= 0.7) {
+                                    interpretation = ' (Good)';
+                                    color = '#60a5fa';  // blue
+                                }
+                                else if (mcc >= 0.5) {
+                                    interpretation = ' (Moderate)';
+                                    color = '#a78bfa';  // purple
+                                }
+                                else if (mcc >= 0.3) {
+                                    interpretation = ' (Fair)';
+                                    color = '#fbbf24';  // yellow
+                                }
+                                else if (mcc >= 0.0) {
+                                    interpretation = ' (Poor)';
+                                    color = '#f87171';  // red
+                                }
+                                else {
+                                    interpretation = ' (Very Poor)';
+                                    color = '#ef4444';  // darker red
+                                }
+                                return `<span style="color: ${color};">${mccValue}${interpretation}</span>`;
                             })()}</div>
                         </div>
                     </article>
