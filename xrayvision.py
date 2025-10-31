@@ -144,6 +144,20 @@ CRITICAL RULES:
 - Use double quotes for all keys and string values
 - Properly escape special characters in the report string
 
+EXAMPLES:
+
+Example 1 - Chest X-ray with pneumonia:
+Input: Chest X-ray, patient with cough and fever
+Output: {"short": "yes", "report": "Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.", "confidence": 92}
+
+Example 2 - Normal chest X-ray:
+Input: Chest X-ray, routine screening
+Output: {"short": "no", "report": "Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.", "confidence": 95}
+
+Example 3 - Abdominal X-ray with uncertain findings:
+Input: Abdominal X-ray, abdominal pain
+Output: {"short": "yes", "report": "Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.", "confidence": 78}
+
 ANALYSIS APPROACH:
 - Systematically examine the entire image for all abnormalities
 - Report all identified lesions and pathological findings
@@ -164,16 +178,9 @@ CONFIDENCE SCORING:
 - 0-49: Very low confidence, speculative findings
 
 Remember: Output ONLY the JSON object with no other text.
-
-EXAMPLE OUTPUT:
-{"short": "yes", "report": "Small nodular opacity in the right upper lobe measuring 8mm. No pleural effusion or pneumothorax.", "confidence": 85}
 """)
 USR_PROMPT = ("""
 {question} in this {anatomy} X-ray of a {subject}?
-
-Instructions: Evaluate for the clinical question above. Also identify any other lesions or abnormalities present in the image beyond the primary clinical question.
-
-Provide your response as JSON only.
 """)
 REV_PROMPT = ("""
 Your previous report was incorrect. Carefully re-examine the image.
@@ -1885,22 +1892,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
         # Append previous reports if any exist
         if previous_reports:
-            prompt += "\nPREVIOUS IMAGING STUDIES:"
-            prompt += "\nThe patient has previous imaging studies in the same anatomical region for comparison:"
+            prompt += "\n\nPRIOR STUDIES:"
             for i, (report, date) in enumerate(previous_reports, 1):
-                prompt += f"\n\nStudy {i} - Date: {date}"
-                prompt += f"\nPrevious Report: {report}"
-            prompt += (
-                "\n\nCOMPARISON REQUIREMENTS:"
-                "\n- Compare current findings with the previous studies listed above"
-                "\n- Note any interval changes: new findings, resolved findings, stable findings, or progressive findings"
-                "\n- Mention the specific comparison date when describing changes"
-                "\n- If findings are stable, state 'stable compared to [date]'"
-                "\n- If this is a new abnormal finding, state 'not present on [date]'"
-                "\n- If findings have resolved, state 'resolved since [date]'"
-                "\n- If findings are worse, state 'progressive compared to [date]'"
-                "\n\nProvide your response as JSON only."
-            )
+                prompt += f"\n\n[{date}] {report}"
+            prompt += "\n\nCompare to prior studies. Note new, stable, resolved, or progressive findings with dates."
+        prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question. Output JSON only."
 
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
