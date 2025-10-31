@@ -258,6 +258,7 @@
                                 <th>PNV (%)</th>
                                 <th>Sensitivity (%)</th>
                                 <th>Specificity (%)</th>
+                                <th>MCC (%)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -404,6 +405,7 @@
                     <td>${counts.pnv !== '-' ? counts.pnv + '%' : '-'}</td>
                     <td>${counts.snsi !== '-' ? counts.snsi + '%' : '-'}</td>
                     <td>${counts.spci !== '-' ? counts.spci + '%' : '-'}</td>
+                    <td>${counts.mcc !== undefined ? counts.mcc + '%' : '-'}</td>
                 `;
                 tbody.appendChild(row);
             }
@@ -422,11 +424,24 @@
             const totalSnsi = (totalTpos + totalFneg) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFneg)) : '-';
             const totalSpci = (totalTneg + totalFpos) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFpos)) : '-';
             
+            // Calculate Matthews Correlation Coefficient (MCC)
+            const tp = totalTpos;
+            const tn = totalTneg;
+            const fp = totalFpos;
+            const fn = totalFneg;
+            let totalMcc = '-';
+            const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
+            if (denominator !== 0) {
+                const mcc = (tp * tn - fp * fn) / denominator;
+                totalMcc = Math.round(mcc * 100);
+            }
+            
             tfoot.innerHTML = `
             <tr>
                 <th scope="row">Total</th>
                 <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
                 <td>${totalPpv}%</td><td>${totalPnv}%</td><td>${totalSnsi}%</td><td>${totalSpci}%</td>
+                <td>-</td>
             </tr>`;
 
             // Populate confusion matrices

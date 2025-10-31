@@ -636,6 +636,12 @@ async def db_get_stats():
                 stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
+            
+            # Store raw values for MCC calculation in frontend
+            stats["region"][region]["tpos"] = row[5] or 0
+            stats["region"][region]["tneg"] = row[6] or 0
+            stats["region"][region]["fpos"] = row[7] or 0
+            stats["region"][region]["fneg"] = row[8] or 0
         
         # Get temporal trends (last 30 days only to reduce memory usage)
         cursor.execute("""
