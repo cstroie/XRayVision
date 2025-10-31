@@ -753,6 +753,19 @@ def db_get_weekly_processed_count():
         return result[0] if result else 0
 
 
+def db_get_regions():
+    """
+    Get distinct regions from the database.
+
+    Returns:
+        list: List of distinct regions that have been processed
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.execute("SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' ORDER BY region")
+        regions = [row[0] for row in cursor.fetchall()]
+    return regions
+
+
 def db_purge_ignored_errors():
     """
     Delete ignored and erroneous records older than 1 week and their associated files.
@@ -1361,9 +1374,7 @@ async def regions_handler(request):
     """
     try:
         # Get distinct regions from the database
-        with sqlite3.connect(DB_FILE) as conn:
-            cursor = conn.execute("SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' ORDER BY region")
-            regions = [row[0] for row in cursor.fetchall()]
+        regions = db_get_regions()
         return web.json_response(regions)
     except Exception as e:
         logging.error(f"Regions endpoint error: {e}")
