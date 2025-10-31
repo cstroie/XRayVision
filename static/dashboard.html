@@ -543,12 +543,7 @@
             </select>
             <select id="filter-region" onchange="loadPage(1)" aria-label="Select the anatomic region">
                 <option value="any">Region: any</option>
-                <option value="chest">Chest</option>
-                <option value="ribs">Ribs</option>
-                <option value="abdominal">Abdomen</option>
-                <option value="sinus">Sinuses</option>
-                <option value="nasal">Nasal bones</option>
-                <option value="clavicle">Clavicle</option>
+                <!-- Options will be populated dynamically -->
             </select>
             <select id="filter-status" onchange="loadPage(1)" aria-label="Select the study status">
                 <option value="done">Done</option>
@@ -978,6 +973,22 @@
             });
             examsElement.innerHTML = examsHtml;
         }
+
+        // Populate regions dropdown
+        fetch('/api/regions')
+            .then(res => res.json())
+            .then(regions => {
+                const regionSelect = document.getElementById('filter-region');
+                regions.forEach(region => {
+                    const option = document.createElement('option');
+                    option.value = region;
+                    option.textContent = region.charAt(0).toUpperCase() + region.slice(1);
+                    regionSelect.appendChild(option);
+                });
+            })
+            .catch(err => {
+                console.error('Failed to load regions:', err);
+            });
 
         connectWebSocket();
         // Search handle

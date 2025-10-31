@@ -1347,6 +1347,26 @@ async def config_handler(request):
         return web.json_response({}, status = 500)
 
 
+async def regions_handler(request):
+    """Provide supported regions for the frontend dropdown.
+
+    Returns the list of supported regions that can be used in the dashboard
+    filter dropdown.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with regions list
+    """
+    try:
+        # Return the supported regions
+        return web.json_response(REGIONS)
+    except Exception as e:
+        logging.error(f"Regions endpoint error: {e}")
+        return web.json_response([], status = 500)
+
+
 async def manual_query(request):
     """Trigger a manual DICOM query/retrieve operation.
 
@@ -2027,6 +2047,7 @@ async def start_dashboard():
     app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', stats_handler)
     app.router.add_get('/api/config', config_handler)
+    app.router.add_get('/api/regions', regions_handler)
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)
