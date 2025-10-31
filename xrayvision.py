@@ -263,10 +263,10 @@ dashboard = {
 
 # Database operations
 def init_database():
-    """ 
+    """
     Initialize the SQLite database with the exams table and indexes.
-    
-    Creates the exams table with columns for patient info, exam details, 
+
+    Creates the exams table with columns for patient info, exam details,
     AI reports, validation status, and processing status.
     Also creates indexes for efficient query operations.
     """
@@ -291,41 +291,41 @@ def init_database():
         ''')
         # Index for cleanup operations
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_cleanup 
+            CREATE INDEX IF NOT EXISTS idx_cleanup
             ON exams(status, created)
         ''')
         # Indexes for common query filters
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_status 
+            CREATE INDEX IF NOT EXISTS idx_status
             ON exams(status)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_reviewed 
+            CREATE INDEX IF NOT EXISTS idx_reviewed
             ON exams(reviewed)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_positive 
+            CREATE INDEX IF NOT EXISTS idx_positive
             ON exams(positive)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_valid 
+            CREATE INDEX IF NOT EXISTS idx_valid
             ON exams(valid)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_region 
+            CREATE INDEX IF NOT EXISTS idx_region
             ON exams(region)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_name 
+            CREATE INDEX IF NOT EXISTS idx_name
             ON exams(name)
         ''')
         logging.info("Initialized SQLite database.")
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
-    """ 
+    """
     Load exams from the database with optional filters and pagination.
-        
+
     Args:
         limit: Maximum number of exams to return (default: PAGE_SIZE)
         offset: Number of exams to skip for pagination (default: 0)
@@ -333,21 +333,21 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             - reviewed: Filter by review status (0/1)
             - positive: Filter by AI prediction (0/1)
             - valid: Filter by validation status (0/1)
-            - region: Filter by anatomic region (case-insensitive partial 
+            - region: Filter by anatomic region (case-insensitive partial
               match)
-            - status: Filter by processing status (case-insensitive exact 
+            - status: Filter by processing status (case-insensitive exact
               match)
-            - search: Filter by patient name (case-insensitive partial 
+            - search: Filter by patient name (case-insensitive partial
               match)
-                
+
     Returns:
-        tuple: (exams_list, total_count) where exams_list is a list of 
-               exam dictionaries and total_count is the total number of 
+        tuple: (exams_list, total_count) where exams_list is a list of
+               exam dictionaries and total_count is the total number of
                exams matching the filters
     """
     conditions = []
     params = []
-    
+
     # Update the conditions with proper parameterization
     if 'reviewed' in filters:
         conditions.append("reviewed = ?")
@@ -370,16 +370,16 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("(LOWER(name) LIKE ? OR LOWER(id) LIKE ? OR uid LIKE ?)")
         search_term = f"%{filters['search']}%"
         params.extend([search_term, search_term, filters['search']])
-    
+
     # Build WHERE clause
     where = ""
     if conditions:
         where = "WHERE " + " AND ".join(conditions)
-    
+
     # Apply the limits (pagination)
     query = f"SELECT * FROM exams {where} ORDER BY created DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
-    
+
     # Get the exams
     exams = []
     with sqlite3.connect(DB_FILE) as conn:
@@ -390,7 +390,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 'uid': row[0],
                 'patient': {
                     'name': row[1],
-                    'id': row[2], 
+                    'id': row[2],
                     'age': row[3],
                     'sex': row[4],
                 },
@@ -422,14 +422,14 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
 
 def db_add_exam(info, report = None, positive = None):
-    """ 
+    """
     Add or update an exam entry in the database.
-    
+
     This function handles both queuing new exams for processing and storing
     completed AI reports. For new exams, it sets status to 'queued'. For
     completed reports, it sets status to 'done' and handles validation logic
     when re-analyzing previously processed exams.
-    
+
     Args:
         info: Dictionary containing exam metadata (uid, patient info, exam details)
         report: AI-generated report text (None for new exams to be queued)
@@ -484,12 +484,12 @@ def db_add_exam(info, report = None, positive = None):
 
 
 def db_check_already_processed(uid):
-    """ 
+    """
     Check if an exam has already been processed, is queued, or is being processed.
-    
+
     Args:
         uid: Unique identifier of the exam (SOP Instance UID)
-        
+
     Returns:
         bool: True if exam exists with status 'done', 'queued', or 'processing'
     """
@@ -501,29 +501,28 @@ def db_check_already_processed(uid):
 
 
 async def db_get_stats():
-    """ 
-    Retrieve comprehensive statistics from the database for dashboard 
+    """
+    Retrieve comprehensive statistics from the database for dashboard
     display.
-        
-    Calculates various metrics including total exams, reviewed counts, 
-    positive findings, invalid predictions, regional breakdowns, temporal 
-    trends, processing performance, and error statistics. Computes 
-    precision, negative predictive value, sensitivity, and specificity 
+
+    Calculates various metrics including total exams, reviewed counts,
+    positive findings, wrong predictions, regional breakdowns, temporal
+    trends, processing performance, and error statistics. Computes
+    precision, negative predictive value, sensitivity, and specificity
     for each anatomic region.
-        
+
     To reduce memory usage, temporal trends are limited to:
     - Daily trends for the last 30 days
     - Monthly trends for the last 12 months
-        
+
     Returns:
-        dict: Dictionary containing all statistical data organized by 
+        dict: Dictionary containing all statistical data organized by
               category
     """
     stats = {
         "total": 0,
         "reviewed": 0,
         "positive": 0,
-        "invalid": 0,
         "correct": 0,
         "wrong": 0,
         "region": {},
@@ -535,29 +534,25 @@ async def db_get_stats():
     }
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        # Get all statistics in a single query
+        # Get count total and reviewed statistics in a single query
         cursor.execute("""
-            SELECT 
+            SELECT
                 COUNT(*) AS total,
-                SUM(CASE WHEN reviewed = 1 THEN 1 ELSE 0 END) AS reviewed,
-                SUM(CASE WHEN positive = 1 THEN 1 ELSE 0 END) AS positive,
-                SUM(CASE WHEN valid = 0 THEN 1 ELSE 0 END) AS invalid
+                SUM(CASE WHEN reviewed = 1 THEN 1 ELSE 0 END) AS reviewed
             FROM exams
             WHERE status LIKE 'done'
         """)
         row = cursor.fetchone()
         stats["total"] = row[0]
         stats["reviewed"] = row[1] or 0
-        stats["positive"] = row[2] or 0
-        stats["invalid"] = row[3] or 0
-        
+
         # Calculate correct (TP + TN) and wrong (FP + FN) predictions
         cursor.execute("""
-            SELECT 
-                SUM(CASE WHEN reviewed = 1 AND positive = 1 AND valid = 1 THEN 1 ELSE 0 END) AS tpos,
-                SUM(CASE WHEN reviewed = 1 AND positive = 0 AND valid = 1 THEN 1 ELSE 0 END) AS tneg,
-                SUM(CASE WHEN reviewed = 1 AND positive = 1 AND valid = 0 THEN 1 ELSE 0 END) AS fpos,
-                SUM(CASE WHEN reviewed = 1 AND positive = 0 AND valid = 0 THEN 1 ELSE 0 END) AS fneg
+            SELECT
+                SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
+                SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
+                SUM(reviewed = 1 AND positive = 1 AND valid = 0) AS fpos,
+                SUM(reviewed = 1 AND positive = 0 AND valid = 0) AS fneg
             FROM exams
             WHERE status LIKE 'done'
         """)
@@ -568,7 +563,7 @@ async def db_get_stats():
         fneg = metrics_row[3] or 0
         stats["correct"] = tpos + tneg
         stats["wrong"] = fpos + fneg
-        
+
         # Calculate Matthews Correlation Coefficient (MCC) for totals
         denominator = math.sqrt((tpos + fpos) * (tpos + fneg) * (tneg + fpos) * (tneg + fneg))
         if denominator == 0:
@@ -579,12 +574,12 @@ async def db_get_stats():
 
         # Get processing time statistics (last day only)
         cursor.execute("""
-            SELECT 
+            SELECT
                 AVG(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) AS avg_processing_time,
                 COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) + 1) AS throughput
             FROM exams
-            WHERE status LIKE 'done' 
-              AND reported IS NOT NULL 
+            WHERE status LIKE 'done'
+              AND reported IS NOT NULL
               AND created IS NOT NULL
               AND created >= datetime('now', '-1 days')
         """)
@@ -610,7 +605,7 @@ async def db_get_stats():
                     COUNT(*) AS total,
                     SUM(reviewed = 1) AS reviewed,
                     SUM(positive = 1) AS positive,
-                    SUM(valid = 0) AS invalid,
+                    SUM(valid = 0) AS wrong,
                     SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
                     SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
                     SUM(reviewed = 1 AND positive = 1 AND valid = 0) AS fpos,
@@ -625,7 +620,7 @@ async def db_get_stats():
                 "total": row[1],
                 "reviewed": row[2],
                 "positive": row[3],
-                "invalid": row[4],
+                "wrong": row[4],
                 "tpos": row[5],
                 "tneg": row[6],
                 "fpos": row[7],
@@ -644,7 +639,7 @@ async def db_get_stats():
                 stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
             if (row[6] + row[7]) != 0:
                 stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
-            
+
             # Calculate Matthews Correlation Coefficient (MCC)
             tp = row[5] or 0
             tn = row[6] or 0
@@ -657,8 +652,8 @@ async def db_get_stats():
                 mcc = (tp * tn - fp * fn) / denominator
                 # Round to 2 decimal places
                 stats["region"][region]["mcc"] = round(mcc, 2)
-            
-        
+
+
         # Get temporal trends (last 30 days only to reduce memory usage)
         cursor.execute("""
             SELECT DATE(created) as date,
@@ -672,7 +667,7 @@ async def db_get_stats():
             ORDER BY date
         """)
         trends_data = cursor.fetchall()
-        
+
         # Process trends data into a structured format
         for row in trends_data:
             date, region, total, positive = row
@@ -683,7 +678,7 @@ async def db_get_stats():
                 "total": total,
                 "positive": positive
             })
-        
+
         # Get monthly trends (last 12 months only to reduce memory usage)
         cursor.execute("""
             SELECT strftime('%Y-%m', created) as month,
@@ -697,7 +692,7 @@ async def db_get_stats():
             ORDER BY month
         """)
         monthly_trends_data = cursor.fetchall()
-        
+
         # Process monthly trends data into a structured format
         for row in monthly_trends_data:
             month, region, total, positive = row
@@ -706,16 +701,17 @@ async def db_get_stats():
             stats["monthly_trends"][region].append({
                 "month": month,
                 "total": total,
-                "positive": positive                                                                                   
-            })                                                                                                         
+                "positive": positive
+            })
+
     # Return stats
     return stats
 
 
 def db_get_queue_size():
-    """ 
+    """
     Get the current number of exams waiting in the processing queue.
-    
+
     Returns:
         int: Number of exams with status 'queued'
     """
@@ -726,9 +722,9 @@ def db_get_queue_size():
 
 
 def db_get_error_stats():
-    """ 
+    """
     Get statistics for exams that failed processing or were ignored.
-    
+
     Returns:
         dict: Dictionary with 'error' and 'ignore' counts
     """
@@ -747,36 +743,36 @@ def db_get_error_stats():
 
 
 def db_get_weekly_processed_count():
-    """ 
+    """
     Get the count of successfully processed exams in the last 7 days.
-    
+
     Returns:
         int: Number of exams with status 'done' reported in the last week
     """
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute("""
-            SELECT COUNT(*) 
-            FROM exams 
-            WHERE status = 'done' 
+            SELECT COUNT(*)
+            FROM exams
+            WHERE status = 'done'
             AND reported >= datetime('now', '-7 days')
         """).fetchone()
         return result[0] if result else 0
 
 
 def db_purge_ignored_errors():
-    """ 
+    """
     Delete ignored and erroneous records older than 1 week and their associated files.
-    
+
     Removes database entries with status 'ignore' or 'error' that are older than
     1 week, along with their corresponding DICOM and PNG files from the filesystem.
-    
+
     Returns:
         int: Number of records deleted
     """
     deleted_uids = []
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.execute('''
-            DELETE FROM exams 
+            DELETE FROM exams
             WHERE status IN ('ignore', 'error')
             AND created < datetime('now', '-7 days')
             RETURNING uid
@@ -796,13 +792,13 @@ def db_purge_ignored_errors():
 
 
 def db_backup():
-    """ 
+    """
     Create a timestamped backup of the database.
-    
+
     Creates a backup copy of the SQLite database file with a timestamp in the filename
     and stores it in the backup directory. Uses SQLite's built-in backup API for
     consistent backups.
-    
+
     Returns:
         str: Path to the created backup file
     """
@@ -826,19 +822,19 @@ def db_backup():
 
 
 def db_validate(uid, normal = True, valid = None, enqueue = False):
-    """ 
+    """
     Mark the entry as valid or invalid based on human review.
-    
+
     When a radiologist reviews a case, they indicate if the finding is normal (negative)
     or abnormal (positive). This function compares that human assessment with the AI's
     prediction to determine if the AI was correct (valid=True) or incorrect (valid=False).
-    
+
     Args:
         uid: The unique identifier of the exam
         normal: Whether the human reviewer marked the case as normal (True) or abnormal (False)
         valid: Optional override for validity. If None, will be calculated based on comparison
         enqueue: Whether to re-queue the exam for re-analysis
-    
+
     Returns:
         bool: The validity status (True if AI prediction matched human review)
     """
@@ -868,13 +864,13 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
 
 
 def db_set_status(uid, status):
-    """ 
+    """
     Set the processing status for a specific exam.
-    
+
     Args:
         uid: Unique identifier of the exam
         status: New status value (e.g., 'queued', 'processing', 'done', 'error', 'ignore')
-        
+
     Returns:
         str: The status that was set
     """
@@ -886,13 +882,13 @@ def db_set_status(uid, status):
 
 # DICOM network operations
 async def query_and_retrieve(minutes=15):
-    """ 
+    """
     Query and Retrieve new studies from the remote DICOM server.
-    
-    This function queries the remote PACS for studies performed within the last 'minutes' 
-    and requests them to be sent to our DICOM server. It handles the complexity of 
+
+    This function queries the remote PACS for studies performed within the last 'minutes'
+    and requests them to be sent to our DICOM server. It handles the complexity of
     time ranges that cross midnight by splitting into two separate queries.
-    
+
     Args:
         minutes: Number of minutes to look back for new studies (default: 15)
     """
@@ -931,7 +927,7 @@ async def query_and_retrieve(minutes=15):
             ds.Modality = "CR"
             # Get the responses list
             responses = assoc.send_c_find(
-                ds, 
+                ds,
                 PatientRootQueryRetrieveInformationModelFind
             )
             # Ask for each one to be sent
@@ -946,12 +942,12 @@ async def query_and_retrieve(minutes=15):
         logging.error("Could not establish QueryRetrieve association.")
 
 async def send_c_move(ae, study_instance_uid):
-    """ 
+    """
     Request a study to be sent from the remote PACS to our DICOM server.
-    
+
     Sends a C-MOVE request to the remote DICOM server to transfer a specific
     study (identified by Study Instance UID) to our AE.
-    
+
     Args:
         ae: Application Entity instance
         study_instance_uid: Unique identifier of the study to retrieve
@@ -965,8 +961,8 @@ async def send_c_move(ae, study_instance_uid):
         ds.StudyInstanceUID = study_instance_uid
         # Get the response
         responses = assoc.send_c_move(
-            ds, 
-            AE_TITLE, 
+            ds,
+            AE_TITLE,
             PatientRootQueryRetrieveInformationModelMove
         )
         # Release the association
@@ -976,16 +972,16 @@ async def send_c_move(ae, study_instance_uid):
 
 
 def dicom_store(event):
-    """ 
+    """
     Callback function for handling received DICOM C-STORE requests.
-    
+
     This function is called whenever a DICOM file is sent to our DICOM server.
     It saves the DICOM file, extracts metadata, converts to PNG, and adds the
     exam to the processing queue.
-    
+
     Args:
         event: pynetdicom event containing the DICOM dataset
-        
+
     Returns:
         int: DICOM status code (0x0000 for success)
     """
@@ -1012,9 +1008,9 @@ def dicom_store(event):
 
 # DICOM files operations
 async def load_existing_dicom_files():
-    """ 
+    """
     Load existing DICOM files from the images directory into the processing queue.
-    
+
     Scans the images directory for .dcm files that haven't been processed yet,
     converts them to PNG format, extracts metadata, and adds them to the queue
     for AI analysis. Updates the dashboard after processing.
@@ -1034,15 +1030,15 @@ async def load_existing_dicom_files():
 
 
 def extract_dicom_metadata(ds):
-    """ 
+    """
     Extract relevant information from a DICOM dataset.
-    
+
     Parses patient demographics, exam details, and timestamps from a DICOM dataset.
     Handles missing or malformed data gracefully with fallback values.
-    
+
     Args:
         ds: pydicom Dataset object
-        
+
     Returns:
         dict: Dictionary containing structured exam information
     """
@@ -1104,20 +1100,20 @@ def extract_dicom_metadata(ds):
 
 # Image processing operations
 def apply_gamma_correction(image, gamma = 1.2):
-    """ 
+    """
     Apply gamma correction to an image to adjust brightness and contrast.
-    
+
     Gamma correction is a nonlinear operation used to encode and decode luminance
     values in video or still image systems. It helps to optimize our images for
     better visualization by the AI model.
-    
+
     When gamma is None, it's automatically calculated based on the image's median value.
     A gamma < 1 makes the image brighter, while gamma > 1 makes it darker.
-    
+
     Args:
         image: Input image as numpy array
         gamma: Gamma value for correction. If None, will be automatically calculated
-        
+
     Returns:
         numpy array: Gamma-corrected image
     """
@@ -1139,9 +1135,9 @@ def apply_gamma_correction(image, gamma = 1.2):
 
 
 def convert_dicom_to_png(dicom_file, max_size = 800):
-    """ 
+    """
     Convert DICOM to PNG with preprocessing for optimal AI analysis.
-    
+
     This function performs several important preprocessing steps:
     1. Reads the DICOM pixel data
     2. Resizes the image while maintaining aspect ratio
@@ -1149,11 +1145,11 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
     4. Normalizes pixel values to 0-255 range
     5. Applies automatic gamma correction for better visualization
     6. Saves as PNG for efficient processing by the AI model
-    
+
     Args:
         dicom_file: Path to the DICOM file
         max_size: Maximum dimension for the output image (default: 800)
-        
+
     Returns:
         str: Path to the saved PNG file
     """
@@ -1203,10 +1199,10 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
 # WebSocket and WebServer operations
 async def serve_dashboard_page(request):
     """Serve the main dashboard HTML page.
-    
+
     Args:
         request: aiohttp request object
-        
+
     Returns:
         web.FileResponse: Dashboard HTML file response
     """
@@ -1214,10 +1210,10 @@ async def serve_dashboard_page(request):
 
 async def serve_stats_page(request):
     """Serve the statistics HTML page.
-    
+
     Args:
         request: aiohttp request object
-        
+
     Returns:
         web.FileResponse: Statistics HTML file response
     """
@@ -1225,10 +1221,10 @@ async def serve_stats_page(request):
 
 async def serve_about_page(request):
     """Serve the about HTML page.
-    
+
     Args:
         request: aiohttp request object
-        
+
     Returns:
         web.FileResponse: About HTML file response
     """
@@ -1236,10 +1232,10 @@ async def serve_about_page(request):
 
 async def serve_favicon(request):
     """Serve the favicon.ico file.
-    
+
     Args:
         request: aiohttp request object
-        
+
     Returns:
         web.FileResponse: Favicon file response
     """
@@ -1248,13 +1244,13 @@ async def serve_favicon(request):
 
 async def websocket_handler(request):
     """Handle WebSocket connections for real-time dashboard updates.
-    
+
     Manages WebSocket connections from dashboard clients, adds them to the
     client set, sends connection notifications, and handles disconnections.
-    
+
     Args:
         request: aiohttp request object containing connection info
-        
+
     Returns:
         web.WebSocketResponse: WebSocket response object
     """
@@ -1274,14 +1270,14 @@ async def websocket_handler(request):
 
 async def exams_handler(request):
     """Provide paginated exam data with optional filters.
-    
+
     Retrieves exams from database with pagination and filtering options.
     Supports filtering by review status, positivity, validity, region,
     processing status, and patient name search.
-    
+
     Args:
         request: aiohttp request object with query parameters
-        
+
     Returns:
         web.json_response: JSON response with exams data and pagination info
     """
@@ -1311,13 +1307,13 @@ async def exams_handler(request):
 
 async def stats_handler(request):
     """Provide statistical data for the dashboard.
-    
+
     Retrieves comprehensive statistics from the database including totals,
     regional breakdowns, temporal trends, and processing performance metrics.
-    
+
     Args:
         request: aiohttp request object
-        
+
     Returns:
         web.json_response: JSON response with statistical data
     """
@@ -1330,13 +1326,13 @@ async def stats_handler(request):
 
 async def config_handler(request):
     """Provide global configuration parameters to the frontend.
-    
+
     Returns configuration values that the frontend may need to display
     or use for various operations.
-    
+
     Args:
         request: aiohttp request object
-        
+
     Returns:
         web.json_response: JSON response with configuration parameters
     """
@@ -1359,13 +1355,13 @@ async def config_handler(request):
 
 async def manual_query(request):
     """Trigger a manual DICOM query/retrieve operation.
-    
+
     Allows manual triggering of DICOM query operations for specified time
     periods through the dashboard interface.
-    
+
     Args:
         request: aiohttp request object with JSON body containing hours parameter
-        
+
     Returns:
         web.json_response: JSON response with operation status
     """
@@ -1384,14 +1380,14 @@ async def manual_query(request):
 
 async def validate(request):
     """Mark a study as valid or invalid based on human review.
-    
+
     Updates the validation status of an exam in the database based on
     radiologist review. Compares human assessment with AI prediction
     to determine validity.
-    
+
     Args:
         request: aiohttp request object with JSON body containing uid and normal status
-        
+
     Returns:
         web.json_response: JSON response with validation result
     """
@@ -1411,13 +1407,13 @@ async def validate(request):
 
 async def lookagain(request):
     """Send an exam back to the processing queue for re-analysis.
-    
+
     Marks an exam as reviewed but invalid, then re-queues it for
     re-analysis by the AI system.
-    
+
     Args:
         request: aiohttp request object with JSON body containing uid and optional prompt
-        
+
     Returns:
         web.json_response: JSON response with re-queue status
     """
@@ -1440,15 +1436,15 @@ async def lookagain(request):
 @web.middleware
 async def auth_middleware(request, handler):
     """Basic authentication middleware for API endpoints.
-    
+
     Implements HTTP Basic authentication for all API endpoints except
     static files and OPTIONS requests. Validates credentials against
     environment variables.
-    
+
     Args:
         request: aiohttp request object
         handler: Request handler function
-        
+
     Returns:
         Response from the handler if authenticated, or HTTP 401 if not
     """
@@ -1475,10 +1471,10 @@ async def auth_middleware(request, handler):
 
 async def broadcast_dashboard_update(event = None, payload = None, client = None):
     """Broadcast dashboard updates to all connected WebSocket clients.
-    
+
     Sends real-time updates to dashboard clients including queue status,
     processing information, statistics, and OpenAI health status.
-    
+
     Args:
         event: Optional event name for specific update types
         payload: Optional data payload for the event
@@ -1532,7 +1528,7 @@ async def send_ntfy_notification(uid, report, info):
     if not ENABLE_NTFY:
         logging.info("NTFY notifications are disabled")
         return
-        
+
     try:
         # Construct image URL
         image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
@@ -1544,7 +1540,7 @@ async def send_ntfy_notification(uid, report, info):
             "Priority": "4",
             "Attach": image_url
         }
-        
+
         # Post the notification
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -1562,11 +1558,11 @@ async def send_ntfy_notification(uid, report, info):
 
 # API operations
 def validate_romanian_id(patient_id):
-    """ 
+    """
     Validate Romanian personal identification number (CNP) format and checksum.
-    
+
     Romanian personal IDs (CNP) have 13 digits with the following structure:
-    - Position 1: Gender/Sector (1-8 for born 1900-2099, 9 for foreign 
+    - Position 1: Gender/Sector (1-8 for born 1900-2099, 9 for foreign
       residents)
     - Positions 2-3: Year of birth (00-99)
     - Positions 4-5: Month of birth (01-12)
@@ -1574,10 +1570,10 @@ def validate_romanian_id(patient_id):
     - Positions 8-9: County code (01-52, 99)
     - Positions 10-12: Serial number (001-999)
     - Position 13: Checksum digit
-    
+
     Args:
         patient_id: Personal identification number as string
-        
+
     Returns:
         bool: True if valid CNP, False otherwise
     """
@@ -1643,16 +1639,16 @@ def validate_romanian_id(patient_id):
 
 
 def compute_age_from_id(patient_id):
-    """ 
+    """
     Compute patient age based on Romanian personal identification number.
-    
+
     Romanian personal IDs have the format:
     - First digit: 1/2 for 1900s, 5/6 for 2000s, etc.
     - Next 6 digits: YYMMDD (birth date)
-    
+
     Args:
         patient_id: Personal identification number as string
-        
+
     Returns:
         int: Age in years, or -1 if unable to compute
     """
@@ -1691,13 +1687,13 @@ def compute_age_from_id(patient_id):
 
 
 def contains_any_word(string, *words):
-    """ 
+    """
     Check if any of the specified words are present in the given string.
-    
+
     Args:
         string: String to search in
         *words: Variable number of words to search for
-        
+
     Returns:
         bool: True if any word is found in the string, False otherwise
     """
@@ -1705,22 +1701,22 @@ def contains_any_word(string, *words):
 
 
 def identify_anatomic_region(info):
-    """ 
+    """
     Identify the anatomic region and appropriate question based on protocol name.
-    
+
     Maps DICOM protocol names to anatomic regions and formulates region-specific
     questions for the AI to analyze. Uses pattern matching to handle variations
     in naming conventions.
-    
+
     Args:
         info: Dictionary containing exam information with protocol name
-        
+
     Returns:
         tuple: (region, question) where region is the identified anatomic region
                and question is the region-specific query for AI analysis
     """
     desc = info["exam"]["protocol"].lower()
-    
+
     # Check each region rule from config
     for region_key, keywords in REGION_RULES.items():
         if contains_any_word(desc, *keywords):
@@ -1729,59 +1725,59 @@ def identify_anatomic_region(info):
     else:
         # Fallback
         region = desc
-    
+
     # Get question from config or use fallback
     question = REGION_QUESTIONS.get(region, "Is there anything abnormal")
-    
+
     # Return the region and the question
     return region, question
 
 
 def db_get_previous_reports(patient_id, region, months=3):
-    """ 
+    """
     Get previous reports for the same patient and region from the last few months.
-    
+
     Args:
         patient_id: Patient identifier
         region: Anatomic region to match
         months: Number of months to look back (default: 3)
-        
+
     Returns:
         list: List of tuples containing (report_text, created_timestamp)
     """
     from datetime import datetime, timedelta
-    
+
     cutoff_date = datetime.now() - timedelta(days=months*30)
     cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
-    
+
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         query = """
-            SELECT report, created 
-            FROM exams 
-            WHERE id = ? 
-            AND region = ? 
-            AND created >= ? 
+            SELECT report, created
+            FROM exams
+            WHERE id = ?
+            AND region = ?
+            AND created >= ?
             AND report IS NOT NULL
             AND positive IS NOT NULL
             ORDER BY created DESC
         """
         cursor.execute(query, (patient_id, region, cutoff_date_str))
         results = cursor.fetchall()
-    
+
     return results
 
 
 def identify_imaging_projection(info):
-    """ 
+    """
     Identify the imaging projection based on protocol name.
-    
+
     Determines if the X-ray view is frontal (AP/PA), lateral, or oblique
     based on keywords in the protocol name.
-    
+
     Args:
         info: Dictionary containing exam information with protocol name
-        
+
     Returns:
         str: Identified projection ('frontal', 'lateral', 'oblique', or '')
     """
@@ -1800,14 +1796,14 @@ def identify_imaging_projection(info):
 
 
 def determine_patient_gender_description(info):
-    """ 
+    """
     Determine patient gender description based on DICOM sex field.
-    
+
     Maps DICOM patient sex codes to descriptive terms for use in AI prompts.
-    
+
     Args:
         info: Dictionary containing patient information with sex field
-        
+
     Returns:
         str: Gender description ('boy', 'girl', or 'child')
     """
@@ -1824,17 +1820,17 @@ def determine_patient_gender_description(info):
 
 
 async def send_to_openai(session, headers, payload):
-    """ 
+    """
     Send a request to the currently active OpenAI API endpoint.
-    
+
     Attempts to send a POST request to the active OpenAI endpoint with the
     provided headers and payload. Handles HTTP errors and exceptions.
-    
+
     Args:
         session: aiohttp ClientSession instance
         headers: HTTP headers for the request
         payload: JSON payload containing the request data
-        
+
     Returns:
         dict or None: JSON response from API if successful, None otherwise
     """
@@ -1850,18 +1846,18 @@ async def send_to_openai(session, headers, payload):
 
 
 async def send_exam_to_openai(exam, max_retries = 3):
-    """ 
+    """
     Send an exam's PNG image to the OpenAI API for analysis.
-    
+
     Processes the exam by identifying region/projection, preparing AI prompts,
     encoding the image, sending requests with retries, parsing responses,
     storing results in the database, and sending notifications for positive
     findings. Implements exponential backoff for retry attempts.
-    
+
     Args:
         exam: Dictionary containing exam information and metadata
         max_retries: Maximum number of retry attempts (default: 3)
-        
+
     Returns:
         bool: True if successfully processed, False otherwise
     """
@@ -1896,10 +1892,10 @@ async def send_exam_to_openai(exam, max_retries = 3):
             anatomy = ""
         # Get previous reports for the same patient and region
         previous_reports = db_get_previous_reports(exam['patient']['id'], region, months=3)
-        
+
         # Create the prompt
         prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
-        
+
         # Append previous reports if any exist
         if previous_reports:
             prompt += (
@@ -1922,8 +1918,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
                 "\n    - If this is the first abnormal finding, state 'not present on [date]'"
                 "\n  </comparison_instructions>"
                 "\n</previous_studies>"
-            )  
-              
+            )
+
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
         if exam['report']['text']:
@@ -2036,9 +2032,9 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
 # Threads
 async def start_dashboard():
-    """ 
+    """
     Start the dashboard web server with all routes and middleware.
-    
+
     Configures and starts the aiohttp web server that serves the dashboard
     frontend, API endpoints, and static files. Sets up authentication
     middleware and all required routes.
@@ -2066,16 +2062,16 @@ async def start_dashboard():
 
 
 async def relay_to_openai_loop():
-    """ 
+    """
     Main processing loop that sends queued exams to the OpenAI API.
-    
+
     This is the core processing function that:
     1. Continuously monitors the database for queued exams
     2. Processes one exam at a time to avoid overwhelming the AI service
     3. Updates dashboard status during processing
     4. Handles success/failure cases and cleanup
     5. Implements proper error handling and status updates
-    
+
     The loop waits on a QUEUE_EVENT when there's nothing to process,
     which gets signaled when new items are added to the queue.
     """
@@ -2125,9 +2121,9 @@ async def relay_to_openai_loop():
 
 
 async def openai_health_check():
-    """ 
+    """
     Periodically check the health status of OpenAI API endpoints.
-    
+
     Tests both primary and secondary OpenAI endpoints every 5 minutes,
     updates health status tracking, selects the active endpoint based
     on health status, and signals the processing queue when endpoints
@@ -2164,9 +2160,9 @@ async def openai_health_check():
 
 
 async def query_retrieve_loop():
-    """ 
+    """
     Periodically query the remote DICOM server for new studies.
-    
+
     Runs an infinite loop that queries the remote PACS for new CR studies
     every 15 minutes (900 seconds). Can be disabled with the --no-query flag.
     Updates the next_query timestamp for dashboard display.
@@ -2183,9 +2179,9 @@ async def query_retrieve_loop():
 
 
 async def maintenance_loop():
-    """ 
+    """
     Perform daily maintenance tasks including database cleanup and backup.
-    
+
     Runs an infinite loop that performs daily maintenance operations:
     1. Purges old ignored/error records and their associated files
     2. Creates a timestamped backup of the database
@@ -2194,21 +2190,21 @@ async def maintenance_loop():
     while True:
         # Purge old ignored/error records
         db_purge_ignored_errors()
-        
+
         # Create database backup
         try:
             db_backup()
         except Exception as e:
             logging.error(f"Database backup failed: {e}")
-        
+
         # Wait for 24 hours
         await asyncio.sleep(86400)
 
 
 def start_dicom_server():
-    """ 
+    """
     Start the DICOM Storage SCP (Service Class Provider) server.
-    
+
     Configures and starts the pynetdicom AE server that listens for incoming
     DICOM C-STORE requests. Supports Computed Radiography and Digital X-Ray
     storage SOP classes. Runs in a separate thread to avoid blocking the
@@ -2228,9 +2224,9 @@ def start_dicom_server():
 
 
 async def stop_servers():
-    """ 
+    """
     Stop all servers gracefully during shutdown.
-    
+
     Attempts to gracefully shutdown both the DICOM server and web server,
     handling any exceptions that may occur during the shutdown process.
     """
@@ -2252,12 +2248,12 @@ async def stop_servers():
 
 
 def process_dicom_file(dicom_file, uid):
-    """ 
+    """
     Process a DICOM file by extracting metadata, converting to PNG, and adding to queue.
-    
-    This helper function handles the common logic between dicom_store() and 
+
+    This helper function handles the common logic between dicom_store() and
     load_existing_dicom_files() to avoid code duplication.
-    
+
     Args:
         dicom_file: Path to the DICOM file
         uid: Unique identifier for the exam
@@ -2295,13 +2291,13 @@ def process_dicom_file(dicom_file, uid):
 
 
 async def main():
-    """ 
+    """
     Main application entry point and orchestrator.
-    
-    Initializes the database, loads existing exams, starts all server 
-    components (DICOM, web dashboard, AI processing, health checks, 
-    query/retrieve, maintenance), loads existing DICOM files if requested, 
-    and manages the asyncio event loop. Handles graceful shutdown on 
+
+    Initializes the database, loads existing exams, starts all server
+    components (DICOM, web dashboard, AI processing, health checks,
+    query/retrieve, maintenance), loads existing DICOM files if requested,
+    and manages the asyncio event loop. Handles graceful shutdown on
     KeyboardInterrupt.
     """
     # Main event loop

@@ -173,7 +173,7 @@
             .stats-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
-            
+
             .chart-container {
                 padding: 1rem;
             }
@@ -235,7 +235,7 @@
         <div id="loadingIndicator" class="loading">
             <p>Loading statistics...</p>
         </div>
-        
+
         <div id="errorContainer" style="display: none;">
             <div class="error">
                 <p id="errorMessage">Failed to load statistics. Please try again later.</p>
@@ -252,12 +252,11 @@
                                 <th>Region</th>
                                 <th style="text-align: right;">Total</th>
                                 <th style="text-align: right;">Reviewed</th>
-                                <th style="text-align: right;">Positive</th>
-                                <th style="text-align: right;">Invalid</th>
-                                <th style="text-align: right;"><abbr title="Positive Predictive Value">PPV</abbr> (%)<br><small>TP / (TP + FP)</small></th>
-                                <th style="text-align: right;"><abbr title="Negative Predictive Value">PNV</abbr> (%)<br><small>TN / (TN + FN)</small></th>
-                                <th style="text-align: right;"><abbr title="Sensitivity">Sensitivity</abbr> (%)<br><small>TP / (TP + FN)</small></th>
-                                <th style="text-align: right;"><abbr title="Specificity">Specificity</abbr> (%)<br><small>TN / (TN + FP)</small></th>
+                                <th style="text-align: right;">Wrong</th>
+                                <th style="text-align: right;"><abbr title="Positive Predictive Value">PPV</abbr><br><small>TP / (TP + FP)</small></th>
+                                <th style="text-align: right;"><abbr title="Negative Predictive Value">PNV</abbr><br><small>TN / (TN + FN)</small></th>
+                                <th style="text-align: right;"><abbr title="Sensitivity">Sensitivity</abbr><br><small>TP / (TP + FN)</small></th>
+                                <th style="text-align: right;"><abbr title="Specificity">Specificity</abbr><br><small>TN / (TN + FP)</small></th>
                                 <th style="text-align: right;"><abbr title="Matthews Correlation Coefficient">MCC</abbr></th>
                             </tr>
                         </thead>
@@ -270,46 +269,38 @@
                     </table>
                 </div>
             </section>
-            
+
             <section>
-                <h2>Confusion Matrices by Region</h2>
+                <h2>Confusion Matrices by Anatomical Region</h2>
                 <div id="confusionMatrices" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
                     <!-- dynamically populated -->
                 </div>
             </section>
-            
-            <section class="grid charts-grid">
+
+            <section class="charts-grid">
                 <article class="chart-container">
                     <h3>
                         Studies by Anatomic Region
                         <button class="secondary outline" onclick="downloadChart('regionChart')">Download</button>
                     </h3>
-                    <canvas id="regionChart" width="400" height="200"></canvas>
+                    <canvas id="regionChart" width="400" height="300"></canvas>
                 </article>
+
                 <article class="chart-container">
                     <h3>
-                        Global Summary
-                        <button class="secondary outline" onclick="downloadChart('globalChart')">Download</button>
+                        Temporal Trends by Region (Last 30 Days)
+                        <button class="secondary outline" onclick="downloadChart('trendsChart')">Download</button>
                     </h3>
-                    <canvas id="globalChart" width="400" height="200"></canvas>
+                    <canvas id="trendsChart" width="400" height="300"></canvas>
                 </article>
-            </section>
-            
-            <section class="chart-container">
-                <h3>
-                    Temporal Trends by Region (Last 30 Days)
-                    <button class="secondary outline" onclick="downloadChart('trendsChart')">Download</button>
-                </h3>
-                <canvas id="trendsChart" width="400" height="300"></canvas>
-            </section>
-            
-            <section class="chart-container">
-                <h3>
-                    Monthly Trends by Region (Last 12 Months)
-                    <button class="secondary outline" onclick="downloadChart('monthlyTrendsChart')">Download</button>
-                </h3>
-                <canvas id="monthlyTrendsChart" width="400" height="300"></canvas>
-            </section>
+
+                <article class="chart-container">
+                    <h3>
+                        Monthly Trends by Region (Last 12 Months)
+                        <button class="secondary outline" onclick="downloadChart('monthlyTrendsChart')">Download</button>
+                    </h3>
+                    <canvas id="monthlyTrendsChart" width="400" height="300"></canvas>
+                </article>
         </section>
     </main>
 
@@ -321,7 +312,7 @@
             falsePositive: '#f59e0b',
             falseNegative: '#f87171',
             total: '#0ea5e9',
-            invalid: '#f87171',
+            wrong: '#f87171',
             primary: '#0ea5e9',
             secondary: '#2dd4bf',
             accent: '#f59e0b'
@@ -329,7 +320,7 @@
 
         // Chart instances
         let regionChart, globalChart, trendsChart, monthlyTrendsChart;
-        
+
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             loadStats();
@@ -359,7 +350,7 @@
 
         function loadStats() {
             showLoading();
-            
+
             fetch('/api/stats')
             .then(res => {
                 if (!res.ok) {
@@ -382,11 +373,11 @@
         function updateStats(data) {
             document.getElementById('total').textContent = data.total;
             document.getElementById('reviewed').textContent = data.reviewed;
-            
+
             // Use correct and wrong values from backend
             document.getElementById('correct').textContent = data.correct;
             document.getElementById('wrong').textContent = data.wrong;
-            
+
             document.getElementById('avg-time').textContent = data.avg_processing_time ? `${data.avg_processing_time}s` : '0s';
             document.getElementById('throughput').textContent = data.throughput ? `${data.throughput}/h` : '0/h';
 
@@ -399,8 +390,7 @@
                     <th scope="row">${region}</th>
                     <td style="text-align: right;">${counts.total}</td>
                     <td style="text-align: right;">${counts.reviewed}</td>
-                    <td style="text-align: right;">${counts.positive}</td>
-                    <td style="text-align: right;">${counts.invalid}</td>
+                    <td style="text-align: right;">${counts.wrong}</td>
                     <td style="text-align: right;">${counts.ppv !== '-' ? counts.ppv + '%' : '-'}</td>
                     <td style="text-align: right;">${counts.pnv !== '-' ? counts.pnv + '%' : '-'}</td>
                     <td style="text-align: right;">${counts.snsi !== '-' ? counts.snsi + '%' : '-'}</td>
@@ -434,7 +424,7 @@
             const totalPnv = (totalTneg + totalFneg) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFneg)) : '-';
             const totalSnsi = (totalTpos + totalFneg) > 0 ? Math.round(100 * totalTpos / (totalTpos + totalFneg)) : '-';
             const totalSpci = (totalTneg + totalFpos) > 0 ? Math.round(100 * totalTneg / (totalTneg + totalFpos)) : '-';
-            
+
             // Calculate Matthews Correlation Coefficient (MCC) for totals
             const tp = totalTpos;
             const tn = totalTneg;
@@ -446,14 +436,13 @@
                 const mcc = (tp * tn - fp * fn) / denominator;
                 totalMcc = mcc.toFixed(2);
             }
-            
+
             tfoot.innerHTML = `
             <tr>
                 <th scope="row">Total</th>
                 <td style="text-align: right;">${data.total}</td>
                 <td style="text-align: right;">${data.reviewed}</td>
-                <td style="text-align: right;">${data.positive}</td>
-                <td style="text-align: right;">${data.invalid}</td>
+                <td style="text-align: right;">${data.wrong}</td>
                 <td style="text-align: right;">${totalPpv}%</td>
                 <td style="text-align: right;">${totalPnv}%</td>
                 <td style="text-align: right;">${totalSnsi}%</td>
@@ -476,22 +465,22 @@
             // Populate confusion matrices
             const matricesContainer = document.getElementById('confusionMatrices');
             matricesContainer.innerHTML = '';
-            
+
             for (const [region, counts] of Object.entries(data.region)) {
                 const tpos = counts.tpos || 0;
                 const tneg = counts.tneg || 0;
                 const fpos = counts.fpos || 0;
                 const fneg = counts.fneg || 0;
-                
+
                 const matrixHtml = `
                     <article class="confusion-matrix" style="padding: 1rem;">
                         <h3 style="margin-top: 0; text-align: center;">${region}</h3>
-                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; text-align: center;">
+                        <div style="display: grid; grid-template-columns: 1.2em 1fr 1fr; gap: 0.5rem; text-align: center;">
                             <div></div>
-                            <div style="font-weight: bold; padding: 0.5rem;">Predicted</div>
-                            <div></div>
-                            
-                            <div style="font-weight: bold; padding: 0.5rem; writing-mode: vertical-rl; text-orientation: mixed; height: 100px;">Actual</div>
+                            <div style="font-size: 0.6rem; font-weight: bold; padding: 0.1rem;">Predicted positive</div>
+                            <div style="font-size: 0.6rem; font-weight: bold; padding: 0.1rem;">Predicted negative</div>
+
+                            <div style="font-size: 0.6rem; font-weight: bold; padding: 0.1rem; writing-mode: sideways-lr; text-orientation: mixed;">Actual positive</div>
                             <div style="background-color: rgba(45, 212, 191, 0.2); padding: 0.5rem; border: 1px solid #2dd4bf;">
                                 <div>Positive</div>
                                 <div style="font-size: 1.2rem; font-weight: bold;">${tpos}</div>
@@ -502,8 +491,8 @@
                                 <div style="font-size: 1.2rem; font-weight: bold;">${fneg}</div>
                                 <div style="font-size: 0.8rem;">FN</div>
                             </div>
-                            
-                            <div></div>
+
+                            <div style="font-size: 0.6rem; font-weight: bold; padding: 0.1rem; writing-mode: sideways-lr; text-orientation: mixed;">Actual negative</div>
                             <div style="background-color: rgba(248, 113, 113, 0.2); padding: 0.5rem; border: 1px solid #f87171;">
                                 <div>Negative</div>
                                 <div style="font-size: 1.2rem; font-weight: bold;">${fpos}</div>
@@ -518,44 +507,44 @@
                         <div style="margin-top: 1rem; font-size: 0.9rem; text-align: center;">
                             <div>MCC: ${(() => {
                                 const mcc = counts.mcc;
-                                if (mcc === undefined) return '<span style="color: #f87171;">0.00 (Poor)</span>';
+                                if (mcc === undefined) return '<span style="color: dark-gray">-</span>';
                                 const mccValue = mcc.toFixed(2);
                                 let interpretation = '';
                                 let color = '';
                                 if (mcc >= 0.9) {
-                                    interpretation = ' (Excellent)';
+                                    interpretation = 'excellent';
                                     color = '#34d399';  // green
                                 }
                                 else if (mcc >= 0.8) {
-                                    interpretation = ' (Very Good)';
+                                    interpretation = 'very good';
                                     color = '#2dd4bf';  // teal
                                 }
                                 else if (mcc >= 0.7) {
-                                    interpretation = ' (Good)';
+                                    interpretation = 'good';
                                     color = '#60a5fa';  // blue
                                 }
                                 else if (mcc >= 0.5) {
-                                    interpretation = ' (Moderate)';
+                                    interpretation = 'moderate';
                                     color = '#a78bfa';  // purple
                                 }
                                 else if (mcc >= 0.3) {
-                                    interpretation = ' (Fair)';
+                                    interpretation = 'fair';
                                     color = '#fbbf24';  // yellow
                                 }
                                 else if (mcc >= 0.0) {
-                                    interpretation = ' (Poor)';
+                                    interpretation = 'poor';
                                     color = '#f87171';  // red
                                 }
                                 else {
-                                    interpretation = ' (Very Poor)';
+                                    interpretation = 'very poor';
                                     color = '#ef4444';  // darker red
                                 }
-                                return `<span style="color: ${color};">${mccValue}${interpretation}</span>`;
+                                return `<span style="color: ${color};">${mccValue} (${interpretation})</span>`;
                             })()}</div>
                         </div>
                     </article>
                 `;
-                
+
                 matricesContainer.innerHTML += matrixHtml;
             }
 
@@ -585,30 +574,30 @@
                 data: {
                     labels: regionLabels,
                     datasets: [
-                        { 
-                            label: 'True Positive', 
-                            data: tposData, 
+                        {
+                            label: 'True Positive',
+                            data: tposData,
                             backgroundColor: chartColors.positive,
                             borderColor: chartColors.positive,
                             borderWidth: 1
                         },
-                        { 
-                            label: 'True Negative', 
-                            data: tnegData, 
+                        {
+                            label: 'True Negative',
+                            data: tnegData,
                             backgroundColor: chartColors.negative,
                             borderColor: chartColors.negative,
                             borderWidth: 1
                         },
-                        { 
-                            label: 'False Positive', 
-                            data: fposData, 
+                        {
+                            label: 'False Positive',
+                            data: fposData,
                             backgroundColor: chartColors.falsePositive,
                             borderColor: chartColors.falsePositive,
                             borderWidth: 1
                         },
-                        { 
-                            label: 'False Negative', 
-                            data: fnegData, 
+                        {
+                            label: 'False Negative',
+                            data: fnegData,
                             backgroundColor: chartColors.falseNegative,
                             borderColor: chartColors.falseNegative,
                             borderWidth: 1
@@ -619,7 +608,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { 
+                        legend: {
                             position: 'top',
                             labels: {
                                 usePointStyle: true,
@@ -657,13 +646,13 @@
             globalChart = new Chart(document.getElementById("globalChart"), {
                 type: 'doughnut',
                 data: {
-                    labels: ['Positive', 'Negative', 'Invalid'],
+                    labels: ['Positive', 'Negative', 'Wrong'],
                     datasets: [{
-                        data: [data.positive, data.total - data.positive - data.invalid, data.invalid],
+                        data: [data.positive, data.total - data.positive - data.wrong, data.wrong],
                         backgroundColor: [
                             chartColors.positive,
                             chartColors.negative,
-                            chartColors.invalid
+                            chartColors.wrong
                         ],
                         borderWidth: 0
                     }]
@@ -672,7 +661,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { 
+                        legend: {
                             position: 'right',
                             labels: {
                                 usePointStyle: true,
@@ -686,25 +675,25 @@
                     cutout: '60%'
                 }
             });
-            
+
             // Chart: Temporal trends
             const trendDates = [...new Set(Object.values(data.trends).flatMap(region => region.map(item => item.date)))].sort();
-            
+
             // Prepare datasets for each region
             const trendDatasets = [];
             const regionColors = [
-                chartColors.primary, chartColors.secondary, chartColors.accent, 
+                chartColors.primary, chartColors.secondary, chartColors.accent,
                 '#a78bfa', '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
             ];
             let colorIndex = 0;
-            
+
             for (const [region, regionData] of Object.entries(data.trends)) {
                 // Create data points for all dates
                 const dataPoints = trendDates.map(date => {
                     const dayData = regionData.find(item => item.date === date);
                     return dayData ? dayData.total : 0;
                 });
-                
+
                 trendDatasets.push({
                     label: region,
                     data: dataPoints,
@@ -714,10 +703,10 @@
                     tension: 0.3,
                     pointRadius: 3
                 });
-                
+
                 colorIndex++;
             }
-            
+
             trendsChart = new Chart(document.getElementById("trendsChart"), {
                 type: 'line',
                 data: {
@@ -728,7 +717,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { 
+                        legend: {
                             position: 'top',
                             labels: {
                                 usePointStyle: true,
@@ -768,10 +757,10 @@
                     }
                 }
             });
-            
+
             // Chart: Monthly trends
             const monthlyTrendMonths = [...new Set(Object.values(data.monthly_trends).flatMap(region => region.map(item => item.month)))].sort();
-            
+
             // Prepare datasets for each region
             const monthlyTrendDatasets = [];
             const monthlyRegionColors = [
@@ -779,14 +768,14 @@
                 '#a78bfa', '#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#fb7185'
             ];
             let monthlyColorIndex = 0;
-            
+
             for (const [region, regionData] of Object.entries(data.monthly_trends)) {
                 // Create data points for all months
                 const dataPoints = monthlyTrendMonths.map(month => {
                     const monthData = regionData.find(item => item.month === month);
                     return monthData ? monthData.total : 0;
                 });
-                
+
                 monthlyTrendDatasets.push({
                     label: region,
                     data: dataPoints,
@@ -796,10 +785,10 @@
                     tension: 0.3,
                     pointRadius: 3
                 });
-                
+
                 monthlyColorIndex++;
             }
-            
+
             monthlyTrendsChart = new Chart(document.getElementById("monthlyTrendsChart"), {
                 type: 'line',
                 data: {
@@ -810,7 +799,7 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { 
+                        legend: {
                             position: 'top',
                             labels: {
                                 usePointStyle: true,
