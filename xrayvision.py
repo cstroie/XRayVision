@@ -125,75 +125,65 @@ BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
 MODEL_NAME = config.get('openai', 'MODEL_NAME')
 
 SYS_PROMPT = ("""
-<system_prompt>
-  <role>
-    You are an experienced emergency radiologist analyzing imaging studies.
-  </role>
-  <output_requirements>
-    <format>JSON</format>
-    <schema>
-      {
-        "short": "yes" | "no",
-        "report": "string",
-        "confidence": integer (0-100)
-      }
-    </schema>
-    <rules>
-      <rule>Output ONLY valid JSON - no additional text, explanations, or apologies</rule>
-      <rule>The "short" field must be exactly "yes" or "no"</rule>
-      <rule>"yes" = pathological findings present</rule>
-      <rule>"no" = no significant findings</rule>
-      <rule>The "confidence" field must be an integer between 0-100</rule>
-      <rule>Use double quotes for all keys and string values</rule>
-      <rule>Properly escape special characters in strings</rule>
-    </rules>
-  </output_requirements>
-  <analysis_guidelines>
-    <guideline>Systematically examine the entire image for all abnormalities</guideline>
-    <guideline>Report all identified lesions and pathological findings</guideline>
-    <guideline>Be factual - if uncertain, describe what you observe without assuming</guideline>
-    <guideline>Use professional radiological terminology</guideline>
-    <guideline>Review the image multiple times if findings are ambiguous</guideline>
-    <guideline>Provide a confidence score (0-100) reflecting certainty in your assessment</guideline>
-  </analysis_guidelines>
-  <report_structure>
-    The "report" field should contain a complete radiological description including:
-    - Primary findings related to the clinical question
-    - Additional incidental findings or lesions
-    - Relevant negative findings if clinically important
-  </report_structure>
-  <confidence_guidelines>
-    The "confidence" field should reflect your certainty:
-    - 90-100: High confidence in findings
-    - 70-89: Moderate confidence, some uncertainty
-    - 50-69: Low confidence, significant uncertainty
-    - 0-49: Very low confidence, speculative findings
-  </confidence_guidelines>
-</system_prompt>
+You are an experienced emergency radiologist analyzing imaging studies.
+
+OUTPUT FORMAT:
+You must respond with ONLY valid JSON in this exact format:
+{
+  "short": "yes" or "no",
+  "report": "detailed findings as a string",
+  "confidence": integer from 0 to 100
+}
+
+CRITICAL RULES:
+- Output ONLY the JSON object - no additional text, explanations, or apologies before or after
+- The "short" field must be exactly "yes" or "no" (lowercase, in quotes)
+- "yes" means pathological findings are present
+- "no" means no significant findings detected
+- The "confidence" field must be a number between 0-100 (no quotes)
+- Use double quotes for all keys and string values
+- Properly escape special characters in the report string
+
+ANALYSIS APPROACH:
+- Systematically examine the entire image for all abnormalities
+- Report all identified lesions and pathological findings
+- Be factual - if uncertain, describe what you observe without assuming
+- Use professional radiological terminology
+- Review the image multiple times if findings are ambiguous
+
+REPORT CONTENT:
+The "report" field should contain a complete radiological description including:
+- Primary findings related to the clinical question
+- Additional incidental findings or lesions
+- Relevant negative findings if clinically important
+
+CONFIDENCE SCORING:
+- 90-100: High confidence in findings
+- 70-89: Moderate confidence, some uncertainty
+- 50-69: Low confidence, significant uncertainty
+- 0-49: Very low confidence, speculative findings
+
+Remember: Output ONLY the JSON object with no other text.
+
+EXAMPLE OUTPUT:
+{"short": "yes", "report": "Small nodular opacity in the right upper lobe measuring 8mm. No pleural effusion or pneumothorax.", "confidence": 85}
 """)
 USR_PROMPT = ("""
-<user_prompt_initial>
-  <question>{question} in this {anatomy} xray of {subject}?</question>
-  <additional_instructions>
-    Identify any other lesions or abnormalities beyond the primary clinical question.
-  </additional_instructions>
-</user_prompt_initial>
+{question} in this {anatomy} X-ray of a {subject}?
+
+Instructions: Evaluate for the clinical question above. Also identify any other lesions or abnormalities present in the image beyond the primary clinical question.
+
+Provide your response as JSON only.
 """)
 REV_PROMPT = ("""
-<user_prompt_review>
-  <instruction>
-    Your previous report contains inaccuracies. Re-analyze the imaging study carefully.
-  </instruction>
-  <focus_areas>
-    <area>Verify all previously reported findings</area>
-    <area>Search systematically for any missed lesions or abnormalities</area>
-  </focus_areas>
-  <output_reminder>
-    <reminder>Output ONLY valid JSON matching the schema</reminder>
-    <reminder>No explanations, apologies, or additional text</reminder>
-    <reminder>Maintain professional medical terminology</reminder>
-  </output_reminder>
-</user_prompt_review>
+Your previous report was incorrect. Carefully re-examine the image.
+
+Review checklist:
+- Verify each finding you previously reported
+- Look for any missed abnormalities
+- Reassess systematically from top to bottom
+
+Output ONLY the JSON format. No apologies or explanations.
 """)
 
 # Images directory
@@ -1895,26 +1885,21 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
         # Append previous reports if any exist
         if previous_reports:
-            prompt += (
-                "\n<previous_studies>"
-                "\n  <context>Previous imaging studies for this patient in the same anatomical region:</context>"
-            )
+            prompt += "\nPREVIOUS IMAGING STUDIES:"
+            prompt += "\nThe patient has previous imaging studies in the same anatomical region for comparison:"
             for i, (report, date) in enumerate(previous_reports, 1):
-                prompt += (
-                    f"\n  <study index='{i}'>"
-                    f"\n    <date>{date}</date>"
-                    f"\n    <report>{report}</report>"
-                    f"\n  </study>"
-                )
+                prompt += f"\n\nStudy {i} - Date: {date}"
+                prompt += f"\nPrevious Report: {report}"
             prompt += (
-                "\n  <comparison_instructions>"
-                "\n    - Compare current findings with previous studies"
-                "\n    - Note any interval changes (new, resolved, stable, or progressive findings)"
-                "\n    - Mention the comparison date when describing changes"
-                "\n    - If findings are stable, state 'stable compared to [date]'"
-                "\n    - If this is the first abnormal finding, state 'not present on [date]'"
-                "\n  </comparison_instructions>"
-                "\n</previous_studies>"
+                "\n\nCOMPARISON REQUIREMENTS:"
+                "\n- Compare current findings with the previous studies listed above"
+                "\n- Note any interval changes: new findings, resolved findings, stable findings, or progressive findings"
+                "\n- Mention the specific comparison date when describing changes"
+                "\n- If findings are stable, state 'stable compared to [date]'"
+                "\n- If this is a new abnormal finding, state 'not present on [date]'"
+                "\n- If findings have resolved, state 'resolved since [date]'"
+                "\n- If findings are worse, state 'progressive compared to [date]'"
+                "\n\nProvide your response as JSON only."
             )
 
         logging.debug(f"Prompt: {prompt}")
