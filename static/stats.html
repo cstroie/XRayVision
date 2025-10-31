@@ -405,7 +405,18 @@
                     <td>${counts.pnv !== '-' ? counts.pnv + '%' : '-'}</td>
                     <td>${counts.snsi !== '-' ? counts.snsi + '%' : '-'}</td>
                     <td>${counts.spci !== '-' ? counts.spci + '%' : '-'}</td>
-                    <td>${counts.mcc !== undefined ? counts.mcc.toFixed(2) : '-'}</td>
+                    <td>${counts.mcc !== undefined ? (() => {
+                        const mcc = counts.mcc;
+                        let color = '';
+                        if (mcc >= 0.9) color = '#34d399';  // green
+                        else if (mcc >= 0.8) color = '#2dd4bf';  // teal
+                        else if (mcc >= 0.7) color = '#60a5fa';  // blue
+                        else if (mcc >= 0.5) color = '#a78bfa';  // purple
+                        else if (mcc >= 0.3) color = '#fbbf24';  // yellow
+                        else if (mcc >= 0.0) color = '#f87171';  // red
+                        else color = '#ef4444';  // darker red
+                        return `<span style="color: ${color}; font-weight: bold;">${mcc.toFixed(2)}</span>`;
+                    })() : '-'}</td>
                 `;
                 tbody.appendChild(row);
             }
@@ -441,7 +452,19 @@
                 <th scope="row">Total</th>
                 <td>${data.total}</td><td>${data.reviewed}</td><td>${data.positive}</td><td>${data.invalid}</td>
                 <td>${totalPpv}%</td><td>${totalPnv}%</td><td>${totalSnsi}%</td><td>${totalSpci}%</td>
-                <td>${totalMcc}%</td>
+                <td>${(() => {
+                    if (totalMcc === '-') return '-';
+                    const mcc = parseFloat(totalMcc);
+                    let color = '';
+                    if (mcc >= 0.9) color = '#34d399';  // green
+                    else if (mcc >= 0.8) color = '#2dd4bf';  // teal
+                    else if (mcc >= 0.7) color = '#60a5fa';  // blue
+                    else if (mcc >= 0.5) color = '#a78bfa';  // purple
+                    else if (mcc >= 0.3) color = '#fbbf24';  // yellow
+                    else if (mcc >= 0.0) color = '#f87171';  // red
+                    else color = '#ef4444';  // darker red
+                    return `<span style="color: ${color}; font-weight: bold;">${totalMcc}</span>`;
+                })()}</td>
             </tr>`;
 
             // Populate confusion matrices
