@@ -568,6 +568,14 @@ async def db_get_stats():
         fneg = metrics_row[3] or 0
         stats["correct"] = tpos + tneg
         stats["wrong"] = fpos + fneg
+        
+        # Calculate Matthews Correlation Coefficient (MCC) for totals
+        denominator = math.sqrt((tpos + fpos) * (tpos + fneg) * (tneg + fpos) * (tneg + fneg))
+        if denominator == 0:
+            stats["mcc"] = 0.0
+        else:
+            mcc = (tpos * tneg - fpos * fneg) / denominator
+            stats["mcc"] = round(mcc, 2)
 
         # Get processing time statistics (last day only)
         cursor.execute("""
@@ -650,11 +658,6 @@ async def db_get_stats():
                 # Round to 2 decimal places
                 stats["region"][region]["mcc"] = round(mcc, 2)
             
-            # Store raw values for MCC calculation in frontend
-            stats["region"][region]["tpos"] = row[5] or 0
-            stats["region"][region]["tneg"] = row[6] or 0
-            stats["region"][region]["fpos"] = row[7] or 0
-            stats["region"][region]["fneg"] = row[8] or 0
         
         # Get temporal trends (last 30 days only to reduce memory usage)
         cursor.execute("""
