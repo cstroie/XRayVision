@@ -517,13 +517,8 @@
                         </div>
                         <div style="margin-top: 1rem; font-size: 0.9rem; text-align: center;">
                             <div>MCC: ${(() => {
-                                const tp = tpos;
-                                const tn = tneg;
-                                const fp = fpos;
-                                const fn = fneg;
-                                const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
-                                if (denominator === 0) return '<span style="color: #f87171;">0.00 (Poor)</span>';
-                                const mcc = (tp * tn - fp * fn) / denominator;
+                                const mcc = counts.mcc;
+                                if (mcc === undefined) return '<span style="color: #f87171;">0.00 (Poor)</span>';
                                 const mccValue = mcc.toFixed(2);
                                 let interpretation = '';
                                 let color = '';
