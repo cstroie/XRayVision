@@ -524,6 +524,8 @@ async def db_get_stats():
         "reviewed": 0,
         "positive": 0,
         "invalid": 0,
+        "correct": 0,
+        "wrong": 0,
         "region": {},
         "trends": {},
         "monthly_trends": {},
@@ -548,6 +550,24 @@ async def db_get_stats():
         stats["reviewed"] = row[1] or 0
         stats["positive"] = row[2] or 0
         stats["invalid"] = row[3] or 0
+        
+        # Calculate correct (TP + TN) and wrong (FP + FN) predictions
+        cursor.execute("""
+            SELECT 
+                SUM(CASE WHEN reviewed = 1 AND positive = 1 AND valid = 1 THEN 1 ELSE 0 END) AS tpos,
+                SUM(CASE WHEN reviewed = 1 AND positive = 0 AND valid = 1 THEN 1 ELSE 0 END) AS tneg,
+                SUM(CASE WHEN reviewed = 1 AND positive = 1 AND valid = 0 THEN 1 ELSE 0 END) AS fpos,
+                SUM(CASE WHEN reviewed = 1 AND positive = 0 AND valid = 0 THEN 1 ELSE 0 END) AS fneg
+            FROM exams
+            WHERE status LIKE 'done'
+        """)
+        metrics_row = cursor.fetchone()
+        tpos = metrics_row[0] or 0
+        tneg = metrics_row[1] or 0
+        fpos = metrics_row[2] or 0
+        fneg = metrics_row[3] or 0
+        stats["correct"] = tpos + tneg
+        stats["wrong"] = fpos + fneg
 
         # Get processing time statistics (last day only)
         cursor.execute("""
