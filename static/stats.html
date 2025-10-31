@@ -405,7 +405,7 @@
                     <td>${counts.pnv !== '-' ? counts.pnv + '%' : '-'}</td>
                     <td>${counts.snsi !== '-' ? counts.snsi + '%' : '-'}</td>
                     <td>${counts.spci !== '-' ? counts.spci + '%' : '-'}</td>
-                    <td>${counts.mcc !== undefined ? counts.mcc + '%' : '-'}</td>
+                    <td>${counts.mcc !== undefined ? counts.mcc.toFixed(2) : '-'}</td>
                 `;
                 tbody.appendChild(row);
             }
@@ -433,7 +433,7 @@
             const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
             if (denominator !== 0) {
                 const mcc = (tp * tn - fp * fn) / denominator;
-                totalMcc = Math.round(mcc * 100);
+                totalMcc = mcc.toFixed(2);
             }
             
             tfoot.innerHTML = `
@@ -493,9 +493,9 @@
                                 const fp = fpos;
                                 const fn = fneg;
                                 const denominator = Math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn));
-                                if (denominator === 0) return '0%';
+                                if (denominator === 0) return '0.00';
                                 const mcc = (tp * tn - fp * fn) / denominator;
-                                return Math.round(mcc * 100) + '%';
+                                return mcc.toFixed(2);
                             })()}</div>
                         </div>
                     </article>

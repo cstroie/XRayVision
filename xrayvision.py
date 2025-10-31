@@ -644,11 +644,11 @@ async def db_get_stats():
             fn = row[8] or 0
             denominator = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
             if denominator == 0:
-                stats["region"][region]["mcc"] = 0
+                stats["region"][region]["mcc"] = 0.0
             else:
                 mcc = (tp * tn - fp * fn) / denominator
-                # Convert to percentage and round to integer
-                stats["region"][region]["mcc"] = int(mcc * 100)
+                # Round to 2 decimal places
+                stats["region"][region]["mcc"] = round(mcc, 2)
             
             # Store raw values for MCC calculation in frontend
             stats["region"][region]["tpos"] = row[5] or 0
