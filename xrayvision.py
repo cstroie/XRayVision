@@ -1950,8 +1950,10 @@ async def send_exam_to_openai(exam, max_retries = 3):
         projection = identify_imaging_projection(exam)
         gender = determine_patient_gender_description(exam)
         age = exam["patient"]["age"]
-        if age > 0:
+        if age > 1:
             txtAge = f"{age} years old"
+        elif age > 0:
+            txtAge = f"{age} year old"
         elif age == 0:
             txtAge = "newborn"
         else:
