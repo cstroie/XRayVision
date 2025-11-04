@@ -105,6 +105,22 @@ try:
 except Exception as e:
     logging.info("Using default configuration values")
 
+# User roles configuration
+USERS = {}
+if 'users' in config:
+    for user in config['users']:
+        password, role = config.get('users', user).split(',', 1)
+        USERS[user.strip()] = {
+            'password': password.strip(),
+            'role': role.strip()
+        }
+else:
+    # Fallback to default admin user
+    USERS[XRAYVISION_USER] = {
+        'password': XRAYVISION_PASS,
+        'role': 'admin'
+    }
+
 # Extract configuration values
 OPENAI_URL_PRIMARY = config.get('openai', 'OPENAI_URL_PRIMARY')
 OPENAI_URL_SECONDARY = config.get('openai', 'OPENAI_URL_SECONDARY')
@@ -1105,6 +1121,41 @@ def extract_dicom_metadata(ds):
     return info
 
 
+def extract_patient_initials(name):
+    """
+    Extract initials from a patient name.
+
+    Args:
+        name: Patient name string
+
+    Returns:
+        str: Patient initials
+    """
+    if not name or not isinstance(name, str):
+        return "Unknown"
+    # Split by spaces and take first letter of each part
+    parts = name.split()
+    initials = ''.join([part[0] for part in parts if part])
+    return initials.upper() if initials else "Unknown"
+
+
+def anonymize_patient_name(name, user_role):
+    """
+    Anonymize patient name based on user role.
+
+    Args:
+        name: Patient name string
+        user_role: User role ('admin' or 'user')
+
+    Returns:
+        str: Patient name or initials based on user role
+    """
+    if user_role == 'admin':
+        return name
+    else:
+        return extract_patient_initials(name)
+
+
 # Image processing operations
 def apply_gamma_correction(image, gamma = 1.2):
     """
@@ -1281,6 +1332,7 @@ async def exams_handler(request):
     Retrieves exams from database with pagination and filtering options.
     Supports filtering by review status, positivity, validity, region,
     processing status, and patient name search.
+    Anonymizes patient names and IDs for non-admin users.
 
     Args:
         request: aiohttp request object with query parameters
@@ -1289,6 +1341,9 @@ async def exams_handler(request):
         web.json_response: JSON response with exams data and pagination info
     """
     try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
         page = int(request.query.get("page", "1"))
         filters = {}
         for filter in ['reviewed', 'positive', 'valid']:
@@ -1301,6 +1356,20 @@ async def exams_handler(request):
                 filters[filter] = value
         offset = (page - 1) * PAGE_SIZE
         data, total = db_get_exams(limit = PAGE_SIZE, offset = offset, **filters)
+        
+        # Anonymize patient data for non-admin users
+        for exam in data:
+            exam['patient']['name'] = anonymize_patient_name(exam['patient']['name'], user_role)
+            if user_role != 'admin':
+                # Show only first 7 digits of patient ID
+                patient_id = exam['patient']['id']
+                if patient_id and len(patient_id) > 7:
+                    exam['patient']['id'] = patient_id[:7] + '...'
+                elif patient_id:
+                    exam['patient']['id'] = patient_id
+                else:
+                    exam['patient']['id'] = 'Unknown'
+        
         return web.json_response({
             "exams": data,
             "total": total,
@@ -1467,7 +1536,7 @@ async def auth_middleware(request, handler):
 
     Implements HTTP Basic authentication for all API endpoints except
     static files and OPTIONS requests. Validates credentials against
-    environment variables.
+    configured users and stores user role in request.
 
     Args:
         request: aiohttp request object
@@ -1487,9 +1556,12 @@ async def auth_middleware(request, handler):
     try:
         credentials = base64.b64decode(auth_header[6:]).decode('utf-8')
         username, password = credentials.split(':', 1)
-        if username != XRAYVISION_USER or password != XRAYVISION_PASS:
-            logging.warning("Invalid authentication")
+        user_info = USERS.get(username)
+        if not user_info or user_info['password'] != password:
+            logging.warning(f"Invalid authentication for user: {username}")
             raise ValueError("Invalid authentication")
+        # Store user role in request for later use
+        request.user_role = user_info['role']
     except (ValueError, UnicodeDecodeError) as e:
         raise web.HTTPUnauthorized(
             text = "401: Invalid authentication",
