@@ -59,8 +59,6 @@ import configparser
 # Default configuration values
 DEFAULT_CONFIG = {
     'general': {
-        'XRAYVISION_USER': 'admin',
-        'XRAYVISION_PASS': 'admin',
         'XRAYVISION_DB_PATH': 'xrayvision.db',
         'XRAYVISION_BACKUP_DIR': 'backup'
     },
@@ -114,19 +112,11 @@ if 'users' in config:
             'password': password.strip(),
             'role': role.strip()
         }
-else:
-    # Fallback to default admin user
-    USERS[XRAYVISION_USER] = {
-        'password': XRAYVISION_PASS,
-        'role': 'admin'
-    }
 
 # Extract configuration values
 OPENAI_URL_PRIMARY = config.get('openai', 'OPENAI_URL_PRIMARY')
 OPENAI_URL_SECONDARY = config.get('openai', 'OPENAI_URL_SECONDARY')
 OPENAI_API_KEY = config.get('openai', 'OPENAI_API_KEY')
-XRAYVISION_USER = config.get('general', 'XRAYVISION_USER')
-XRAYVISION_PASS = config.get('general', 'XRAYVISION_PASS')
 NTFY_URL = config.get('notifications', 'NTFY_URL')
 DASHBOARD_PORT = config.getint('dashboard', 'DASHBOARD_PORT')
 AE_TITLE = config.get('dicom', 'AE_TITLE')
@@ -1132,28 +1122,11 @@ def extract_patient_initials(name):
         str: Patient initials
     """
     if not name or not isinstance(name, str):
-        return "Unknown"
+        return "NoName"
     # Split by spaces and take first letter of each part
     parts = name.split()
     initials = ''.join([part[0] for part in parts if part])
-    return initials.upper() if initials else "Unknown"
-
-
-def anonymize_patient_name(name, user_role):
-    """
-    Anonymize patient name based on user role.
-
-    Args:
-        name: Patient name string
-        user_role: User role ('admin' or 'user')
-
-    Returns:
-        str: Patient name or initials based on user role
-    """
-    if user_role == 'admin':
-        return name
-    else:
-        return extract_patient_initials(name)
+    return initials.upper() if initials else "NoName"
 
 
 # Image processing operations
@@ -1359,8 +1332,9 @@ async def exams_handler(request):
         
         # Anonymize patient data for non-admin users
         for exam in data:
-            exam['patient']['name'] = anonymize_patient_name(exam['patient']['name'], user_role)
             if user_role != 'admin':
+                # Anonymize the patient name
+                exam['patient']['name'] = extract_patient_initials(exam['patient']['name'])
                 # Show only first 7 digits of patient ID
                 patient_id = exam['patient']['id']
                 if patient_id and len(patient_id) > 7:
