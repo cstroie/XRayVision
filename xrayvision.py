@@ -2153,7 +2153,7 @@ async def relay_to_openai_loop():
             db_set_status(exam['uid'], "processing")
             # Update the dashboard
             dashboard['queue_size'] = total
-            dashboard['processing'] = exam['patient']['name']
+            dashboard['processing'] = extract_patient_initials(exam['patient']['name'])
             await broadcast_dashboard_update()
             # Send to AI for processing
             result = await send_exam_to_openai(exam)
