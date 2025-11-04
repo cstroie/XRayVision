@@ -1119,13 +1119,13 @@ def extract_patient_initials(name):
         name: Patient name string
 
     Returns:
-        str: Patient initials
+        str: Patient initials with dots
     """
     if not name or not isinstance(name, str):
         return "NoName"
-    # Split by spaces and take first letter of each part
-    parts = name.split()
-    initials = ''.join([part[0] for part in parts if part])
+    # Split by spaces, hyphens, and carets and take first letter of each part
+    parts = re.split(r'[-^ ]', name)
+    initials = ''.join([part[0] + '.' for part in parts if part])
     return initials.upper() if initials else "NoName"
 
 
