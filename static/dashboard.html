@@ -833,7 +833,7 @@
             if (search === '') {
                 search = document.getElementById("search-input").value.trim();
             };
-            if (search)   params.append('search', encodeURIComponent(search));
+            if (search)   params.append('search', search);
             const queryString = params.toString();
             const url = `/api/exams?${queryString}`;
             fetch(url)
