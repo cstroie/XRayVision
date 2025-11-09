@@ -391,7 +391,7 @@ footer .grid {
     gap: 1rem;
 }
 
-footer card {
+footer div div {
     padding: 1rem;
     background-color: var(--pico-background-color);
     border-radius: var(--pico-border-radius);
@@ -399,7 +399,7 @@ footer card {
     text-align: center;
 }
 
-footer card strong {
+footer div div strong {
     display: block;
     font-size: 0.9rem;
     margin-bottom: 0.5rem;
@@ -560,10 +560,8 @@ tbody tr:hover {
 /* About Specific Styles */
 main {
     background-color: var(--pico-background-color);
-    padding: 2rem;
     border-radius: var(--card-border-radius);
     box-shadow: var(--card-shadow);
-    margin-bottom: 1.5rem;
 }
 
 main h2 {

@@ -34,29 +34,27 @@
         </ul>
     </nav>
 
-    <header>
-        <hgroup class="grid stats-grid">
-            <article>
-                <strong>Queue Size</strong>
-                <span id="queue">0</span>
-            </article>
-            <article>
-                <strong>Processing</strong>
-                <span id="processing">Idle</span>
-            </article>
-            <article>
-                <strong>Processed</strong>
-                <span id="success">0</span>
-            </article>
-            <article>
-                <strong>Errors</strong>
-                <span id="errors">0</span>
-            </article>
-            <article>
-                <strong>Ignored</strong>
-                <span id="ignored">0</span>
-            </article>
-        </hgroup>
+    <header class="grid stats-grid">
+        <article>
+            <strong>Queue Size</strong>
+            <span id="queue">0</span>
+        </article>
+        <article>
+            <strong>Processing</strong>
+            <span id="processing">Idle</span>
+        </article>
+        <article>
+            <strong>Processed</strong>
+            <span id="success">0</span>
+        </article>
+        <article>
+            <strong>Errors</strong>
+            <span id="errors">0</span>
+        </article>
+        <article>
+            <strong>Ignored</strong>
+            <span id="ignored">0</span>
+        </article>
     </header>
 
     <main>
@@ -105,8 +103,6 @@
             <button onclick="jumpToPage(totalPages)">Last</button>
         </section>
 
-
-
         <section id="exams"><article aria-busy="true"></article></section>
 
         <section class="pagination" role="group" style="gap: 0;">
@@ -131,13 +127,13 @@
     <footer>
         <hr>
         <div class="grid">
-            <card>
+            <div>
                 <strong>OpenAI backend</strong> <span id="openai-backend"><i aria-busy="true"></i></span>
-            </card>
-            <card>
+            </div>
+            <div>
                 <strong>Average timing</strong> <span id="openai-timings"><i aria-busy="true"></i></span>
-            </card>
-            <card>
+            </div>
+            <div>
                 <strong>Query/Retrieve</strong>
                 <fieldset role="group" style="margin-top: 0.5rem;">
                     <select id="queryInterval" style="width: 100px;">
@@ -150,10 +146,10 @@
                     </select>
                     <button onclick="triggerQuery()" style="padding: 0.25rem 0.5rem; font-size: 0.9rem;">Query</button>
                 </fieldset>
-            </card>
-            <card>
+            </div>
+            <div>
                 <strong>Next query</strong> <span id="next-query"><i aria-busy="true">unknown</i></span>
-            </card>
+            </div>
         </div>
     </footer>
 
