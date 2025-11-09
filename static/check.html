@@ -61,11 +61,16 @@
         document.getElementById("check-form").addEventListener("submit", function (e) {
             e.preventDefault();
             const reportText = document.getElementById("report-text").value.trim();
+            const submitButton = document.querySelector("#check-form button[type='submit']");
             
             if (!reportText) {
                 alert("Please enter a report to analyze");
                 return;
             }
+
+            // Disable the submit button
+            submitButton.disabled = true;
+            submitButton.textContent = "Analyzing...";
 
             fetch('/api/check', {
                 method: 'POST',
@@ -110,7 +115,13 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert("An error occurred while analyzing the report. Please try again.");});
+                alert("An error occurred while analyzing the report. Please try again.");
+            })
+            .finally(() => {
+                // Re-enable the submit button
+                submitButton.disabled = false;
+                submitButton.textContent = "Analyze Report";
+            });
         });
     </script>
 </body>
