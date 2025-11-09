@@ -199,7 +199,7 @@ Review checklist:
 Output ONLY the JSON format. No apologies or explanations.
 """)
 
-REPORT_CHECK_SYS_PROMPT = ("""
+CHK_PROMPT = ("""
 You are a medical assistant analyzing radiology reports.
 
 TASK: Read the report and extract the main pathological information in JSON format.
@@ -1578,7 +1578,7 @@ async def check_report_handler(request):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": REPORT_CHECK_SYS_PROMPT}]
+                    "content": [{"type": "text", "text": CHK_PROMPT}]
                 },
                 {
                     "role": "user",
