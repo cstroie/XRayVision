@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html data-theme="dark" lang="en">
+<!--
+  XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+  Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  any later version.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>XRayVision Report Checker</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="/favicon-64x64.png" type="image/png" sizes="64x64">
+    <style>
+        :root {
+            --pico-font-family-sans-serif: Inter, system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, Arial, "Helvetica Neue", sans-serif, var(--pico-font-family-emoji);
+            --pico-font-size: 87.5%;
+            --pico-line-height: 1.5;
+            --pico-form-element-spacing-vertical: 0.75rem;
+            --pico-form-element-spacing-horizontal: 1.25rem;
+            --pico-border-radius: 0.5rem;
+        }
+
+        @media (min-width: 576px) {
+            :root {
+                --pico-font-size: 100%;
+            }
+        }
+
+        @media (min-width: 768px) {
+            :root {
+                --pico-font-size: 106.25%;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            :root {
+                --pico-font-size: 112.5%;
+            }
+        }
+
+        article {
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--pico-border-radius);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        #result {
+            display: none;
+        }
+
+        #result.show {
+            display: block;
+        }
+
+        .result-content {
+            background-color: rgba(12, 45, 75, 0.3);
+            padding: 1rem;
+            border-radius: 0.375rem;
+            margin: 1rem 0;
+        }
+
+        .pathologic-yes {
+            border-left: 4px solid var(--pico-color-red-600);
+        }
+
+        .pathologic-no {
+            border-left: 4px solid var(--pico-color-jade-800);
+        }
+    </style>
+</head>
+
+<body class="container">
+    <nav>
+        <ul>
+            <li><strong>XRayVision Report Checker</strong></li>
+        </ul>
+        <ul>
+            <li><a href="/">Dashboard</a></li>
+            <li><a href="/stats">Statistics</a></li>
+            <li><a href="/check" class="contrast">Report Checker</a></li>
+            <li><a href="/about">About</a></li>
+        </ul>
+    </nav>
+
+    <header>
+        <hgroup>
+            <h1>Report Checker</h1>
+            <p>Enter a radiology report to analyze for pathological findings</p>
+        </hgroup>
+    </header>
+
+    <main>
+        <article id="result">
+            <h2>Analysis Result</h2>
+            <div class="result-content">
+                <p><strong>Pathologic:</strong> <span id="pathologic"></span></p>
+                <p><strong>Severity:</strong> <span id="severity"></span></p>
+                <p><strong>Summary:</strong> <span id="summary"></span></p>
+            </div>
+        </article>
+
+        <form id="check-form">
+            <textarea id="report-text" name="report" placeholder="Enter radiology report text here..." rows="15" required></textarea>
+            <fieldset>
+                <button type="submit">Analyze Report</button>
+            </fieldset>
+        </form>
+
+        <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
+    </main>
+
+    <script>
+        function showToast(msg) {
+            const toast = document.getElementById("toast");
+            toast.innerText = msg;
+            toast.style.display = "block";
+            setTimeout(() => { toast.style.display = "none"; }, 3000);
+        }
+
+        document.getElementById("check-form").addEventListener("submit", function (e) {
+            e.preventDefault();
+            const reportText = document.getElementById("report-text").value.trim();
+            
+            if (!reportText) {
+                showToast("Please enter a report to analyze");
+                return;
+            }
+
+            fetch('/api/check', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ report: reportText })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                document.getElementById("pathologic").textContent = data.pathologic;
+                document.getElementById("severity").textContent = data.severity;
+                document.getElementById("summary").textContent = data.summary;
+                
+                const resultElement = document.getElementById("result");
+                resultElement.classList.add("show");
+                resultElement.className = "show " + (data.pathologic === "yes" ? "pathologic-yes" : "pathologic-no");
+                
+                // Scroll to results
+                resultElement.scrollIntoView({ behavior: "smooth" });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast("Error analyzing report: " + error.message);
+            });
+        });
+    </script>
+</body>
+</html>

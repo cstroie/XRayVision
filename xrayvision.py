@@ -199,6 +199,35 @@ Review checklist:
 Output ONLY the JSON format. No apologies or explanations.
 """)
 
+REPORT_CHECK_SYS_PROMPT = ("""
+You are a medical assistant analyzing radiology reports.
+
+TASK: Read the report and extract the main pathological information in JSON format.
+
+OUTPUT FORMAT (JSON):
+{
+  "pathologic": "yes/no",
+  "severity": 1-10,
+  "summary": "1-5 words"
+}
+
+RULES:
+- "pathologic": "yes" if any anomaly exists, otherwise "no"
+- "severity": 1=minimal, 5=moderate, 10=critical/urgent
+- "summary": diagnosis in maximum 5 words (e.g., "fracture", "pneumonia", "lung nodule")
+- If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
+- Ignore spelling errors
+- Respond ONLY with the JSON, without additional text
+
+EXAMPLES:
+
+Report: "Hazy opacity in the left mid lung field, possibly representing consolidation or infiltrate."
+Response: {"pathologic": "yes", "severity": 6, "summary": "pulmonary consolidation"}
+
+Report: "No pathological changes. Heart of normal size."
+Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
+""")
+
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
 # Static directory
@@ -1261,6 +1290,18 @@ async def serve_about_page(request):
     """
     return web.FileResponse(path=os.path.join(STATIC_DIR, "about.html"))
 
+
+async def serve_check_page(request):
+    """Serve the report check HTML page.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.FileResponse: Check HTML file response
+    """
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "check.html"))
+
 async def serve_favicon(request):
     """Serve the favicon.ico file.
 
@@ -1502,6 +1543,92 @@ async def lookagain(request):
     response = {'status': 'success'}
     response.update(payload)
     return web.json_response(response)
+
+
+async def check_report_handler(request):
+    """Analyze a free-text radiology report for pathological findings.
+
+    Takes a radiology report text and sends it to the LLM for analysis
+    using a specialized prompt to extract key information.
+
+    Args:
+        request: aiohttp request object with JSON body containing report text
+
+    Returns:
+        web.json_response: JSON response with analysis results
+    """
+    try:
+        data = await request.json()
+        report_text = data.get('report', '').strip()
+        
+        if not report_text:
+            return web.json_response({'error': 'No report text provided'}, status=400)
+        
+        # Prepare the request headers
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+        
+        # Prepare the JSON data
+        payload = {
+            "model": MODEL_NAME,
+            "stream": False,
+            "keep_alive": 1800,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": REPORT_CHECK_SYS_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": report_text}
+                    ]
+                }
+            ]
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            result = await send_to_openai(session, headers, payload)
+            if not result:
+                return web.json_response({'error': 'Failed to get response from AI service'}, status=500)
+            
+            response_text = result["choices"][0]["message"]["content"].strip()
+            
+            # Clean up markdown code fences if present
+            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
+            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
+            
+            try:
+                parsed_response = json.loads(response_text)
+                
+                # Validate required fields
+                if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
+                    raise ValueError("Missing required fields in response")
+                
+                # Validate pathologic field
+                if parsed_response["pathologic"] not in ["yes", "no"]:
+                    raise ValueError("Invalid pathologic value")
+                
+                # Validate severity field
+                if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
+                    raise ValueError("Invalid severity value")
+                
+                # Validate summary field
+                if not isinstance(parsed_response["summary"], str):
+                    raise ValueError("Invalid summary value")
+                
+                return web.json_response(parsed_response)
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse AI response as JSON: {response_text}")
+                return web.json_response({'error': 'Failed to parse AI response', 'response': response_text}, status=500)
+            except ValueError as e:
+                logging.error(f"Invalid AI response format: {e}")
+                return web.json_response({'error': f'Invalid AI response format: {str(e)}', 'response': response_text}, status=500)
+    except Exception as e:
+        logging.error(f"Error processing report check request: {e}")
+        return web.json_response({'error': 'Internal server error'}, status=500)
 
 
 @web.middleware
@@ -2104,6 +2231,7 @@ async def start_dashboard():
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
     app.router.add_get('/about', serve_about_page)
+    app.router.add_get('/check', serve_check_page)
     app.router.add_get('/favicon.ico', serve_favicon)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/exams', exams_handler)
@@ -2113,6 +2241,7 @@ async def start_dashboard():
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)
+    app.router.add_post('/api/check', check_report_handler)
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
     web_server = web.AppRunner(app)
