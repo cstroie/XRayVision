@@ -37,16 +37,18 @@
             <h2>Report Checker</h2>
             <p>Enter a radiology report to analyze for pathological findings</p>
         </hgroup>
-        <header id="result">
+        <header id="result" class="grid stats-grid">
             <article>
-                <header>
-                    <h3>Analysis Result</h3>
-                </header>
-                <main class="result-content">
-                    <p><strong>Pathologic:</strong> <span id="pathologic"></span></p>
-                    <p><strong>Severity:</strong> <span id="severity"></span></p>
-                    <p><strong>Summary:</strong> <span id="summary"></span></p>
-                </main>
+                <strong>Pathologic</strong>
+                <span id="pathologic"></span>
+            </article>
+            <article>
+                <strong>Severity</strong>
+                <span id="severity"></span>
+            </article>
+            <article>
+                <strong>Summary</strong>
+                <span id="summary"></span>
             </article>
         </header>
         <form id="check-form">
