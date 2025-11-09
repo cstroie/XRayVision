@@ -1561,7 +1561,10 @@ async def check_report_handler(request):
         data = await request.json()
         report_text = data.get('report', '').strip()
         
+        logging.info(f"Report check request received with report length: {len(report_text)} characters")
+        
         if not report_text:
+            logging.warning("Report check request failed: No report text provided")
             return web.json_response({'error': 'No report text provided'}, status=400)
         
         # Prepare the request headers
@@ -1589,12 +1592,16 @@ async def check_report_handler(request):
             ]
         }
         
+        logging.debug(f"Sending report to OpenAI API with model: {MODEL_NAME}")
+        
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             if not result:
+                logging.error("Failed to get response from AI service")
                 return web.json_response({'error': 'Failed to get response from AI service'}, status=500)
             
             response_text = result["choices"][0]["message"]["content"].strip()
+            logging.debug(f"Raw AI response: {response_text}")
             
             # Clean up markdown code fences if present
             response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
@@ -1602,6 +1609,7 @@ async def check_report_handler(request):
             
             try:
                 parsed_response = json.loads(response_text)
+                logging.info(f"Successfully parsed AI response: {parsed_response}")
                 
                 # Validate required fields
                 if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
@@ -1619,6 +1627,7 @@ async def check_report_handler(request):
                 if not isinstance(parsed_response["summary"], str):
                     raise ValueError("Invalid summary value")
                 
+                logging.info(f"Report check completed successfully. Pathologic: {parsed_response['pathologic']}, Severity: {parsed_response['severity']}")
                 return web.json_response(parsed_response)
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
