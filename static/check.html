@@ -20,7 +20,6 @@
     <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
     <link rel="icon" href="/static/favicon-64x64.png" type="image/png" sizes="64x64">
 </head>
-
 <body class="container">
     <nav>
         <ul>
@@ -33,48 +32,41 @@
             <li><a href="/about">About</a></li>
         </ul>
     </nav>
-
-    <header>
+    <main>
         <hgroup>
-            <h1>Report Checker</h1>
+            <h2>Report Checker</h2>
             <p>Enter a radiology report to analyze for pathological findings</p>
         </hgroup>
-    </header>
-
-    <main>
-        <article id="result">
-            <h2>Analysis Result</h2>
-            <div class="result-content">
-                <p><strong>Pathologic:</strong> <span id="pathologic"></span></p>
-                <p><strong>Severity:</strong> <span id="severity"></span></p>
-                <p><strong>Summary:</strong> <span id="summary"></span></p>
-            </div>
-        </article>
-
+        <header id="result">
+            <article>
+                <header>
+                    <h3>Analysis Result</h3>
+                </header>
+                <main class="result-content">
+                    <p><strong>Pathologic:</strong> <span id="pathologic"></span></p>
+                    <p><strong>Severity:</strong> <span id="severity"></span></p>
+                    <p><strong>Summary:</strong> <span id="summary"></span></p>
+                </main>
+            </article>
+        </header>
         <form id="check-form">
-            <textarea id="report-text" name="report" placeholder="Enter radiology report text here..." rows="15" required></textarea>
             <fieldset>
-                <button type="submit">Analyze Report</button>
+                <label for="report-text">Radiology Report Text</label>
+                <textarea id="report-text" name="report" placeholder="Enter radiology report text here..." rows="5" required></textarea>
             </fieldset>
         </form>
-
-        <div id="toast" style="position: fixed; bottom: 20px; right: 20px; background: #0E1118; color: #BFC7D9; padding: 10px 20px; border-radius: 6px; display: none;"></div>
+        <footer>
+            <button type="submit" form="check-form">Analyze Report</button>
+        </footer>
     </main>
 
     <script>
-        function showToast(msg) {
-            const toast = document.getElementById("toast");
-            toast.innerText = msg;
-            toast.style.display = "block";
-            setTimeout(() => { toast.style.display = "none"; }, 3000);
-        }
-
         document.getElementById("check-form").addEventListener("submit", function (e) {
             e.preventDefault();
             const reportText = document.getElementById("report-text").value.trim();
             
             if (!reportText) {
-                showToast("Please enter a report to analyze");
+                alert("Please enter a report to analyze");
                 return;
             }
 
@@ -103,8 +95,7 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                showToast("Error analyzing report: " + error.message);
-            });
+                alert("An error occurred while analyzing the report. Please try again.");});
         });
     </script>
 </body>
