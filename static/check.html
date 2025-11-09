@@ -79,8 +79,26 @@
                 return response.json();
             })
             .then(data => {
-                document.getElementById("pathologic").textContent = data.pathologic;
-                document.getElementById("severity").textContent = data.severity;
+                // Colorize pathologic text (green for "no", red for "yes")
+                const pathologicElement = document.getElementById("pathologic");
+                pathologicElement.textContent = data.pathologic;
+                if (data.pathologic === "no") {
+                    pathologicElement.style.color = "#2dd4bf"; // green
+                } else {
+                    pathologicElement.style.color = "#f87171"; // red
+                }
+                
+                // Color scale for severity (green to red based on 1-10 scale)
+                const severityElement = document.getElementById("severity");
+                severityElement.textContent = data.severity;
+                const severity = parseInt(data.severity);
+                if (!isNaN(severity)) {
+                    // Calculate color from green (0) to red (10)
+                    const red = Math.min(255, Math.floor(severity * 25.5));
+                    const green = Math.min(255, Math.floor((10 - severity) * 25.5));
+                    severityElement.style.color = `rgb(${red}, ${green}, 0)`;
+                }
+                
                 document.getElementById("summary").textContent = data.summary;
                 
                 const resultElement = document.getElementById("result");
