@@ -297,6 +297,12 @@ def db_init():
 
     Creates tables for patients, exams, AI reports, and radiologist reports.
     Also creates indexes for efficient query operations.
+
+    Tables:
+        patients: Stores patient demographic information (cnp, id, name, age, sex)
+        exams: Stores exam metadata and processing status (uid, cnp, datetime, protocol, region, type, status)
+        ai_reports: Stores AI-generated reports with validation tracking (uid, datetime, text, positive, confidence, is_correct)
+        rad_reports: Stores radiologist reports with enhanced tracking (uid, id, datetime, text, positive, severity, summary, type, radiologist)
     """
     with sqlite3.connect(DB_FILE) as conn:
         # Patients table
