@@ -339,7 +339,7 @@ def db_init():
         
         # Radiologist reports table
         conn.execute('''
-            CREATE TABLE IF NOT EXISTS radiologist_reports (
+            CREATE TABLE IF NOT EXISTS rad_reports (
                 uid INTEGER PRIMARY KEY AUTOINCREMENT,
                 exam_uid TEXT,
                 radiologist_uid TEXT,
