@@ -293,62 +293,82 @@ dashboard = {
 # Database operations
 def db_init():
     """
-    Initialize the SQLite database with the exams table and indexes.
+    Initialize the SQLite database with normalized tables and indexes.
 
-    Creates the exams table with columns for patient info, exam details,
-    AI reports, validation status, and processing status.
+    Creates tables for patients, exams, AI reports, and radiologist reports.
     Also creates indexes for efficient query operations.
     """
     with sqlite3.connect(DB_FILE) as conn:
+        # Patients table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS patients (
+                cnp TEXT PRIMARY KEY,
+                id TEXT,
+                name TEXT,
+                age INTEGER,
+                sex TEXT CHECK(sex IN ('M', 'F', 'O'))
+            )
+        ''')
+        
+        # Exams table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS exams (
                 uid TEXT PRIMARY KEY,
-                name TEXT,
-                id TEXT,
-                age INTEGER,
-                sex TEXT CHECK(sex IN ('M', 'F', 'O')),
-                created TIMESTAMP,
+                cnp TEXT,
+                datetime TIMESTAMP,
                 protocol TEXT,
                 region TEXT,
-                reported TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                report TEXT,
-                positive INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
-                valid INTEGER DEFAULT 1 CHECK(valid IN (0, 1)),
-                reviewed INTEGER DEFAULT 0 CHECK(reviewed IN (0, 1)),
-                status TEXT DEFAULT 'none'
+                type TEXT,
+                status TEXT DEFAULT 'none',
+                FOREIGN KEY (cnp) REFERENCES patients(cnp)
             )
         ''')
-        # Index for cleanup operations
+        
+        # AI reports table
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_cleanup
-            ON exams(status, created)
+            CREATE TABLE IF NOT EXISTS ai_reports (
+                uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                exam_uid TEXT,
+                datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                text TEXT,
+                positive INTEGER CHECK(positive IN (0, 1)),
+                valid INTEGER CHECK(valid IN (0, 1)),
+                reviewed INTEGER CHECK(reviewed IN (0, 1)),
+                FOREIGN KEY (exam_uid) REFERENCES exams(uid)
+            )
         ''')
+        
+        # Radiologist reports table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS radiologist_reports (
+                uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                exam_uid TEXT,
+                radiologist_uid TEXT,
+                datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                text TEXT,
+                positive INTEGER CHECK(positive IN (0, 1)),
+                FOREIGN KEY (exam_uid) REFERENCES exams(uid)
+            )
+        ''')
+        
         # Indexes for common query filters
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_status
+            CREATE INDEX IF NOT EXISTS idx_exams_status
             ON exams(status)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_reviewed
-            ON exams(reviewed)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_positive
-            ON exams(positive)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_valid
-            ON exams(valid)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_region
+            CREATE INDEX IF NOT EXISTS idx_exams_region
             ON exams(region)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_name
-            ON exams(name)
+            CREATE INDEX IF NOT EXISTS idx_exams_cnp
+            ON exams(cnp)
         ''')
-        logging.info("Initialized SQLite database.")
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_patients_name
+            ON patients(name)
+        ''')
+        logging.info("Initialized SQLite database with normalized schema.")
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
