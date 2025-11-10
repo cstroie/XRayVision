@@ -327,12 +327,12 @@ def db_init():
         # AI reports table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS ai_reports (
-                uid TEXT,
+                uid TEXT PRIMARY KEY,
                 datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 text TEXT,
                 positive INTEGER CHECK(positive IN (0, 1)),
-                valid INTEGER CHECK(valid IN (0, 1)),
-                reviewed INTEGER CHECK(reviewed IN (0, 1)),
+                confidence INTEGER DEFAULT -1,
+                is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
                 FOREIGN KEY (uid) REFERENCES exams(uid)
             )
         ''')
