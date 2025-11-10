@@ -481,24 +481,24 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
     # Update the conditions with proper parameterization
     if 'reviewed' in filters:
-        conditions.append("reviewed = ?")
+        conditions.append("ar.positive = ?")
         params.append(filters['reviewed'])
     if 'positive' in filters:
-        conditions.append("positive = ?")
+        conditions.append("ar.positive = ?")
         params.append(filters['positive'])
     if 'valid' in filters:
-        conditions.append("valid = ?")
+        conditions.append("ar.is_correct = ?")
         params.append(filters['valid'])
     if 'region' in filters:
-        conditions.append("LOWER(region) LIKE ?")
+        conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
     if 'status' in filters:
-        conditions.append("LOWER(status) = ?")
+        conditions.append("LOWER(e.status) = ?")
         params.append(filters['status'].lower())
     else:
-        conditions.append("status = 'done'")
+        conditions.append("e.status = 'done'")
     if 'search' in filters:
-        conditions.append("(LOWER(name) LIKE ? OR LOWER(id) LIKE ? OR uid LIKE ?)")
+        conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.id) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
         params.extend([search_term, search_term, filters['search']])
 
@@ -508,7 +508,19 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         where = "WHERE " + " AND ".join(conditions)
 
     # Apply the limits (pagination)
-    query = f"SELECT * FROM exams {where} ORDER BY created DESC LIMIT ? OFFSET ?"
+    query = f"""
+        SELECT 
+            e.uid, p.name, p.id, p.age, p.sex, e.created, e.protocol, e.region, 
+            ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, e.status,
+            rr.text, rr.positive, rr.severity, rr.summary
+        FROM exams e
+        INNER JOIN patients p ON e.cnp = p.cnp
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        {where} 
+        ORDER BY e.created DESC 
+        LIMIT ? OFFSET ?
+    """
     params.extend([limit, offset])
 
     # Get the exams
@@ -534,16 +546,22 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 },
                 'report': {
                     'text': row[9],
-                    'short': row[10] and 'yes' or 'no',
+                    'short': row[10] and 'yes' or 'no' if row[10] is not None else 'no',
                     'datetime': row[8],
-                    'positive': bool(row[10]),
-                    'valid': bool(row[11]),
-                    'reviewed': bool(row[12]),
+                    'positive': bool(row[10]) if row[10] is not None else False,
+                    'valid': bool(row[11]) if row[11] is not None else False,
+                    'reviewed': bool(row[12]) if row[12] is not None else False,
                 },
                 'status': row[13],
             })
         # Get the total for pagination
-        count_query = 'SELECT COUNT(*) FROM exams'
+        count_query = """
+            SELECT COUNT(*) 
+            FROM exams e
+            INNER JOIN patients p ON e.cnp = p.cnp
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        """
         count_params = []
         if conditions:
             count_query += ' WHERE ' + " AND ".join(conditions)
