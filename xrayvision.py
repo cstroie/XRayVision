@@ -570,65 +570,113 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     return exams, total
 
 
-def db_add_exam(info, report = None, positive = None):
+def db_add_exam(info):
     """
     Add or update an exam entry in the database.
 
-    This function handles both queuing new exams for processing and storing
-    completed AI reports. For new exams, it sets status to 'queued'. For
-    completed reports, it sets status to 'done' and handles validation logic
-    when re-analyzing previously processed exams.
+    This function handles queuing new exams for processing. It sets status to 'queued'
+    and stores exam metadata. Patient information is stored in the patients table.
 
     Args:
         info: Dictionary containing exam metadata (uid, patient info, exam details)
-        report: AI-generated report text (None for new exams to be queued)
-        positive: AI prediction result (True/False, None for queued exams)
     """
-    # Check if we have a new report or just enqueue an exam
-    if report:
-        # We have a new report
-        poz = positive
-        valid = True
-        reviewed = False
-        status = 'done'
-        # Check if we have previous report
-        if 'report' in info:
-            # There is an previous also, check validity and new positivity
-            if not info['report']['valid'] and info['report']['positive'] != positive:
-                # It was invalid and now positivity flipped, mark it as reviewed
-                reviewed = True
-                logging.info(f"Exam {info['uid']} marked as reviewed and valid after being reanalyzed.")
-
-    else:
-        # Null report, just enqueue a new exam
-        poz = False
-        valid = True
-        reviewed = False
-        status = 'queued'
-    # Timestamp
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Add or update patient information
+    db_add_patient(
+        info["patient"]["id"],  # Using patient ID as CNP for now
+        info["patient"]["id"],
+        info["patient"]["name"],
+        info["patient"]["age"],
+        info["patient"]["sex"]
+    )
+    
+    # Set status to queued for new exams
+    status = 'queued'
+    
     # Insert into database
     with sqlite3.connect(DB_FILE) as conn:
         values = (
             info['uid'],
-            info["patient"]["name"],
-            info["patient"]["id"],
-            info["patient"]["age"],
-            info["patient"]["sex"],
+            info["patient"]["id"],  # cnp (foreign key to patients)
             info["exam"]['created'],
             info["exam"]["protocol"],
             info['exam']['region'],
-            now,
-            report,
-            poz,
-            valid,
-            reviewed,
-            status
+            info["exam"]["type"] if "type" in info["exam"] else "",
+            status,
+            info["exam"]["study"] if "study" in info["exam"] else None,
+            info["exam"]["series"] if "series" in info["exam"] else None
         )
         conn.execute('''
             INSERT OR REPLACE INTO exams
-                (uid, name, id, age, sex, created, protocol, region, reported, report, positive, valid, reviewed, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (uid, cnp, created, protocol, region, type, status, study, series)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', values)
+
+
+def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
+    """
+    Add or update an AI report entry in the database.
+
+    Args:
+        uid: Exam unique identifier
+        report_text: AI-generated report content
+        positive: AI prediction result (True/False)
+        confidence: AI confidence score (0-100)
+        model: Name of the model used
+        latency: Processing time in seconds
+        is_correct: Validation status (-1=not assessed, 0=incorrect, 1=correct)
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        values = (
+            uid,
+            report_text,
+            int(positive),
+            confidence,
+            is_correct if is_correct is not None else -1,
+            model,
+            latency
+        )
+        conn.execute('''
+            INSERT OR REPLACE INTO ai_reports
+                (uid, text, positive, confidence, is_correct, model, latency)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', values)
+
+
+def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
+    """
+    Add or update a radiologist report entry in the database.
+
+    Args:
+        uid: Exam unique identifier
+        report_id: HIS report ID
+        report_text: Radiologist report content
+        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
+        severity: Severity score (0-10, -1 if not assessed)
+        summary: Brief summary of findings
+        report_type: Exam type
+        radiologist: Identifier for the radiologist
+        justification: Clinical diagnostic text
+        model: Name of the model used
+        latency: Processing time in seconds
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        values = (
+            uid,
+            report_id,
+            report_text,
+            positive,
+            severity,
+            summary,
+            report_type,
+            radiologist,
+            justification,
+            model,
+            latency
+        )
+        conn.execute('''
+            INSERT OR REPLACE INTO rad_reports
+                (uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', values)
 
 
