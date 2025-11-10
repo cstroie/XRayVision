@@ -298,11 +298,48 @@ def db_init():
     Creates tables for patients, exams, AI reports, and radiologist reports.
     Also creates indexes for efficient query operations.
 
-    Tables:
-        patients: Stores patient demographic information (cnp, id, name, age, sex)
-        exams: Stores exam metadata and processing status (uid, cnp, datetime, protocol, region, type, status)
-        ai_reports: Stores AI-generated reports with validation tracking (uid, datetime, text, positive, confidence, is_correct)
-        rad_reports: Stores radiologist reports with enhanced tracking (uid, id, datetime, text, positive, severity, summary, type, radiologist)
+    Database Schema:
+    
+    patients:
+        - cnp (TEXT, PRIMARY KEY): Romanian personal identification number
+        - id (TEXT): Patient ID from hospital system
+        - name (TEXT): Patient full name
+        - age (INTEGER): Patient age in years
+        - sex (TEXT): Patient sex ('M', 'F', or 'O')
+    
+    exams:
+        - uid (TEXT, PRIMARY KEY): Unique exam identifier (SOP Instance UID)
+        - cnp (TEXT, FOREIGN KEY): References patients.cnp
+        - datetime (TIMESTAMP): Exam timestamp from DICOM
+        - protocol (TEXT): Imaging protocol name from DICOM
+        - region (TEXT): Anatomic region identified from protocol
+        - type (TEXT): Exam type/modality
+        - status (TEXT): Processing status ('none', 'queued', 'processing', 'done', 'error', 'ignore')
+    
+    ai_reports:
+        - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
+        - datetime (TIMESTAMP): Report generation timestamp (default: CURRENT_TIMESTAMP)
+        - text (TEXT): AI-generated report content
+        - positive (INTEGER): Validation status (-1=not assessed, 0=incorrect, 1=correct)
+        - confidence (INTEGER): AI self-confidence score (0-100, -1 if not assessed)
+        - is_correct (INTEGER): Validation status (-1=not assessed, 0=incorrect, 1=correct)
+    
+    rad_reports:
+        - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
+        - id (TEXT): HIS report ID
+        - datetime (TIMESTAMP): Report timestamp (default: CURRENT_TIMESTAMP)
+        - text (TEXT): Radiologist report content
+        - positive (INTEGER): Binary indicator (-1=not assessed, 0=no findings, 1=findings)
+        - severity (INTEGER): Severity score (0-10, -1 if not assessed)
+        - summary (TEXT): Brief summary of findings
+        - type (TEXT): Exam type
+        - radiologist (TEXT): Identifier for the radiologist
+    
+    Indexes:
+        - idx_exams_status: Fast filtering by exam status
+        - idx_exams_region: Quick regional analysis
+        - idx_exams_cnp: Efficient patient lookup
+        - idx_patients_name: Fast patient name searches
     """
     with sqlite3.connect(DB_FILE) as conn:
         # Patients table
