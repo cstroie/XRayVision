@@ -340,13 +340,12 @@ def db_init():
         # Radiologist reports table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS rad_reports (
-                uid INTEGER PRIMARY KEY AUTOINCREMENT,
-                exam_uid TEXT,
-                radiologist_uid TEXT,
+                uid TEXT PRIMARY KEY,
                 datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 text TEXT,
                 positive INTEGER CHECK(positive IN (0, 1)),
-                FOREIGN KEY (exam_uid) REFERENCES exams(uid)
+                radiologist TEXT,
+                FOREIGN KEY (uid) REFERENCES exams(uid)
             )
         ''')
         
