@@ -291,7 +291,7 @@ dashboard = {
 }
 
 # Database operations
-def init_database():
+def db_init():
     """
     Initialize the SQLite database with the exams table and indexes.
 
@@ -2505,7 +2505,7 @@ async def main():
     # Init the database if not found
     if not os.path.exists(DB_FILE):
         logging.info("SQLite database not found. Creating a new one...")
-        init_database()
+        db_init()
     else:
         logging.info("SQLite database found.")
     # Print some data
