@@ -363,6 +363,8 @@ def db_init():
                 region TEXT,
                 type TEXT,
                 status TEXT DEFAULT 'none',
+                study TEXT,
+                series TEXT,
                 FOREIGN KEY (cnp) REFERENCES patients(cnp)
             )
         ''')
