@@ -341,9 +341,13 @@ def db_init():
         conn.execute('''
             CREATE TABLE IF NOT EXISTS rad_reports (
                 uid TEXT PRIMARY KEY,
+                id TEXT,
                 datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 text TEXT,
                 positive INTEGER CHECK(positive IN (0, 1)),
+                severity INTEGER CHECK(severity BETWEEN 0 AND 10),
+                summary TEXT,
+                type TEXT,
                 radiologist TEXT,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
             )
