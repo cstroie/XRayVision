@@ -327,14 +327,13 @@ def db_init():
         # AI reports table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS ai_reports (
-                uid INTEGER PRIMARY KEY AUTOINCREMENT,
-                exam_uid TEXT,
+                uid TEXT,
                 datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 text TEXT,
                 positive INTEGER CHECK(positive IN (0, 1)),
                 valid INTEGER CHECK(valid IN (0, 1)),
                 reviewed INTEGER CHECK(reviewed IN (0, 1)),
-                FOREIGN KEY (exam_uid) REFERENCES exams(uid)
+                FOREIGN KEY (uid) REFERENCES exams(uid)
             )
         ''')
         
