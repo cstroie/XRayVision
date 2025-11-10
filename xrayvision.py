@@ -318,7 +318,8 @@ def db_init():
     
     ai_reports:
         - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
-        - datetime (TIMESTAMP): Report generation timestamp (default: CURRENT_TIMESTAMP)
+        - created (TIMESTAMP): Report creation timestamp (default: CURRENT_TIMESTAMP)
+        - updated (TIMESTAMP): Report last update timestamp (default: CURRENT_TIMESTAMP)
         - text (TEXT): AI-generated report content
         - positive (INTEGER): Binary indicator (-1=not assessed, 0=no findings, 1=findings)
         - confidence (INTEGER): AI self-confidence score (0-100, -1 if not assessed)
@@ -329,7 +330,8 @@ def db_init():
     rad_reports:
         - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
         - id (TEXT): HIS report ID
-        - datetime (TIMESTAMP): Report timestamp (default: CURRENT_TIMESTAMP)
+        - created (TIMESTAMP): Report creation timestamp (default: CURRENT_TIMESTAMP)
+        - updated (TIMESTAMP): Report last update timestamp (default: CURRENT_TIMESTAMP)
         - text (TEXT): Radiologist report content
         - positive (INTEGER): Binary indicator (-1=not assessed, 0=no findings, 1=findings)
         - severity (INTEGER): Severity score (0-10, -1 if not assessed)
@@ -381,7 +383,8 @@ def db_init():
         conn.execute('''
             CREATE TABLE IF NOT EXISTS ai_reports (
                 uid TEXT PRIMARY KEY,
-                datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 text TEXT,
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
@@ -397,7 +400,8 @@ def db_init():
             CREATE TABLE IF NOT EXISTS rad_reports (
                 uid TEXT PRIMARY KEY,
                 id TEXT,
-                datetime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 text TEXT,
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
@@ -433,12 +437,12 @@ def db_init():
             ON exams(study)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_ai_reports_datetime
-            ON ai_reports(datetime)
+            CREATE INDEX IF NOT EXISTS idx_ai_reports_created
+            ON ai_reports(created)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_rad_reports_datetime
-            ON rad_reports(datetime)
+            CREATE INDEX IF NOT EXISTS idx_rad_reports_created
+            ON rad_reports(created)
         ''')
         conn.execute('''
             CREATE INDEX IF NOT EXISTS idx_patients_name
