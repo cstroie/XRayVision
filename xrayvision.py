@@ -873,6 +873,24 @@ def db_get_error_stats():
     return stats
 
 
+def db_add_patient(cnp, patient_id, name, age, sex):
+    """
+    Add a new patient to the database or update existing patient information.
+
+    Args:
+        cnp: Romanian personal identification number (primary key)
+        patient_id: Patient ID from hospital system
+        name: Patient full name
+        age: Patient age in years
+        sex: Patient sex ('M', 'F', or 'O')
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute('''
+            INSERT OR REPLACE INTO patients (cnp, id, name, age, sex)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (cnp, patient_id, name, age, sex))
+
+
 def db_get_weekly_processed_count():
     """
     Get the count of successfully processed exams in the last 7 days.
