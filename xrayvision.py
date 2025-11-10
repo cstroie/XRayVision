@@ -347,6 +347,9 @@ def db_init():
         - idx_patients_name: Fast patient name searches
     """
     with sqlite3.connect(DB_FILE) as conn:
+        # Enable foreign key constraints
+        conn.execute('PRAGMA foreign_keys = ON')
+        
         # Patients table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS patients (
