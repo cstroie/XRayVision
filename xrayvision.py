@@ -320,7 +320,7 @@ def db_init():
         - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
         - datetime (TIMESTAMP): Report generation timestamp (default: CURRENT_TIMESTAMP)
         - text (TEXT): AI-generated report content
-        - positive (INTEGER): Validation status (-1=not assessed, 0=incorrect, 1=correct)
+        - positive (INTEGER): Binary indicator (-1=not assessed, 0=no findings, 1=findings)
         - confidence (INTEGER): AI self-confidence score (0-100, -1 if not assessed)
         - is_correct (INTEGER): Validation status (-1=not assessed, 0=incorrect, 1=correct)
         - model (TEXT): Name of the model used to analyze the image
