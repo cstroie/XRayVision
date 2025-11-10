@@ -324,6 +324,7 @@ def db_init():
         - confidence (INTEGER): AI self-confidence score (0-100, -1 if not assessed)
         - is_correct (INTEGER): Validation status (-1=not assessed, 0=incorrect, 1=correct)
         - model (TEXT): Name of the model used to analyze the image
+        - latency (REAL): Time in seconds needed to analyze the image by the AI
     
     rad_reports:
         - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
@@ -337,6 +338,7 @@ def db_init():
         - radiologist (TEXT): Identifier for the radiologist
         - justification (TEXT): Clinical diagnostic text
         - model (TEXT): Name of the model used to summarize the radiologist report
+        - latency (REAL): Time in seconds needed by the radiologist to fill in the report
     
     Indexes:
         - idx_exams_status: Fast filtering by exam status
@@ -382,6 +384,7 @@ def db_init():
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
                 is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
                 model TEXT,
+                latency REAL,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
             )
         ''')
@@ -400,6 +403,7 @@ def db_init():
                 radiologist TEXT,
                 justification TEXT,
                 model TEXT,
+                latency REAL,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
             )
         ''')
