@@ -394,6 +394,7 @@ def db_init():
                 summary TEXT,
                 type TEXT,
                 radiologist TEXT,
+                justification TEXT,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
             )
         ''')
