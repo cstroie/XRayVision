@@ -310,11 +310,13 @@ def db_init():
     exams:
         - uid (TEXT, PRIMARY KEY): Unique exam identifier (SOP Instance UID)
         - cnp (TEXT, FOREIGN KEY): References patients.cnp
-        - datetime (TIMESTAMP): Exam timestamp from DICOM
+        - created (TIMESTAMP): Exam timestamp from DICOM
         - protocol (TEXT): Imaging protocol name from DICOM
         - region (TEXT): Anatomic region identified from protocol
         - type (TEXT): Exam type/modality
         - status (TEXT): Processing status ('none', 'queued', 'processing', 'done', 'error', 'ignore')
+        - study (TEXT): Study Instance UID
+        - series (TEXT): Series Instance UID
     
     ai_reports:
         - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
@@ -368,7 +370,7 @@ def db_init():
             CREATE TABLE IF NOT EXISTS exams (
                 uid TEXT PRIMARY KEY,
                 cnp TEXT,
-                datetime TIMESTAMP,
+                created TIMESTAMP,
                 protocol TEXT,
                 region TEXT,
                 type TEXT,
@@ -429,8 +431,8 @@ def db_init():
             ON exams(cnp)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_exams_datetime
-            ON exams(datetime)
+            CREATE INDEX IF NOT EXISTS idx_exams_created
+            ON exams(created)
         ''')
         conn.execute('''
             CREATE INDEX IF NOT EXISTS idx_exams_study
