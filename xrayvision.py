@@ -422,6 +422,22 @@ def db_init():
             ON exams(cnp)
         ''')
         conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_exams_datetime
+            ON exams(datetime)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_exams_study
+            ON exams(study)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_ai_reports_datetime
+            ON ai_reports(datetime)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_rad_reports_datetime
+            ON rad_reports(datetime)
+        ''')
+        conn.execute('''
             CREATE INDEX IF NOT EXISTS idx_patients_name
             ON patients(name)
         ''')
