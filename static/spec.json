@@ -45,6 +45,10 @@
                 "type": "string",
                 "enum": ["M", "F", "O"],
                 "description": "Patient sex (M, F, or O)"
+              },
+              "county": {
+                "type": "integer",
+                "description": "Patient county code"
               }
             }
           },
@@ -284,6 +288,33 @@
           }
         },
         "required": ["uid"]
+      },
+      "CNPValidationResponse": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "description": "Whether the CNP is valid"
+          },
+          "birth_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Birth date extracted from CNP"
+          },
+          "age": {
+            "type": "integer",
+            "description": "Current age in years"
+          },
+          "sex": {
+            "type": "string",
+            "enum": ["M", "F"],
+            "description": "Sex derived from CNP"
+          },
+          "county": {
+            "type": "integer",
+            "description": "County code"
+          }
+        }
       },
       "LookAgainRequest": {
         "type": "object",
