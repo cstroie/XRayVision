@@ -613,7 +613,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     return exams, total
 
 
-def db_add_exam(info, report=None, positive=None):
+def db_add_exam(info, report=None, positive=None, confidence=None):
     """
     Add or update an exam entry in the database.
 
@@ -624,6 +624,7 @@ def db_add_exam(info, report=None, positive=None):
         info: Dictionary containing exam metadata (uid, patient info, exam details)
         report: Optional AI report text
         positive: Optional AI positive finding indicator
+        confidence: Optional AI confidence score (0-100)
     """
     # Add or update patient information
     db_add_patient(
@@ -663,7 +664,7 @@ def db_add_exam(info, report=None, positive=None):
                 INSERT OR REPLACE INTO ai_reports
                     (uid, text, positive, confidence, is_correct, reviewed, model)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (info['uid'], report, int(positive), -1, -1, False, MODEL_NAME))
+            ''', (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME))
 
 
 def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
@@ -2879,7 +2880,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
                     # Save to exams database
                     is_positive = short == "yes"
-                    db_add_exam(exam, report = report, positive = is_positive)
+                    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
                     # Send notification for positive cases
                     if is_positive:
                         try:
