@@ -411,6 +411,7 @@ def db_init():
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
                 is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
+                reviewed BOOLEAN DEFAULT FALSE,
                 model TEXT,
                 latency INTEGER DEFAULT -1,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
@@ -660,9 +661,9 @@ def db_add_exam(info, report=None, positive=None):
         if report is not None and positive is not None:
             conn.execute('''
                 INSERT OR REPLACE INTO ai_reports
-                    (uid, text, positive, confidence, is_correct, model)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (info['uid'], report, int(positive), -1, -1, MODEL_NAME))
+                    (uid, text, positive, confidence, is_correct, reviewed, model)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (info['uid'], report, int(positive), -1, -1, False, MODEL_NAME))
 
 
 def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
@@ -1400,8 +1401,8 @@ def db_validate(uid, normal=True, correct=None, enqueue=False):
         # Update the entry in exams table
         if enqueue:
             conn.execute("UPDATE exams SET status = 'queued' WHERE uid = ?", (uid,))
-        # Update the ai_reports table with correctness info
-        conn.execute("UPDATE ai_reports SET is_correct = ?, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
+        # Update the ai_reports table with correctness info and mark as reviewed
+        conn.execute("UPDATE ai_reports SET is_correct = ?, reviewed = TRUE, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
     return correct
 
 
