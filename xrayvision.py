@@ -496,7 +496,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("LOWER(e.status) = ?")
         params.append(filters['status'].lower())
     if 'search' in filters:
-        conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.id) LIKE ? OR e.uid LIKE ?)")
+        conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.cnp) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
         params.extend([search_term, search_term, filters['search']])
 
@@ -508,7 +508,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     # Apply the limits (pagination)
     query = f"""
         SELECT 
-            e.uid, p.name, p.id, p.age, p.sex, e.created, e.protocol, e.region, 
+            e.uid, p.name, p.cnp, p.age, p.sex, e.created, e.protocol, e.region, 
             ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, e.status,
             rr.text, rr.positive, rr.severity, rr.summary
         FROM exams e
@@ -531,7 +531,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 'uid': row[0],
                 'patient': {
                     'name': row[1],
-                    'id': row[2],
+                    'cnp': row[2],
                     'age': row[3],
                     'sex': row[4],
                 },
@@ -1059,7 +1059,7 @@ def db_get_unreviewed_exams(limit=PAGE_SIZE, offset=0):
     return db_get_exams(limit=limit, offset=offset, reviewed=0)
 
 
-def db_get_patient_exams(patient_id, limit=PAGE_SIZE, offset=0):
+def db_get_patient_exams(patient_cnp, limit=PAGE_SIZE, offset=0):
     """
     Get all exams for a specific patient.
 
@@ -1071,9 +1071,9 @@ def db_get_patient_exams(patient_id, limit=PAGE_SIZE, offset=0):
     Returns:
         tuple: (exams_list, total_count)
     """
-    exams, total = db_get_exams(limit=limit, offset=offset, search=patient_id)
+    exams, total = db_get_exams(limit=limit, offset=offset, search=patient_cnp)
     # Filter to ensure we only get exams for this specific patient
-    patient_exams = [exam for exam in exams if exam['patient']['id'] == patient_id]
+    patient_exams = [exam for exam in exams if exam['patient']['cnp'] == patient_cnp]
     return patient_exams, total
 
 
@@ -1755,20 +1755,17 @@ async def exams_handler(request):
         
         # Anonymize patient data for non-admin users
         for exam in data:
-            # Add CNP to patient data (using patient ID as CNP)
-            exam['patient']['cnp'] = exam['patient']['id']
-            
             if user_role != 'admin':
                 # Anonymize the patient name
                 exam['patient']['name'] = extract_patient_initials(exam['patient']['name'])
-                # Show only first 7 digits of patient ID
-                patient_id = exam['patient']['id']
-                if patient_id and len(patient_id) > 7:
-                    exam['patient']['id'] = patient_id[:7] + '...'
-                elif patient_id:
-                    exam['patient']['id'] = patient_id
+                # Show only first 7 digits of patient CNP
+                patient_cnp = exam['patient']['cnp']
+                if patient_cnp and len(patient_cnp) > 7:
+                    exam['patient']['cnp'] = patient_cnp[:7] + '...'
+                elif patient_cnp:
+                    exam['patient']['cnp'] = patient_cnp
                 else:
-                    exam['patient']['id'] = 'Unknown'
+                    exam['patient']['cnp'] = 'Unknown'
         
         return web.json_response({
             "exams": data,
