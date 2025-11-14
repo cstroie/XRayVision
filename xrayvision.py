@@ -2874,7 +2874,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     else:
                         timings['average'] = timings['total']
                     # Notify the dashboard frontend to reload first page
-                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
+                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
                     # Success
                     return True
             except Exception as e:
