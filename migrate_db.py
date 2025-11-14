@@ -274,14 +274,13 @@ def migrate_data(old_db_path, new_db_path):
                 # Map: uid->uid, id->empty, created->reported, updated->empty, text->empty, 
                 # positive->positive from old exams if valid is true, severity->-1, summary->empty,
                 # type->empty, justification->empty, radiologist->'Dr. Stroie Costin', model->empty, latency->-1
-                if valid == 1:
-                    new_conn.execute('''
-                        INSERT OR REPLACE INTO rad_reports
-                        (uid, id, created, updated, text, positive, severity, summary, type, radiologist, justification, model, latency)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (uid, None, report_created, None, None, 
-                          int(positive) if positive is not None else -1,
-                          -1, None, None, 'Dr. Stroie Costin', None, None, -1))
+                new_conn.execute('''
+                    INSERT OR REPLACE INTO rad_reports
+                    (uid, id, created, updated, text, positive, severity, summary, type, radiologist, justification, model, latency)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (uid, None, report_created, None, None, 
+                        int(positive) if valid == 1 else not(positive),
+                        -1, None, None, 'Dr. Stroie Costin' if reviewed else None, None, None, -1))
             
             migrated_count += 1
         
