@@ -2632,14 +2632,15 @@ def db_get_previous_reports(patient_cnp, region, months=3):
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         query = """
-            SELECT report, created
-            FROM exams
-            WHERE cnp = ?
-            AND region = ?
-            AND created >= ?
-            AND report IS NOT NULL
-            AND positive IS NOT NULL
-            ORDER BY created DESC
+            SELECT ar.text, ar.created
+            FROM exams e
+            INNER JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.cnp = ?
+            AND e.region = ?
+            AND ar.created >= ?
+            AND ar.text IS NOT NULL
+            AND ar.positive IS NOT NULL
+            ORDER BY ar.created DESC
         """
         cursor.execute(query, (patient_cnp, region, cutoff_date_str))
         results = cursor.fetchall()
