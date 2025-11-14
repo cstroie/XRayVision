@@ -1566,6 +1566,7 @@ def extract_dicom_metadata(ds):
         dict: Dictionary containing structured exam information
     """
     age = -1
+    county = None
     if 'PatientAge' in ds:
         age = str(ds.PatientAge).lower().replace("y", "").strip()
         try:
@@ -1579,6 +1580,10 @@ def extract_dicom_metadata(ds):
         # Try to compute age from PatientID if PatientAge is not available
         if 'PatientID' in ds:
             age = compute_age_from_cnp(ds.PatientID)
+            # Also try to get county information
+            cnp_result = validate_romanian_cnp(ds.PatientID)
+            if cnp_result['valid']:
+                county = cnp_result['county']
     # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # Get the exam timestamp
@@ -1610,12 +1615,18 @@ def extract_dicom_metadata(ds):
             'id': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,  # HIS study ID
         }
     }
+    # Add county if available
+    if county is not None:
+        info['patient']['county'] = county
     # Check gender
     if not info['patient']['sex'] in ['M', 'F', 'O']:
         # Try to determine from ID only if it's a valid Romanian ID
         result = validate_romanian_cnp(info['patient']['cnp'])
         if result['valid']:
             info['patient']['sex'] = result['sex']
+            # Also add county if not already added
+            if 'county' not in info['patient'] and 'county' in result:
+                info['patient']['county'] = result['county']
         else:
             info['patient']['sex'] = 'O'
     # Return the dicom info
