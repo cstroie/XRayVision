@@ -989,6 +989,165 @@ def db_get_weekly_processed_count():
         return result[0] if result else 0
 
 
+# Convenience functions for database access
+def db_get_exam_by_uid(uid):
+    """
+    Get a single exam by its UID.
+
+    Args:
+        uid: Unique identifier of the exam
+
+    Returns:
+        dict: Exam data or None if not found
+    """
+    exams, _ = db_get_exams(limit=1, search=uid)
+    return exams[0] if exams else None
+
+
+def db_get_recent_exams(limit=10):
+    """
+    Get the most recent exams.
+
+    Args:
+        limit: Maximum number of exams to return
+
+    Returns:
+        list: List of recent exams
+    """
+    exams, _ = db_get_exams(limit=limit)
+    return exams
+
+
+def db_get_exams_by_region(region, limit=PAGE_SIZE, offset=0):
+    """
+    Get exams filtered by region.
+
+    Args:
+        region: Anatomic region to filter by
+        limit: Maximum number of exams to return
+        offset: Number of exams to skip
+
+    Returns:
+        tuple: (exams_list, total_count)
+    """
+    return db_get_exams(limit=limit, offset=offset, region=region)
+
+
+def db_get_positive_exams(limit=PAGE_SIZE, offset=0):
+    """
+    Get exams with positive AI findings.
+
+    Args:
+        limit: Maximum number of exams to return
+        offset: Number of exams to skip
+
+    Returns:
+        tuple: (exams_list, total_count)
+    """
+    return db_get_exams(limit=limit, offset=offset, positive=1)
+
+
+def db_get_unreviewed_exams(limit=PAGE_SIZE, offset=0):
+    """
+    Get exams that haven't been reviewed yet.
+
+    Args:
+        limit: Maximum number of exams to return
+        offset: Number of exams to skip
+
+    Returns:
+        tuple: (exams_list, total_count)
+    """
+    return db_get_exams(limit=limit, offset=offset, reviewed=0)
+
+
+def db_get_patient_exams(patient_id, limit=PAGE_SIZE, offset=0):
+    """
+    Get all exams for a specific patient.
+
+    Args:
+        patient_id: Patient identifier
+        limit: Maximum number of exams to return
+        offset: Number of exams to skip
+
+    Returns:
+        tuple: (exams_list, total_count)
+    """
+    exams, total = db_get_exams(limit=limit, offset=offset, search=patient_id)
+    # Filter to ensure we only get exams for this specific patient
+    patient_exams = [exam for exam in exams if exam['patient']['id'] == patient_id]
+    return patient_exams, total
+
+
+def db_count_exams_by_status(status):
+    """
+    Count exams by status.
+
+    Args:
+        status: Status to count ('queued', 'processing', 'done', 'error', 'ignore')
+
+    Returns:
+        int: Count of exams with the specified status
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute("SELECT COUNT(*) FROM exams WHERE status = ?", (status,)).fetchone()
+        return result[0] if result else 0
+
+
+def db_get_exam_report(uid):
+    """
+    Get AI report for a specific exam.
+
+    Args:
+        uid: Unique identifier of the exam
+
+    Returns:
+        dict: Report data or None if not found
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute("""
+            SELECT text, positive, confidence, is_correct, model, latency, created, updated
+            FROM ai_reports WHERE uid = ?
+        """, (uid,)).fetchone()
+        if result:
+            return {
+                'text': result[0],
+                'positive': bool(result[1]) if result[1] is not None else False,
+                'confidence': result[2],
+                'is_correct': result[3],
+                'model': result[4],
+                'latency': result[5],
+                'created': result[6],
+                'updated': result[7]
+            }
+    return None
+
+
+def db_get_patient_by_cnp(cnp):
+    """
+    Get patient information by CNP.
+
+    Args:
+        cnp: Romanian personal identification number
+
+    Returns:
+        dict: Patient data or None if not found
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        result = conn.execute("""
+            SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?
+        """, (cnp,)).fetchone()
+        if result:
+            return {
+                'cnp': result[0],
+                'id': result[1],
+                'name': result[2],
+                'age': result[3],
+                'sex': result[4]
+            }
+    return None
+
+
 def db_get_regions():
     """
     Get distinct regions from the database for exams with status 'done'.
