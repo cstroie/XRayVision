@@ -1159,6 +1159,67 @@ def db_get_regions():
     return regions
 
 
+def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
+    """
+    Load patients from the database with optional filters and pagination.
+
+    Args:
+        limit: Maximum number of patients to return (default: PAGE_SIZE)
+        offset: Number of patients to skip for pagination (default: 0)
+        **filters: Optional filters for querying patients:
+            - search: Filter by patient name or CNP (case-insensitive partial match)
+
+    Returns:
+        tuple: (patients_list, total_count) where patients_list is a list of
+               patient dictionaries and total_count is the total number of
+               patients matching the filters
+    """
+    conditions = []
+    params = []
+
+    # Update the conditions with proper parameterization
+    if 'search' in filters:
+        conditions.append("(LOWER(name) LIKE ? OR LOWER(cnp) LIKE ?)")
+        search_term = f"%{filters['search']}%"
+        params.extend([search_term, search_term])
+
+    # Build WHERE clause
+    where = ""
+    if conditions:
+        where = "WHERE " + " AND ".join(conditions)
+
+    # Apply the limits (pagination)
+    query = f"""
+        SELECT cnp, id, name, age, sex
+        FROM patients
+        {where}
+        ORDER BY name
+        LIMIT ? OFFSET ?
+    """
+    params.extend([limit, offset])
+
+    # Get the patients
+    patients = []
+    with sqlite3.connect(DB_FILE) as conn:
+        rows = conn.execute(query, params)
+        for row in rows:
+            patients.append({
+                'cnp': row[0],
+                'id': row[1],
+                'name': row[2],
+                'age': row[3],
+                'sex': row[4],
+            })
+        # Get the total for pagination
+        count_query = "SELECT COUNT(*) FROM patients"
+        count_params = []
+        if conditions:
+            count_query += ' WHERE ' + " AND ".join(conditions)
+            count_params = params[:-2]  # Exclude limit and offset parameters
+        total = conn.execute(count_query, count_params).fetchone()[0]
+    return patients, total
+
+
 def db_purge_ignored_errors():
     """
     Delete ignored and erroneous records older than 1 week and their associated files.
@@ -1844,6 +1905,59 @@ async def regions_handler(request):
         return web.json_response(regions)
     except Exception as e:
         logging.error(f"Regions endpoint error: {e}")
+        return web.json_response([], status = 500)
+
+
+async def patients_handler(request):
+    """Provide paginated patient data with optional filters.
+
+    Retrieves patients from database with pagination and filtering options.
+    Supports filtering by name and CNP search.
+    Anonymizes patient data for non-admin users.
+
+    Args:
+        request: aiohttp request object with query parameters
+
+    Returns:
+        web.json_response: JSON response with patients data and pagination info
+    """
+    try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
+        page = int(request.query.get("page", "1"))
+        filters = {}
+        for filter in ['search']:
+            value = request.query.get(filter, 'any')
+            if value != 'any':
+                filters[filter] = value
+        offset = (page - 1) * PAGE_SIZE
+        
+        # Get patients with pagination
+        patients, total = db_get_patients(limit=PAGE_SIZE, offset=offset, **filters)
+        
+        # Anonymize patient data for non-admin users
+        for patient in patients:
+            if user_role != 'admin':
+                # Anonymize the patient name
+                patient['name'] = extract_patient_initials(patient['name'])
+                # Show only first 7 digits of patient CNP
+                patient_cnp = patient['cnp']
+                if patient_cnp and len(patient_cnp) > 7:
+                    patient['cnp'] = patient_cnp[:7] + '...'
+                elif patient_cnp:
+                    patient['cnp'] = patient_cnp
+                else:
+                    patient['cnp'] = 'Unknown'
+        
+        return web.json_response({
+            "patients": patients,
+            "total": total,
+            "pages": int(total / PAGE_SIZE) + 1,
+            "filters": filters,
+        })
+    except Exception as e:
+        logging.error(f"Patients page error: {e}")
         return web.json_response([], status = 500)
 
 
@@ -2630,6 +2744,7 @@ async def start_dashboard():
     app.router.add_get('/api/stats', stats_handler)
     app.router.add_get('/api/config', config_handler)
     app.router.add_get('/api/regions', regions_handler)
+    app.router.add_get('/api/patients', patients_handler)
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)

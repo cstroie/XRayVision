@@ -134,6 +134,31 @@ Provide supported regions for the frontend dropdown.
 ["string"]
 ```
 
+#### GET /api/patients
+Provide paginated patient data with optional filters.
+
+**Query Parameters:**
+- `page` (integer, default: 1) - Page number
+- `search` (string) - Filter by patient name or CNP
+
+**Response:**
+```json
+{
+  "patients": [
+    {
+      "cnp": "string",
+      "id": "string",
+      "name": "string",
+      "age": "integer",
+      "sex": "string"
+    }
+  ],
+  "total": "integer",
+  "pages": "integer",
+  "filters": "object"
+}
+```
+
 #### POST /api/validate
 Mark a study as valid or invalid based on human review.
 
