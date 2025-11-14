@@ -570,7 +570,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     return exams, total
 
 
-def db_add_exam(info):
+def db_add_exam(info, report=None, positive=None):
     """
     Add or update an exam entry in the database.
 
@@ -579,6 +579,8 @@ def db_add_exam(info):
 
     Args:
         info: Dictionary containing exam metadata (uid, patient info, exam details)
+        report: Optional AI report text
+        positive: Optional AI positive finding indicator
     """
     # Add or update patient information
     db_add_patient(
@@ -610,6 +612,14 @@ def db_add_exam(info):
                 (uid, cnp, created, protocol, region, type, status, study, series)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', values)
+        
+        # If report is provided, add it to ai_reports table
+        if report is not None and positive is not None:
+            conn.execute('''
+                INSERT OR REPLACE INTO ai_reports
+                    (uid, text, positive, confidence, is_correct, model)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (info['uid'], report, int(positive), -1, -1, MODEL_NAME))
 
 
 def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
@@ -735,9 +745,10 @@ async def db_get_stats():
         cursor.execute("""
             SELECT
                 COUNT(*) AS total,
-                SUM(CASE WHEN reviewed = 1 THEN 1 ELSE 0 END) AS reviewed
-            FROM exams
-            WHERE status LIKE 'done'
+                SUM(CASE WHEN ar.is_correct != -1 THEN 1 ELSE 0 END) AS reviewed
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status LIKE 'done'
         """)
         row = cursor.fetchone()
         stats["total"] = row[0]
@@ -746,12 +757,13 @@ async def db_get_stats():
         # Calculate correct (TP + TN) and wrong (FP + FN) predictions
         cursor.execute("""
             SELECT
-                SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
-                SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
-                SUM(reviewed = 1 AND positive = 1 AND valid = 0) AS fpos,
-                SUM(reviewed = 1 AND positive = 0 AND valid = 0) AS fneg
-            FROM exams
-            WHERE status LIKE 'done'
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status LIKE 'done'
         """)
         metrics_row = cursor.fetchone()
         tpos = metrics_row[0] or 0
@@ -772,13 +784,14 @@ async def db_get_stats():
         # Get processing time statistics (last day only)
         cursor.execute("""
             SELECT
-                AVG(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) AS avg_processing_time,
-                COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) + 1) AS throughput
-            FROM exams
-            WHERE status LIKE 'done'
-              AND reported IS NOT NULL
-              AND created IS NOT NULL
-              AND created >= datetime('now', '-1 days')
+                AVG(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) AS avg_processing_time,
+                COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) + 1) AS throughput
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status LIKE 'done'
+              AND ar.created IS NOT NULL
+              AND e.created IS NOT NULL
+              AND e.created >= datetime('now', '-1 days')
         """)
         timing_row = cursor.fetchone()
         if timing_row and timing_row[0] is not None:
@@ -798,18 +811,19 @@ async def db_get_stats():
 
         # Totals per anatomic part
         cursor.execute("""
-            SELECT region,
+            SELECT e.region,
                     COUNT(*) AS total,
-                    SUM(reviewed = 1) AS reviewed,
-                    SUM(positive = 1) AS positive,
-                    SUM(valid = 0) AS wrong,
-                    SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
-                    SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
-                    SUM(reviewed = 1 AND positive = 1 AND valid = 0) AS fpos,
-                    SUM(reviewed = 1 AND positive = 0 AND valid = 0) AS fneg
-            FROM exams
-            WHERE status LIKE 'done'
-            GROUP BY region
+                    SUM(CASE WHEN ar.is_correct != -1 THEN 1 ELSE 0 END) AS reviewed,
+                    SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
+                    SUM(CASE WHEN ar.is_correct = 0 THEN 1 ELSE 0 END) AS wrong,
+                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
+                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
+                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
+                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status LIKE 'done'
+            GROUP BY e.region
         """)
         for row in cursor.fetchall():
             region = row[0] or 'unknown'
@@ -967,9 +981,10 @@ def db_get_weekly_processed_count():
     with sqlite3.connect(DB_FILE) as conn:
         result = conn.execute("""
             SELECT COUNT(*)
-            FROM exams
-            WHERE status = 'done'
-            AND reported >= datetime('now', '-7 days')
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status = 'done'
+            AND ar.created >= datetime('now', '-7 days')
         """).fetchone()
         return result[0] if result else 0
 
