@@ -229,10 +229,11 @@ def migrate_data(old_db_path, new_db_path):
             cnp = patient_id if patient_id else uid
             
             # Add patient record
+            # Map old id to cnp, leave new id empty
             new_conn.execute('''
                 INSERT OR IGNORE INTO patients (cnp, id, name, age, sex)
                 VALUES (?, ?, ?, ?, ?)
-            ''', (cnp, patient_id, patient_name, patient_age, patient_sex))
+            ''', (patient_id, None, patient_name, patient_age, patient_sex))
             
             # Add exam record
             new_conn.execute('''
