@@ -1385,16 +1385,15 @@ def db_validate(uid, normal = True, correct = None, enqueue = False):
         bool: The correctness status (True if AI prediction matched human review)
     """
     with sqlite3.connect(DB_FILE) as conn:
+        abnormal = not normal
         if correct is None:
             # Check if the report is positive from ai_reports table
             result = conn.execute("SELECT positive FROM ai_reports WHERE uid = ?", (uid,)).fetchone()
-            # C when review matches prediction
-            # If human says normal (True) and AI said negative (0), then correct
-            # If human says abnormal (False) and AI said positive (1), then correct
+            # Correct when review matches prediction
             if result and result[0] is not None:
                 # When human says normal (True) and AI says negative (0), they match -> correct
                 # When human says abnormal (False) and AI says positive (1), they match -> correct
-                correct = bool(normal) == (not bool(result[0]))
+                correct = bool(abnormal) == bool(result[0])
             else:
                 correct = True
         # Update the entry in exams table
@@ -1408,6 +1407,8 @@ def db_validate(uid, normal = True, correct = None, enqueue = False):
             conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
         # Update the ai_reports table with correctness info
         conn.execute("UPDATE ai_reports SET is_correct = ? WHERE uid = ?", (int(correct), uid))
+        # Update radiologist report positive field as well
+        conn.execute("UPDATE rad_reports SET positive = ? WHERE uid = ?", (int(abnormal), uid))
     return correct
 
 
