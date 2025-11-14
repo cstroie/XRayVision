@@ -551,17 +551,26 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'positive': bool(row[10]) if row[10] is not None else False,
                         'valid': bool(row[11]) if row[11] is not None else False,
                         'reviewed': bool(row[12]) if row[12] is not None else False,
+                        'confidence': row[13] if row[13] is not None else -1,
+                        'model': row[14],
+                        'latency': row[15] if row[15] is not None else -1,
                     },
                     'rad': {
-                        'text': row[14],
-                        'positive': bool(row[15]) if row[15] is not None else False,
-                        'severity': row[16] if row[16] is not None else -1,
-                        'summary': row[17],
-                        'created': row[18],
-                        'updated': row[19],
+                        'text': row[16],
+                        'positive': bool(row[17]) if row[17] is not None else False,
+                        'severity': row[18] if row[18] is not None else -1,
+                        'summary': row[19],
+                        'created': row[20],
+                        'updated': row[21],
+                        'id': row[22],
+                        'type': row[23],
+                        'radiologist': row[24],
+                        'justification': row[25],
+                        'model': row[26],
+                        'latency': row[27] if row[27] is not None else -1,
                     }
                 },
-                'status': row[13],
+                'status': row[28],
             })
         # Get the total for pagination
         count_query = """
