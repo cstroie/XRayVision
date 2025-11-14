@@ -27,7 +27,6 @@ def migrate_database(old_db_path, new_db_path):
         return False
     
     # Create new database with updated schema
-    print("Creating new database schema...")
     create_new_schema(new_db_path)
     
     # Migrate data

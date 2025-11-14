@@ -332,7 +332,7 @@ def db_init():
     
     rad_reports:
         - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
-        - id (TEXT): HIS report ID
+        - id (TEXT): Diagnostic report ID from HIS
         - created (TIMESTAMP): Report creation timestamp (default: CURRENT_TIMESTAMP)
         - updated (TIMESTAMP): Report last update timestamp (default: CURRENT_TIMESTAMP)
         - text (TEXT): Radiologist report content
@@ -544,6 +544,11 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     'time': dt.strftime('%H%M%S'),
                     'protocol': row[6],
                     'region': row[7],
+                    'status': row[28],
+                    'type': row[29],
+                    'study': row[30],
+                    'series': row[31],
+                    'id': row[32],
                 },
                 'report': {
                     'ai': {
@@ -572,11 +577,6 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'latency': row[27] if row[27] is not None else -1,
                     }
                 },
-                'status': row[28],
-                'type': row[29],
-                'study': row[30],
-                'series': row[31],
-                'id': row[32],  # HIS study ID
             })
         # Get the total for pagination
         count_query = """
