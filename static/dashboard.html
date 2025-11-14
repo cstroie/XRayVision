@@ -255,12 +255,12 @@
                         // Load page 1
                         loadPage(1);
                     } else if (data.event.name === "validate") {
-                        showToast(`Exam is ${data.event.payload.valid ? 'valid' : 'invalid'}`);
+                        showToast(`Exam is ${data.event.payload.is_correct ? 'valid' : 'invalid'}`);
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
                             card.classList.remove('invalid');
-                            if (!(data.event.payload.valid)) {
+                            if (!(data.event.payload.is_correct)) {
                                 card.classList.add('invalid');
                             }
                         }
@@ -292,7 +292,7 @@
             .then(response => response.json())
             .then(data => {
                 loadPage(currentPage);
-                console.log('Status update:', data.valid ? 'valid' : 'invalid');
+                console.log('Status update:', data.is_correct ? 'valid' : 'invalid');
             })
             .catch(error => {
                 console.error('Error sending validate:', error);
