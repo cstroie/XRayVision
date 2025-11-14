@@ -1961,6 +1961,50 @@ async def patients_handler(request):
         return web.json_response([], status = 500)
 
 
+async def patient_handler(request):
+    """Provide a single patient's data by CNP.
+
+    Retrieves a specific patient from the database by their CNP.
+    Anonymizes patient data for non-admin users.
+
+    Args:
+        request: aiohttp request object with CNP parameter
+
+    Returns:
+        web.json_response: JSON response with patient data or error
+    """
+    try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
+        # Get CNP from URL parameter
+        cnp = request.match_info['cnp']
+        
+        # Get patient from database
+        patient = db_get_patient_by_cnp(cnp)
+        
+        if not patient:
+            return web.json_response({"error": "Patient not found"}, status=404)
+        
+        # Anonymize patient data for non-admin users
+        if user_role != 'admin':
+            # Anonymize the patient name
+            patient['name'] = extract_patient_initials(patient['name'])
+            # Show only first 7 digits of patient CNP
+            patient_cnp = patient['cnp']
+            if patient_cnp and len(patient_cnp) > 7:
+                patient['cnp'] = patient_cnp[:7] + '...'
+            elif patient_cnp:
+                patient['cnp'] = patient_cnp
+            else:
+                patient['cnp'] = 'Unknown'
+        
+        return web.json_response(patient)
+    except Exception as e:
+        logging.error(f"Patient endpoint error: {e}")
+        return web.json_response({"error": "Internal server error"}, status=500)
+
+
 async def manual_query(request):
     """Trigger a manual DICOM query/retrieve operation.
 
@@ -2745,6 +2789,7 @@ async def start_dashboard():
     app.router.add_get('/api/config', config_handler)
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/patients', patients_handler)
+    app.router.add_get('/api/patients/{cnp}', patient_handler)
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)

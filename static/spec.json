@@ -715,6 +715,81 @@
         }
       }
     },
+    "/api/patients/{cnp}": {
+      "get": {
+        "summary": "Get patient by CNP",
+        "description": "Provide a single patient's data by CNP",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cnp",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Patient CNP"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Patient data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cnp": {
+                      "type": "string",
+                      "description": "Patient CNP (Romanian personal identification number)"
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Patient ID from hospital system"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Patient full name"
+                    },
+                    "age": {
+                      "type": "integer",
+                      "description": "Patient age in years"
+                    },
+                    "sex": {
+                      "type": "string",
+                      "enum": ["M", "F", "O"],
+                      "description": "Patient sex (M, F, or O)"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Patient not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/api/validate": {
       "post": {
         "summary": "Validate exam",

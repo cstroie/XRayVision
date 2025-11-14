@@ -159,6 +159,30 @@ Provide paginated patient data with optional filters.
 }
 ```
 
+#### GET /api/patients/{cnp}
+Provide a single patient's data by CNP.
+
+**Path Parameters:**
+- `cnp` (string) - Patient CNP
+
+**Response:**
+```json
+{
+  "cnp": "string",
+  "id": "string",
+  "name": "string",
+  "age": "integer",
+  "sex": "string"
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": "Patient not found"
+}
+```
+
 #### POST /api/validate
 Mark a study as valid or invalid based on human review.
 
