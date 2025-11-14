@@ -102,32 +102,32 @@ article>footer {
     border-left: 3px solid var(--pico-color-jade-800);
 }
 
-.image-card.reviewed.positive:not(.invalid) {
+.image-card.reviewed.positive:not(.incorrect) {
     border-left: 4px solid var(--pico-color-red-600);
     border-right: 4px solid var(--pico-color-red-600);
 }
 
-.image-card.reviewed.positive:not(.invalid) .report {
+.image-card.reviewed.positive:not(.incorrect) .report {
     background-color: rgba(92, 22, 13, 0.3);
     border-left: 3px solid var(--pico-color-red-600);
 }
 
-.image-card.reviewed.positive.invalid {
+.image-card.reviewed.positive.incorrect {
     border-left: 4px solid var(--pico-color-pumpkin-800);
     border-right: 4px solid var(--pico-color-pumpkin-800);
 }
 
-.image-card.reviewed.positive.invalid .report {
+.image-card.reviewed.positive.incorrect .report {
     background-color: rgba(72, 40, 2, 0.3);
     border-left: 3px solid var(--pico-color-pumpkin-800);
 }
 
-.image-card.reviewed.invalid:not(.positive) {
+.image-card.reviewed.incorrect:not(.positive) {
     border-left: 4px solid var(--pico-color-pumpkin-600);
     border-right: 4px solid var(--pico-color-pumpkin-600);
 }
 
-.image-card.reviewed.invalid:not(.positive) .report {
+.image-card.reviewed.incorrect:not(.positive) .report {
     background-color: rgba(139, 79, 0, 0.3);
     border-left: 3px solid var(--pico-color-pumpkin-600);
 }
@@ -147,7 +147,7 @@ article>footer {
     white-space: nowrap;
 }
 
-.image-card.reviewed.positive:not(.invalid)::after {
+.image-card.reviewed.positive:not(.incorrect)::after {
     content: "POSITIVE FINDING";
     position: absolute;
     top: 0.75rem;
@@ -162,7 +162,7 @@ article>footer {
     white-space: nowrap;
 }
 
-.image-card.reviewed.positive.invalid::after {
+.image-card.reviewed.positive.incorrect::after {
     content: "FALSE POSITIVE";
     position: absolute;
     top: 0.75rem;
@@ -177,7 +177,7 @@ article>footer {
     white-space: nowrap;
 }
 
-.image-card.reviewed.invalid:not(.positive)::after {
+.image-card.reviewed.incorrect:not(.positive)::after {
     content: "FALSE NEGATIVE";
     position: absolute;
     top: 0.75rem;
@@ -331,7 +331,7 @@ button.abnormal {
     gap: 1.5rem;
 }
 
-.lightbox.invalid {
+.lightbox.incorrect {
     background-color: rgba(24, 15, 4, 0.9);
 }
 
@@ -348,7 +348,7 @@ button.abnormal {
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
 }
 
-.lightbox.invalid img {
+.lightbox.incorrect img {
     border: 2px solid var(--pico-color-pumpkin-800);
 }
 
