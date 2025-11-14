@@ -33,9 +33,9 @@
                 "type": "string",
                 "description": "Patient full name"
               },
-              "id": {
+              "cnp": {
                 "type": "string",
-                "description": "Patient ID from hospital system"
+                "description": "Patient CNP (Romanian personal identification number)"
               },
               "age": {
                 "type": "integer",

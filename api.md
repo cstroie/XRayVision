@@ -61,7 +61,7 @@ Provide paginated exam data with optional filters.
       "uid": "string",
       "patient": {
         "name": "string",
-        "id": "string",
+        "cnp": "string",
         "age": "integer",
         "sex": "string"
       },
