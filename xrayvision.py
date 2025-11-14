@@ -2787,9 +2787,9 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-        if exam['report']['text']:
-            json_report = {'short': exam['report']['short'],
-                           'report': exam['report']['text']}
+        if exam['report']['ai']['text']:
+            json_report = {'short': exam['report']['ai']['short'],
+                           'report': exam['report']['ai']['text']}
             exam['report']['json'] = json.dumps(json_report)
             logging.info(f"Previous report: {exam['report']['json']}")
         # Base64 encode the PNG to comply with OpenAI Vision API
