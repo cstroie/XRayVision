@@ -172,7 +172,8 @@ Provide a single patient's data by CNP.
   "id": "string",
   "name": "string",
   "age": "integer",
-  "sex": "string"
+  "sex": "string",
+  "exam_uids": ["string"]
 }
 ```
 

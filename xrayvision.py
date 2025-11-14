@@ -1146,6 +1146,23 @@ def db_get_patient_by_cnp(cnp):
     return None
 
 
+def db_get_patient_exam_uids(cnp):
+    """
+    Get all exam UIDs for a specific patient.
+
+    Args:
+        cnp: Romanian personal identification number
+
+    Returns:
+        list: List of exam UIDs for this patient
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.execute("""
+            SELECT uid FROM exams WHERE cnp = ? ORDER BY created DESC
+        """, (cnp,))
+        return [row[0] for row in cursor.fetchall()]
+
+
 def db_get_regions():
     """
     Get distinct regions from the database for exams with status 'done'.
@@ -1966,12 +1983,13 @@ async def patient_handler(request):
 
     Retrieves a specific patient from the database by their CNP.
     Anonymizes patient data for non-admin users.
+    Includes a list of all exam UIDs for this patient.
 
     Args:
         request: aiohttp request object with CNP parameter
 
     Returns:
-        web.json_response: JSON response with patient data or error
+        web.json_response: JSON response with patient data and exam UIDs or error
     """
     try:
         # Get user role from request (set by auth_middleware)
@@ -1985,6 +2003,12 @@ async def patient_handler(request):
         
         if not patient:
             return web.json_response({"error": "Patient not found"}, status=404)
+        
+        # Get all exam UIDs for this patient
+        exam_uids = db_get_patient_exam_uids(cnp)
+        
+        # Add exam UIDs to patient data
+        patient['exam_uids'] = exam_uids
         
         # Anonymize patient data for non-admin users
         if user_role != 'admin':

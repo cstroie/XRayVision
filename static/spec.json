@@ -763,6 +763,13 @@
                       "type": "string",
                       "enum": ["M", "F", "O"],
                       "description": "Patient sex (M, F, or O)"
+                    },
+                    "exam_uids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "List of exam UIDs for this patient"
                     }
                   }
                 }
