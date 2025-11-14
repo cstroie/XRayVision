@@ -1363,8 +1363,8 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
     """
     with sqlite3.connect(DB_FILE) as conn:
         if valid is None:
-            # Check if the report is positive
-            result = conn.execute("SELECT positive FROM exams WHERE uid = ?", (uid,)).fetchone()
+            # Check if the report is positive from ai_reports table
+            result = conn.execute("SELECT positive FROM ai_reports WHERE uid = ?", (uid,)).fetchone()
             # Valid when review matches prediction
             # If human says normal (True) and AI said negative (0), then valid
             # If human says abnormal (False) and AI said positive (1), then valid
@@ -1372,17 +1372,17 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
                 valid = bool(normal) != bool(result[0])
             else:
                 valid = True
-        # Update the entry
+        # Update the entry in exams table
         columns = []
         params = []
-        columns.append("reviewed = 1")
-        columns.append("valid = ?")
-        params.append(bool(valid))
         if enqueue:
             columns.append("status = 'queued'")
         params.append(uid)
-        set_clause = 'SET ' + ','.join(columns)
-        conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
+        set_clause = 'SET ' + ','.join(columns) if columns else ''
+        if set_clause:
+            conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
+        # Update the ai_reports table with validation info
+        conn.execute("UPDATE ai_reports SET is_correct = ? WHERE uid = ?", (int(valid), uid))
     return valid
 
 
