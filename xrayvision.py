@@ -90,6 +90,24 @@ DEFAULT_CONFIG = {
     }
 }
 
+# County names mapping for Romanian CNP validation
+county_names = {
+    1: "Alba", 2: "Arad", 3: "Argeș", 4: "Bacău", 5: "Bihor", 6: "Bistrița-Năsăud",
+    7: "Botoșani", 8: "Brașov", 9: "Brăila", 10: "Buzău", 11: "Caraș-Severin",
+    12: "Cluj", 13: "Constanța", 14: "Covasna", 15: "Dâmbovița", 16: "Dolj",
+    17: "Galați", 18: "Gorj", 19: "Harghita", 20: "Hunedoara", 21: "Ialomița",
+    22: "Iași", 23: "Ilfov", 24: "Maramureș", 25: "Mehedinți", 26: "Mureș",
+    27: "Neamț", 28: "Olt", 29: "Prahova", 30: "Satu Mare", 31: "Sălaj",
+    32: "Sibiu", 33: "Suceava", 34: "Teleorman", 35: "Timiș", 36: "Tulcea",
+    37: "Vaslui", 38: "Vâlcea", 39: "Vrancea", 40: "București", 41: "București",
+    42: "București", 43: "București", 44: "București", 45: "București", 46: "București",
+    51: "Călărași", 52: "Giurgiu",
+    70: "Diaspora", 71: "Diaspora", 72: "Diaspora", 73: "Diaspora", 74: "Diaspora",
+    75: "Diaspora", 76: "Diaspora", 77: "Diaspora", 78: "Diaspora", 79: "Diaspora",
+    90: "Special", 91: "Special", 92: "Special", 93: "Special", 94: "Special",
+    95: "Special", 96: "Special", 97: "Special", 98: "Special", 99: "Special"
+}
+
 # Load configuration from file if it exists, otherwise use defaults
 config = configparser.ConfigParser()
 config.read_dict(DEFAULT_CONFIG)
@@ -2476,6 +2494,8 @@ def validate_romanian_cnp(patient_cnp):
         # Validate county code (01-52, 70, or 99)
         if not ((1 <= county <= 52) or county == 70 or county == 99):
             return {'valid': False}
+        # Get county name
+        county_name = county_names.get(county, "Unknown")
         # Validate checksum using the official algorithm
         # Weights for each digit position
         weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
