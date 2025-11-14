@@ -1393,7 +1393,9 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
             # If human says normal (True) and AI said negative (0), then valid
             # If human says abnormal (False) and AI said positive (1), then valid
             if result and result[0] is not None:
-                valid = bool(normal) != bool(result[0])
+                # When human says normal (True) and AI says negative (0), they match -> valid
+                # When human says abnormal (False) and AI says positive (1), they match -> valid
+                valid = bool(normal) == (not bool(result[0]))
             else:
                 valid = True
         # Update the entry in exams table
