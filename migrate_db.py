@@ -20,6 +20,8 @@ def migrate_database(old_db_path, new_db_path):
         old_db_path: Path to the old database file
         new_db_path: Path to the new database file
     """
+    print(f"Starting database migration from {old_db_path} to {new_db_path}")
+    
     if not os.path.exists(old_db_path):
         print(f"Error: Old database file {old_db_path} not found.")
         return False
@@ -31,15 +33,18 @@ def migrate_database(old_db_path, new_db_path):
     # Migrate data
     print("Migrating data...")
     try:
-        migrate_data(old_db_path, new_db_path)
-        print("Migration completed successfully!")
+        migrated_count = migrate_data(old_db_path, new_db_path)
+        print(f"Migration completed successfully! Migrated {migrated_count} records.")
         return True
     except Exception as e:
         print(f"Error during migration: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def create_new_schema(db_path):
     """Create the new database schema."""
+    print("Creating new database schema...")
     with sqlite3.connect(db_path) as conn:
         # Enable foreign key constraints
         conn.execute('PRAGMA foreign_keys = ON')
@@ -140,34 +145,105 @@ def create_new_schema(db_path):
             CREATE INDEX idx_patients_name
             ON patients(name)
         ''')
+    print("New database schema created successfully.")
 
 def migrate_data(old_db_path, new_db_path):
     """Migrate data from old database to new database."""
+    print("Connecting to databases...")
     old_conn = sqlite3.connect(old_db_path)
     new_conn = sqlite3.connect(new_db_path)
     
     try:
+        # Get column information from old database to handle schema variations
+        old_cursor = old_conn.execute('PRAGMA table_info(exams)')
+        columns = [column[1] for column in old_cursor.fetchall()]
+        print(f"Old database columns: {columns}")
+        
+        # Build SELECT query based on available columns
+        select_columns = []
+        # Map old column names to variables
+        column_mapping = {
+            'uid': 'uid',
+            'name': 'patient_name', 
+            'patient_name': 'patient_name',
+            'id': 'patient_id',
+            'patient_id': 'patient_id',
+            'age': 'patient_age',
+            'patient_age': 'patient_age',
+            'sex': 'patient_sex',
+            'patient_sex': 'patient_sex',
+            'created': 'created',
+            'protocol': 'protocol',
+            'region': 'region',
+            'reported': 'reported',
+            'report': 'report',
+            'positive': 'positive',
+            'valid': 'valid',
+            'reviewed': 'reviewed',
+            'status': 'status'
+        }
+        
+        # Check which columns exist in the old database
+        available_columns = []
+        select_list = []
+        for old_col, var_name in column_mapping.items():
+            if old_col in columns:
+                available_columns.append(var_name)
+                select_list.append(old_col)
+        
+        print(f"Available columns in old database: {select_list}")
+        
         # Get all exams from old database
-        old_cursor = old_conn.execute('''
-            SELECT uid, patient_name, patient_id, patient_age, patient_sex,
-                   created, protocol, region, report, positive, status
-            FROM exams
-        ''')
+        select_query = f"SELECT {', '.join(select_list)} FROM exams"
+        print(f"Executing query: {select_query}")
+        old_cursor = old_conn.execute(select_query)
         
         migrated_count = 0
+        processed_count = 0
+        
         for row in old_cursor:
-            uid, patient_name, patient_id, patient_age, patient_sex, created, protocol, region, report, positive, status = row
+            processed_count += 1
+            if processed_count % 100 == 0:
+                print(f"Processed {processed_count} records...")
+                
+            # Create dictionary mapping column names to values
+            row_data = dict(zip(available_columns, row))
             
+            # Extract values with defaults for missing columns
+            uid = row_data.get('uid')
+            patient_name = row_data.get('patient_name', '')
+            patient_id = row_data.get('patient_id', '')
+            patient_age = row_data.get('patient_age', -1)
+            patient_sex = row_data.get('patient_sex', 'O')
+            created = row_data.get('created')
+            protocol = row_data.get('protocol', '')
+            region = row_data.get('region', '')
+            reported = row_data.get('reported')  # This will map to ai_reports.created
+            report = row_data.get('report')
+            positive = row_data.get('positive', 0)
+            valid = row_data.get('valid', 1)  # valid -> is_correct
+            reviewed = row_data.get('reviewed', 0)
+            status = row_data.get('status', 'none')
+            
+            print(f"Processing exam {uid}: {patient_name} ({patient_id})")
+            
+            # Validate required fields
+            if not uid:
+                print(f"Warning: Skipping record with no UID")
+                continue
+                
             # Use patient_id as CNP for now (may need adjustment based on actual data)
             cnp = patient_id if patient_id else uid
             
             # Add patient record
+            print(f"  Adding patient record: {cnp}")
             new_conn.execute('''
                 INSERT OR IGNORE INTO patients (cnp, id, name, age, sex)
                 VALUES (?, ?, ?, ?, ?)
             ''', (cnp, patient_id, patient_name, patient_age, patient_sex))
             
             # Add exam record
+            print(f"  Adding exam record: {uid}")
             new_conn.execute('''
                 INSERT OR REPLACE INTO exams 
                 (uid, cnp, created, protocol, region, type, status, study, series)
@@ -176,16 +252,31 @@ def migrate_data(old_db_path, new_db_path):
             
             # Add AI report if it exists
             if report is not None:
+                # Map old 'valid' field to new 'is_correct' field
+                # In old schema: valid=1 means correct, valid=0 means incorrect
+                # In new schema: is_correct=1 means correct, is_correct=0 means incorrect, is_correct=-1 means not assessed
+                is_correct = int(valid) if valid is not None else -1
+                print(f"  Adding AI report: positive={positive}, is_correct={is_correct}")
+                
+                # Use 'reported' timestamp if available, otherwise use current timestamp
+                report_created = reported if reported else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                
                 new_conn.execute('''
                     INSERT OR REPLACE INTO ai_reports
-                    (uid, text, positive, confidence, is_correct, model, latency)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (uid, report, int(positive) if positive is not None else -1, -1, -1, None, -1))
+                    (uid, created, updated, text, positive, confidence, is_correct, model, latency)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (uid, report_created, report_created, report, 
+                      int(positive) if positive is not None else -1, 
+                      -1,  # confidence
+                      is_correct,  # is_correct (mapped from old 'valid' field)
+                      None,  # model
+                      -1))  # latency
             
             migrated_count += 1
         
         new_conn.commit()
-        print(f"Migrated {migrated_count} exams successfully.")
+        print(f"Migration completed. Processed {processed_count} records, migrated {migrated_count} successfully.")
+        return migrated_count
         
     finally:
         old_conn.close()
@@ -199,6 +290,8 @@ if __name__ == '__main__':
     
     old_db_path = sys.argv[1]
     new_db_path = sys.argv[2]
+    
+    print(f"Migrating database from '{old_db_path}' to '{new_db_path}'")
     
     success = migrate_database(old_db_path, new_db_path)
     if success:
