@@ -1681,9 +1681,21 @@ async def serve_api_spec(request):
         request: aiohttp request object
 
     Returns:
-        web.FileResponse: OpenAPI spec file response
+        web.Response: OpenAPI spec as JSON with updated server URL
     """
-    return web.FileResponse(path=os.path.join(STATIC_DIR, "spec.json"))
+    import json
+    
+    # Read the static spec file
+    spec_path = os.path.join(STATIC_DIR, "spec.json")
+    with open(spec_path, 'r') as f:
+        spec = json.load(f)
+    
+    # Update the server URL based on the request
+    server_url = f"{request.scheme}://{request.host}"
+    spec['servers'][0]['url'] = server_url
+    
+    # Return as JSON response
+    return web.json_response(spec)
 
 
 async def websocket_handler(request):
