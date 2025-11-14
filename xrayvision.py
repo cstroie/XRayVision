@@ -978,13 +978,13 @@ def db_get_error_stats():
     return stats
 
 
-def db_add_patient(cnp, patient_id, name, age, sex):
+def db_add_patient(cnp, id, name, age, sex):
     """
     Add a new patient to the database or update existing patient information.
 
     Args:
         cnp: Romanian personal identification number (primary key)
-        patient_id: Patient ID from hospital system
+        id: Patient ID from hospital system
         name: Patient full name
         age: Patient age in years
         sex: Patient sex ('M', 'F', or 'O')
@@ -993,7 +993,7 @@ def db_add_patient(cnp, patient_id, name, age, sex):
         conn.execute('''
             INSERT OR REPLACE INTO patients (cnp, id, name, age, sex)
             VALUES (?, ?, ?, ?, ?)
-        ''', (cnp, patient_id, name, age, sex))
+        ''', (cnp, id, name, age, sex))
 
 
 def db_get_weekly_processed_count():
@@ -1091,7 +1091,7 @@ def db_get_patient_exams(patient_cnp, limit=PAGE_SIZE, offset=0):
     Get all exams for a specific patient.
 
     Args:
-        patient_id: Patient identifier
+        patient_cnp: Patient identifier
         limit: Maximum number of exams to return
         offset: Number of exams to skip
 
@@ -1556,11 +1556,11 @@ def extract_dicom_metadata(ds):
             logging.error(f"Cannot convert age to number: {e}")
             # Try to compute age from PatientID if available
             if 'PatientID' in ds:
-                age = compute_age_from_id(ds.PatientID)
+                age = compute_age_from_cnp(ds.PatientID)
     else:
         # Try to compute age from PatientID if PatientAge is not available
         if 'PatientID' in ds:
-            age = compute_age_from_id(ds.PatientID)
+            age = compute_age_from_cnp(ds.PatientID)
     # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # Get the exam timestamp
@@ -2404,7 +2404,7 @@ async def send_ntfy_notification(uid, report, info):
 
 
 # API operations
-def validate_romanian_cnp(patient_id):
+def validate_romanian_cnp(patient_cnp):
     """
     Validate Romanian personal identification number (CNP) format and checksum.
 
@@ -2419,7 +2419,7 @@ def validate_romanian_cnp(patient_id):
     - Position 13: Checksum digit
 
     Args:
-        patient_id: Personal identification number as string
+        patient_cnp: Personal identification number as string
 
     Returns:
         dict: Dictionary with validation result and parsed information if valid
@@ -2433,7 +2433,7 @@ def validate_romanian_cnp(patient_id):
     """
     try:
         # Ensure we have a string and clean it
-        pid = str(patient_id).strip()
+        pid = str(patient_cnp).strip()
         # Check if it's exactly 13 digits
         if not pid or len(pid) != 13 or not pid.isdigit():
             return {'valid': False}
@@ -2508,11 +2508,11 @@ def validate_romanian_cnp(patient_id):
             'county': county
         }
     except Exception as e:
-        logging.debug(f"Error validating Romanian CNP {patient_id}: {e}")
+        logging.debug(f"Error validating Romanian CNP {patient_cnp}: {e}")
         return {'valid': False}
 
 
-def compute_age_from_id(patient_id):
+def compute_age_from_cnp(patient_cnp):
     """
     Compute patient age based on Romanian personal identification number.
 
@@ -2521,16 +2521,16 @@ def compute_age_from_id(patient_id):
     - Next 6 digits: YYMMDD (birth date)
 
     Args:
-        patient_id: Personal identification number as string
+        patient_cnp: Personal identification number as string
 
     Returns:
         int: Age in years, or -1 if unable to compute
     """
     # First validate the Romanian ID format and get parsed information
-    result = validate_romanian_cnp(patient_id)
+    result = validate_romanian_cnp(patient_cnp)
     if not result['valid']:
         return -1
-    
+    # Return the computed age
     return result['age']
 
 
@@ -2581,12 +2581,12 @@ def identify_anatomic_region(info):
     return region, question
 
 
-def db_get_previous_reports(patient_id, region, months=3):
+def db_get_previous_reports(patient_cnp, region, months=3):
     """
     Get previous reports for the same patient and region from the last few months.
 
     Args:
-        patient_id: Patient identifier
+        patient_cnp: Patient identifier
         region: Anatomic region to match
         months: Number of months to look back (default: 3)
 
@@ -2603,14 +2603,14 @@ def db_get_previous_reports(patient_id, region, months=3):
         query = """
             SELECT report, created
             FROM exams
-            WHERE id = ?
+            WHERE cnp = ?
             AND region = ?
             AND created >= ?
             AND report IS NOT NULL
             AND positive IS NOT NULL
             ORDER BY created DESC
         """
-        cursor.execute(query, (patient_id, region, cutoff_date_str))
+        cursor.execute(query, (patient_cnp, region, cutoff_date_str))
         results = cursor.fetchall()
 
     return results
