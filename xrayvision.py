@@ -310,6 +310,7 @@ def db_init():
     exams:
         - uid (TEXT, PRIMARY KEY): Unique exam identifier (SOP Instance UID)
         - cnp (TEXT, FOREIGN KEY): References patients.cnp
+        - id (TEXT): Imaging study ID from HIS
         - created (TIMESTAMP): Exam timestamp from DICOM
         - protocol (TEXT): Imaging protocol name from DICOM
         - region (TEXT): Anatomic region identified from protocol
@@ -370,6 +371,7 @@ def db_init():
             CREATE TABLE IF NOT EXISTS exams (
                 uid TEXT PRIMARY KEY,
                 cnp TEXT,
+                id TEXT,
                 created TIMESTAMP,
                 protocol TEXT,
                 region TEXT,
@@ -574,6 +576,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 'type': row[29],
                 'study': row[30],
                 'series': row[31],
+                'id': row[32],  # HIS study ID
             })
         # Get the total for pagination
         count_query = """
@@ -620,6 +623,7 @@ def db_add_exam(info, report=None, positive=None):
         values = (
             info['uid'],
             info["patient"]["id"],  # cnp (foreign key to patients)
+            info["exam"]["id"] if "id" in info["exam"] else None,  # HIS study ID
             info["exam"]['created'],
             info["exam"]["protocol"],
             info['exam']['region'],
@@ -630,8 +634,8 @@ def db_add_exam(info, report=None, positive=None):
         )
         conn.execute('''
             INSERT OR REPLACE INTO exams
-                (uid, cnp, created, protocol, region, type, status, study, series)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (uid, cnp, id, created, protocol, region, type, status, study, series)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', values)
         
         # If report is provided, add it to ai_reports table
@@ -1585,6 +1589,7 @@ def extract_dicom_metadata(ds):
             'region': str(ds.ProtocolName),
             'study': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
             'series': str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None,
+            'id': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,  # HIS study ID
         }
     }
     # Check gender

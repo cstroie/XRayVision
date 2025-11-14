@@ -28,6 +28,7 @@ Stores exam metadata and processing status.
 |--------|------|-------------|
 | uid | TEXT (PRIMARY KEY) | Unique exam identifier (SOP Instance UID) |
 | cnp | TEXT (FOREIGN KEY) | References patients.cnp |
+| id | TEXT | Imaging study ID from HIS |
 | created | TIMESTAMP | Exam timestamp from DICOM |
 | protocol | TEXT | Imaging protocol name from DICOM |
 | region | TEXT | Anatomic region identified from protocol |
