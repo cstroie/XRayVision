@@ -509,8 +509,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     query = f"""
         SELECT 
             e.uid, p.name, p.cnp, p.age, p.sex, e.created, e.protocol, e.region, 
-            ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, e.status,
-            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated
+            ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, ar.confidence, ar.model, ar.latency,
+            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
+            e.status
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
