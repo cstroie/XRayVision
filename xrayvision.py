@@ -1289,13 +1289,35 @@ def db_purge_ignored_errors():
     Delete ignored and erroneous records older than 1 week and their associated files.
 
     Removes database entries with status 'ignore' or 'error' that are older than
-    1 week, along with their corresponding DICOM and PNG files from the filesystem.
+    1 week, along with their corresponding DICOM and PNG files from the filesystem
+    and associated AI and radiologist reports.
 
     Returns:
         int: Number of records deleted
     """
     deleted_uids = []
     with sqlite3.connect(DB_FILE) as conn:
+        # First delete associated AI reports
+        conn.execute('''
+            DELETE FROM ai_reports
+            WHERE uid IN (
+                SELECT uid FROM exams
+                WHERE status IN ('ignore', 'error')
+                AND created < datetime('now', '-7 days')
+            )
+        ''')
+        
+        # Then delete associated radiologist reports
+        conn.execute('''
+            DELETE FROM rad_reports
+            WHERE uid IN (
+                SELECT uid FROM exams
+                WHERE status IN ('ignore', 'error')
+                AND created < datetime('now', '-7 days')
+            )
+        ''')
+        
+        # Finally delete the exams and get the UIDs for file cleanup
         cursor = conn.execute('''
             DELETE FROM exams
             WHERE status IN ('ignore', 'error')
