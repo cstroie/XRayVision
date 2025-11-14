@@ -575,7 +575,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'short': row[10] and 'yes' or 'no' if row[10] is not None else 'no',
                         'datetime': row[8],
                         'positive': bool(row[10]) if row[10] is not None else False,
-                        'correct': bool(row[11]) if (row[11] is not None and row[11] != -1) else None,
+                        'correct': (row[11] == row[16] and row[11] is not None and row[11] > -1) if (row[11] is not None and row[16] is not None) else None,
                         'reviewed': bool(row[19] >= 0) if row[19] is not None else False,
                         'confidence': row[13] if row[13] is not None else -1,
                         'model': row[14],
