@@ -502,7 +502,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
     # Update the conditions with proper parameterization
     if 'reviewed' in filters:
-        conditions.append("ar.positive = ?")
+        conditions.append("ar.reviewed = ?")
         params.append(filters['reviewed'])
     if 'positive' in filters:
         conditions.append("ar.positive = ?")
@@ -530,7 +530,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     query = f"""
         SELECT 
             e.uid, p.name, p.cnp, p.age, p.sex, e.created, e.protocol, e.region, 
-            ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, ar.confidence, ar.model, ar.latency,
+            ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, ar.confidence, ar.model, ar.latency, ar.reviewed,
             rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
             e.status, e.type, e.study, e.series, e.id
         FROM exams e
@@ -576,7 +576,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'datetime': row[8],
                         'positive': bool(row[10]) if row[10] is not None else False,
                         'correct': bool(row[11]) if row[11] is not None else False,
-                        'reviewed': bool(row[12]) if row[12] is not None else False,
+                        'reviewed': bool(row[16]) if row[16] is not None else False,
                         'confidence': row[13] if row[13] is not None else -1,
                         'model': row[14],
                         'latency': row[15] if row[15] is not None else -1,
