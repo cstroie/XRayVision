@@ -65,6 +65,7 @@ def create_new_schema(db_path):
             CREATE TABLE exams (
                 uid TEXT PRIMARY KEY,
                 cnp TEXT,
+                id TEXT,
                 created TIMESTAMP,
                 protocol TEXT,
                 region TEXT,
@@ -238,9 +239,9 @@ def migrate_data(old_db_path, new_db_path):
             # Add exam record
             new_conn.execute('''
                 INSERT OR REPLACE INTO exams 
-                (uid, cnp, created, protocol, region, type, status, study, series)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (uid, cnp, created, protocol, region, '', status or 'none', None, None))
+                (uid, cnp, id, created, protocol, region, type, status, study, series)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (uid, cnp, None, created, protocol, region, '', status or 'none', None, None))
             
             # Add AI report if it exists
             if report is not None:
