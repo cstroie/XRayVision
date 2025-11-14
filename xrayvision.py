@@ -2491,8 +2491,8 @@ def validate_romanian_cnp(patient_cnp):
             birth_date = datetime(full_year, month, day)
         except ValueError:
             return {'valid': False}
-        # Validate county code (01-52, 70, or 99)
-        if not ((1 <= county <= 52) or county == 70 or county == 99):
+        # Validate county code (01-52 excluding 47-50, 70-79, 90-99)
+        if not ((1 <= county <= 52 and not (47 <= county <= 50)) or (70 <= county <= 79) or (90 <= county <= 99)):
             return {'valid': False}
         # Get county name
         county_name = county_names.get(county, "Unknown")
