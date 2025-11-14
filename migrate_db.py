@@ -149,7 +149,6 @@ def create_new_schema(db_path):
 
 def migrate_data(old_db_path, new_db_path):
     """Migrate data from old database to new database."""
-    print("Connecting to databases...")
     old_conn = sqlite3.connect(old_db_path)
     new_conn = sqlite3.connect(new_db_path)
     
@@ -157,7 +156,6 @@ def migrate_data(old_db_path, new_db_path):
         # Get column information from old database to handle schema variations
         old_cursor = old_conn.execute('PRAGMA table_info(exams)')
         columns = [column[1] for column in old_cursor.fetchall()]
-        print(f"Old database columns: {columns}")
         
         # Build SELECT query based on available columns
         select_columns = []
@@ -191,11 +189,8 @@ def migrate_data(old_db_path, new_db_path):
                 available_columns.append(var_name)
                 select_list.append(old_col)
         
-        print(f"Available columns in old database: {select_list}")
-        
         # Get all exams from old database
         select_query = f"SELECT {', '.join(select_list)} FROM exams"
-        print(f"Executing query: {select_query}")
         old_cursor = old_conn.execute(select_query)
         
         migrated_count = 0
@@ -225,8 +220,6 @@ def migrate_data(old_db_path, new_db_path):
             reviewed = row_data.get('reviewed', 0)
             status = row_data.get('status', 'none')
             
-            print(f"Processing exam {uid}: {patient_name} ({patient_id})")
-            
             # Validate required fields
             if not uid:
                 print(f"Warning: Skipping record with no UID")
@@ -236,14 +229,12 @@ def migrate_data(old_db_path, new_db_path):
             cnp = patient_id if patient_id else uid
             
             # Add patient record
-            print(f"  Adding patient record: {cnp}")
             new_conn.execute('''
                 INSERT OR IGNORE INTO patients (cnp, id, name, age, sex)
                 VALUES (?, ?, ?, ?, ?)
             ''', (cnp, patient_id, patient_name, patient_age, patient_sex))
             
             # Add exam record
-            print(f"  Adding exam record: {uid}")
             new_conn.execute('''
                 INSERT OR REPLACE INTO exams 
                 (uid, cnp, created, protocol, region, type, status, study, series)
@@ -256,7 +247,6 @@ def migrate_data(old_db_path, new_db_path):
                 # In old schema: valid=1 means correct, valid=0 means incorrect
                 # In new schema: is_correct=1 means correct, is_correct=0 means incorrect, is_correct=-1 means not assessed
                 is_correct = int(valid) if valid is not None else -1
-                print(f"  Adding AI report: positive={positive}, is_correct={is_correct}")
                 
                 # Use 'reported' timestamp if available, otherwise use current timestamp
                 report_created = reported if reported else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -275,7 +265,6 @@ def migrate_data(old_db_path, new_db_path):
             migrated_count += 1
         
         new_conn.commit()
-        print(f"Migration completed. Processed {processed_count} records, migrated {migrated_count} successfully.")
         return migrated_count
         
     finally:
