@@ -575,8 +575,8 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'short': row[10] and 'yes' or 'no' if row[10] is not None else 'no',
                         'datetime': row[8],
                         'positive': bool(row[10]) if row[10] is not None else False,
-                        'correct': bool(row[11]) if row[11] is not None else False,
-                        'reviewed': bool(row[16]) if row[16] is not None else False,
+                        'correct': bool(row[19] and row[11]) if (row[19] >= 0 and row[11] is not None) else None,
+                        'reviewed': bool(row[19] >= 0) if row[19] is not None else False,
                         'confidence': row[13] if row[13] is not None else -1,
                         'model': row[14],
                         'latency': row[15] if row[15] is not None else -1,
@@ -1403,7 +1403,9 @@ def db_validate(uid, normal=True, correct=None, enqueue=False):
         if enqueue:
             conn.execute("UPDATE exams SET status = 'queued' WHERE uid = ?", (uid,))
         # Update the ai_reports table with correctness info and mark as reviewed
-        conn.execute("UPDATE ai_reports SET is_correct = ?, reviewed = TRUE, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
+        #conn.execute("UPDATE ai_reports SET is_correct = ?, reviewed = TRUE, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
+        # Update the rad_reports table to mark as reviewed
+        conn.execute("UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?", (int(abnormal), 'radiologie', uid))
     return correct
 
 
