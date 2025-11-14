@@ -910,14 +910,15 @@ async def db_get_stats():
 
         # Get temporal trends (last 30 days only to reduce memory usage)
         cursor.execute("""
-            SELECT DATE(created) as date,
-                   region,
+            SELECT DATE(e.created) as date,
+                   e.region,
                    COUNT(*) as total,
-                   SUM(positive = 1) as positive
-            FROM exams
-            WHERE status LIKE 'done'
-              AND created >= date('now', '-30 days')
-            GROUP BY DATE(created), region
+                   SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status LIKE 'done'
+              AND e.created >= date('now', '-30 days')
+            GROUP BY DATE(e.created), e.region
             ORDER BY date
         """)
         trends_data = cursor.fetchall()
@@ -935,14 +936,15 @@ async def db_get_stats():
 
         # Get monthly trends (last 12 months only to reduce memory usage)
         cursor.execute("""
-            SELECT strftime('%Y-%m', created) as month,
-                   region,
+            SELECT strftime('%Y-%m', e.created) as month,
+                   e.region,
                    COUNT(*) as total,
-                   SUM(positive = 1) as positive
-            FROM exams
-            WHERE status LIKE 'done'
-              AND created >= date('now', '-12 months')
-            GROUP BY strftime('%Y-%m', created), region
+                   SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status LIKE 'done'
+              AND e.created >= date('now', '-12 months')
+            GROUP BY strftime('%Y-%m', e.created), e.region
             ORDER BY month
         """)
         monthly_trends_data = cursor.fetchall()
