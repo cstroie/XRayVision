@@ -2008,7 +2008,7 @@ async def patient_handler(request):
         exam_uids = db_get_patient_exam_uids(cnp)
         
         # Add exam UIDs to patient data
-        patient['exam_uids'] = exam_uids
+        patient['exams'] = exam_uids
         
         # Anonymize patient data for non-admin users
         if user_role != 'admin':
