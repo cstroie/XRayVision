@@ -1755,6 +1755,9 @@ async def exams_handler(request):
         
         # Anonymize patient data for non-admin users
         for exam in data:
+            # Add CNP to patient data (using patient ID as CNP)
+            exam['patient']['cnp'] = exam['patient']['id']
+            
             if user_role != 'admin':
                 # Anonymize the patient name
                 exam['patient']['name'] = extract_patient_initials(exam['patient']['name'])
