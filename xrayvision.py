@@ -1578,7 +1578,7 @@ def extract_dicom_metadata(ds):
         'uid': str(ds.SOPInstanceUID),
         'patient': {
             'name':  str(ds.PatientName),
-            'id':    str(ds.PatientID),
+            'cnp':    str(ds.PatientID),
             'age':   age,
             'sex':   str(ds.PatientSex),
             'bdate': str(ds.PatientBirthDate),
@@ -1595,9 +1595,9 @@ def extract_dicom_metadata(ds):
     # Check gender
     if not info['patient']['sex'] in ['M', 'F', 'O']:
         # Try to determine from ID only if it's a valid Romanian ID
-        if validate_romanian_id(info['patient']['id']):
+        if validate_romanian_id(info['patient']['cnp']):
             try:
-                info['patient']['sex'] = int(info['patient']['id'][0]) % 2 == 0 and 'F' or 'M'
+                info['patient']['sex'] = int(info['patient']['cnp'][0]) % 2 == 0 and 'F' or 'M'
             except:
                 info['patient']['sex'] = 'O'
         else:
@@ -1874,15 +1874,7 @@ async def exams_handler(request):
                     exam['patient']['cnp'] = patient_cnp
                 else:
                     exam['patient']['cnp'] = 'Unknown'
-                # Show only first 7 digits of patient ID
-                patient_id = exam['patient']['id']
-                if patient_id and len(patient_id) > 7:
-                    exam['patient']['id'] = patient_id[:7] + '...'
-                elif patient_id:
-                    exam['patient']['id'] = patient_id
-                else:
-                    exam['patient']['id'] = 'Unknown'
-        
+        # Return the response
         return web.json_response({
             "exams": data,
             "total": total,
@@ -2004,14 +1996,6 @@ async def patients_handler(request):
                     patient['cnp'] = patient_cnp
                 else:
                     patient['cnp'] = 'Unknown'
-                # Show only first 7 digits of patient ID
-                patient_id = patient['id']
-                if patient_id and len(patient_id) > 7:
-                    patient['id'] = patient_id[:7] + '...'
-                elif patient_id:
-                    patient['id'] = patient_id
-                else:
-                    patient['id'] = 'Unknown'
         
         return web.json_response({
             "patients": patients,
@@ -2068,14 +2052,6 @@ async def patient_handler(request):
                 patient['cnp'] = patient_cnp
             else:
                 patient['cnp'] = 'Unknown'
-            # Show only first 7 digits of patient ID
-            patient_id = patient['id']
-            if patient_id and len(patient_id) > 7:
-                patient['id'] = patient_id[:7] + '...'
-            elif patient_id:
-                patient['id'] = patient_id
-            else:
-                patient['id'] = 'Unknown'
         
         return web.json_response(patient)
     except Exception as e:
@@ -2121,15 +2097,7 @@ async def exam_handler(request):
                 exam['patient']['cnp'] = patient_cnp
             else:
                 exam['patient']['cnp'] = 'Unknown'
-            # Show only first 7 digits of patient ID
-            patient_id = exam['patient']['id']
-            if patient_id and len(patient_id) > 7:
-                exam['patient']['id'] = patient_id[:7] + '...'
-            elif patient_id:
-                exam['patient']['id'] = patient_id
-            else:
-                exam['patient']['id'] = 'Unknown'
-        
+        # Return the exam data
         return web.json_response(exam)
     except Exception as e:
         logging.error(f"Exam endpoint error: {e}")
@@ -2774,7 +2742,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         else:
             anatomy = ""
         # Get previous reports for the same patient and region
-        previous_reports = db_get_previous_reports(exam['patient']['id'], region, months=3)
+        previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
 
         # Create the prompt
         prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
