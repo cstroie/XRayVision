@@ -317,10 +317,14 @@
 
         function triggerQuery() {
             const hours = document.getElementById('queryInterval').value;
+            if (!hours) {
+                showToast("Please select hours");
+                return;
+            }
             fetch('/api/trigger_query', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hours: hours })
+                body: JSON.stringify({ hours: parseInt(hours) })
             })
             .then(response => response.json())
             .then(data => {
@@ -329,6 +333,7 @@
             })
             .catch(error => {
                 console.error('Error triggering query:', error);
+                showToast("Error triggering query");
             });
         }
 
@@ -360,16 +365,16 @@
             const status = document.getElementById("filter-status").value;
             const params = new URLSearchParams();
             params.append('page', page);
-            if (reviewed) params.append('reviewed', reviewed);
-            if (positive) params.append('positive', positive);
-            if (valid)    params.append('valid', valid);
-            if (region)   params.append('region', region);
-            if (status)   params.append('status', status)
-            else          params.append('status', 'done');
+            if (reviewed && reviewed !== 'any') params.append('reviewed', reviewed);
+            if (positive && positive !== 'any') params.append('positive', positive);
+            if (valid && valid !== 'any') params.append('valid', valid);
+            if (region && region !== 'any') params.append('region', region);
+            if (status && status !== 'any') params.append('status', status);
+            else params.append('status', 'done');
             if (search === '') {
                 search = document.getElementById("search-input").value.trim();
             };
-            if (search)   params.append('search', search);
+            if (search) params.append('search', search);
             const queryString = params.toString();
             const url = `/api/exams?${queryString}`;
             fetch(url)
@@ -379,7 +384,7 @@
                     const totalCount = data.total || 0;
                     totalPages = data.pages || 1;
 
-	            document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
+                    document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
                     document.getElementById('pageSelect').innerHTML = '';
 
                     const select = document.getElementById("pageSelect");
@@ -459,12 +464,8 @@
                 let isPositive = item.report.positive;
                 let isReviewed = item.report.reviewed;
                 let isValid = item.report.valid;
-                if (item.report.text) {
-                    //isPositive = item.report.text.trim().toLowerCase().startsWith('yes');
-                    text = item.report.text;
-                } else {
-                    text = "";
-                }
+                let text = item.report.text || "";
+                
                 let date = item.exam.date;
                 let time = item.exam.time;
                 let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
@@ -482,7 +483,7 @@
                 examsHtml += `
                     <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsValid} ${clsStatus}" id="card-${item.uid}">
                         <figure class="xray">
-                            <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
+                            <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(text)}', ${isValid}, ${isPositive})">
                             <div role="group">
                                 <button class="abnormal" onclick="validate('${item.uid}', false)">⚠️ Abnormal</button>
                                 <button class="normal" onclick="validate('${item.uid}', true)">✓ Normal</button>
