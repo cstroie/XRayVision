@@ -1674,6 +1674,18 @@ async def serve_favicon(request):
     return web.FileResponse(path=os.path.join(STATIC_DIR, "favicon.ico"))
 
 
+async def serve_api_spec(request):
+    """Serve the OpenAPI specification file.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.FileResponse: OpenAPI spec file response
+    """
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "spec.json"))
+
+
 async def websocket_handler(request):
     """Handle WebSocket connections for real-time dashboard updates.
 
@@ -2602,6 +2614,7 @@ async def start_dashboard():
     app.router.add_get('/about', serve_about_page)
     app.router.add_get('/check', serve_check_page)
     app.router.add_get('/favicon.ico', serve_favicon)
+    app.router.add_get('/api/spec', serve_api_spec)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/api/exams', exams_handler)
     app.router.add_get('/api/stats', stats_handler)
