@@ -86,6 +86,7 @@ def create_new_schema(db_path):
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
                 is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
+                reviewed BOOLEAN DEFAULT FALSE,
                 model TEXT,
                 latency INTEGER DEFAULT -1,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
@@ -254,12 +255,13 @@ def migrate_data(old_db_path, new_db_path):
                 
                 new_conn.execute('''
                     INSERT OR REPLACE INTO ai_reports
-                    (uid, created, updated, text, positive, confidence, is_correct, model, latency)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (uid, created, updated, text, positive, confidence, is_correct, reviewed, model, latency)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (uid, report_created, report_created, report, 
                       int(positive) if positive is not None else -1, 
                       -1,  # confidence
                       is_correct,  # is_correct (mapped from old 'valid' field)
+                      True,  # reviewed (set to True since we have a report)
                       None,  # model
                       -1))  # latency
                 
