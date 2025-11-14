@@ -1402,8 +1402,6 @@ def db_validate(uid, normal=True, correct=None, enqueue=False):
             conn.execute("UPDATE exams SET status = 'queued' WHERE uid = ?", (uid,))
         # Update the ai_reports table with correctness info
         conn.execute("UPDATE ai_reports SET is_correct = ?, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
-        # Update radiologist report positive field as well
-        conn.execute("UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(abnormal), uid))
     return correct
 
 
@@ -2196,7 +2194,7 @@ async def validate(request):
     normal = data.get('normal', None)
     # Correct/Incorrect a study, send only the 'normal' attribute
     is_correct = db_validate(uid, normal)
-    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {is_correct and 'corrects' or 'incorrects'} the report.")
+    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {is_correct and 'validates' or 'invalidates'} the report.")
     payload = {'uid': uid, 'is_correct': is_correct}
     await broadcast_dashboard_update(event = "validate", payload = payload)
     response = {'status': 'success'}
