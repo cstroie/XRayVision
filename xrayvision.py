@@ -1869,6 +1869,14 @@ async def exams_handler(request):
                     exam['patient']['cnp'] = patient_cnp
                 else:
                     exam['patient']['cnp'] = 'Unknown'
+                # Show only first 7 digits of patient ID
+                patient_id = exam['patient']['id']
+                if patient_id and len(patient_id) > 7:
+                    exam['patient']['id'] = patient_id[:7] + '...'
+                elif patient_id:
+                    exam['patient']['id'] = patient_id
+                else:
+                    exam['patient']['id'] = 'Unknown'
         
         return web.json_response({
             "exams": data,
@@ -1991,6 +1999,14 @@ async def patients_handler(request):
                     patient['cnp'] = patient_cnp
                 else:
                     patient['cnp'] = 'Unknown'
+                # Show only first 7 digits of patient ID
+                patient_id = patient['id']
+                if patient_id and len(patient_id) > 7:
+                    patient['id'] = patient_id[:7] + '...'
+                elif patient_id:
+                    patient['id'] = patient_id
+                else:
+                    patient['id'] = 'Unknown'
         
         return web.json_response({
             "patients": patients,
@@ -2047,6 +2063,14 @@ async def patient_handler(request):
                 patient['cnp'] = patient_cnp
             else:
                 patient['cnp'] = 'Unknown'
+            # Show only first 7 digits of patient ID
+            patient_id = patient['id']
+            if patient_id and len(patient_id) > 7:
+                patient['id'] = patient_id[:7] + '...'
+            elif patient_id:
+                patient['id'] = patient_id
+            else:
+                patient['id'] = 'Unknown'
         
         return web.json_response(patient)
     except Exception as e:
@@ -2092,6 +2116,14 @@ async def exam_handler(request):
                 exam['patient']['cnp'] = patient_cnp
             else:
                 exam['patient']['cnp'] = 'Unknown'
+            # Show only first 7 digits of patient ID
+            patient_id = exam['patient']['id']
+            if patient_id and len(patient_id) > 7:
+                exam['patient']['id'] = patient_id[:7] + '...'
+            elif patient_id:
+                exam['patient']['id'] = patient_id
+            else:
+                exam['patient']['id'] = 'Unknown'
         
         return web.json_response(exam)
     except Exception as e:
