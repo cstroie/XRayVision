@@ -495,8 +495,6 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if 'status' in filters:
         conditions.append("LOWER(e.status) = ?")
         params.append(filters['status'].lower())
-    else:
-        conditions.append("e.status = 'done'")
     if 'search' in filters:
         conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.id) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
