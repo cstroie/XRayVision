@@ -510,7 +510,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         SELECT 
             e.uid, p.name, p.cnp, p.age, p.sex, e.created, e.protocol, e.region, 
             ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, e.status,
-            rr.text, rr.positive, rr.severity, rr.summary
+            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
@@ -543,12 +543,22 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     'region': row[7],
                 },
                 'report': {
-                    'text': row[9],
-                    'short': row[10] and 'yes' or 'no' if row[10] is not None else 'no',
-                    'datetime': row[8],
-                    'positive': bool(row[10]) if row[10] is not None else False,
-                    'valid': bool(row[11]) if row[11] is not None else False,
-                    'reviewed': bool(row[12]) if row[12] is not None else False,
+                    'ai': {
+                        'text': row[9],
+                        'short': row[10] and 'yes' or 'no' if row[10] is not None else 'no',
+                        'datetime': row[8],
+                        'positive': bool(row[10]) if row[10] is not None else False,
+                        'valid': bool(row[11]) if row[11] is not None else False,
+                        'reviewed': bool(row[12]) if row[12] is not None else False,
+                    },
+                    'rad': {
+                        'text': row[14],
+                        'positive': bool(row[15]) if row[15] is not None else False,
+                        'severity': row[16] if row[16] is not None else -1,
+                        'summary': row[17],
+                        'created': row[18],
+                        'updated': row[19],
+                    }
                 },
                 'status': row[13],
             })
