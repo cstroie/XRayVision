@@ -1368,13 +1368,14 @@ def db_backup():
         return None
 
 
-def db_validate(uid, normal = True, correct = None, enqueue = False):
+def db_validate(uid, normal=True, correct=None, enqueue=False):
     """
     Mark the entry as correct or incorrect based on human review.
 
     When a radiologist reviews a case, they indicate if the finding is normal (negative)
     or abnormal (positive). This function compares that human assessment with the AI's
     prediction to determine if the AI was correct (correct=True) or incorrect (correct=False).
+    
     Args:
         uid: The unique identifier of the exam
         normal: Whether the human reviewer marked the case as normal (True) or abnormal (False)
@@ -1397,18 +1398,12 @@ def db_validate(uid, normal = True, correct = None, enqueue = False):
             else:
                 correct = True
         # Update the entry in exams table
-        columns = []
-        params = []
         if enqueue:
-            columns.append("status = 'queued'")
-        params.append(uid)
-        set_clause = 'SET ' + ','.join(columns) if columns else ''
-        if set_clause:
-            conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
+            conn.execute("UPDATE exams SET status = 'queued' WHERE uid = ?", (uid,))
         # Update the ai_reports table with correctness info
-        conn.execute("UPDATE ai_reports SET is_correct = ? WHERE uid = ?", (int(correct), uid))
+        conn.execute("UPDATE ai_reports SET is_correct = ?, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
         # Update radiologist report positive field as well
-        conn.execute("UPDATE rad_reports SET positive = ? WHERE uid = ?", (int(abnormal), uid))
+        conn.execute("UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(abnormal), uid))
     return correct
 
 
