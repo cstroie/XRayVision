@@ -511,7 +511,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             e.uid, p.name, p.cnp, p.age, p.sex, e.created, e.protocol, e.region, 
             ar.created, ar.text, ar.positive, ar.is_correct, ar.updated, ar.confidence, ar.model, ar.latency,
             rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
-            e.status
+            e.status, e.type, e.study, e.series
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
@@ -571,6 +571,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     }
                 },
                 'status': row[28],
+                'type': row[29],
+                'study': row[30],
+                'series': row[31],
             })
         # Get the total for pagination
         count_query = """
