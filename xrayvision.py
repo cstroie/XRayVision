@@ -2468,8 +2468,8 @@ def validate_romanian_cnp(patient_id):
             datetime(full_year, month, day)
         except ValueError:
             return False
-        # Validate county code (01-52 or 99)
-        if not ((1 <= county <= 52) or county == 99):
+        # Validate county code (01-52, 70, or 99)
+        if not ((1 <= county <= 52) or county == 70 or county == 99):
             return False
         # Validate checksum using the official algorithm
         # Weights for each digit position
