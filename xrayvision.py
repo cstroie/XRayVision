@@ -626,8 +626,8 @@ def db_add_exam(info, report=None, positive=None):
     """
     # Add or update patient information
     db_add_patient(
-        info["patient"]["id"],  # Using patient ID as CNP for now
-        info["patient"]["id"],
+        info["patient"]["cnp"],  # Using patient CNP
+        info["patient"]["cnp"],  # Using patient CNP as ID
         info["patient"]["name"],
         info["patient"]["age"],
         info["patient"]["sex"]
@@ -640,15 +640,15 @@ def db_add_exam(info, report=None, positive=None):
     with sqlite3.connect(DB_FILE) as conn:
         values = (
             info['uid'],
-            info["patient"]["id"],  # cnp (foreign key to patients)
-            info["exam"]["id"] if "id" in info["exam"] else None,  # HIS study ID
+            info["patient"]["cnp"],  # cnp (foreign key to patients)
+            info["exam"].get("id"),  # HIS study ID
             info["exam"]['created'],
             info["exam"]["protocol"],
             info['exam']['region'],
-            info["exam"]["type"] if "type" in info["exam"] else "",
+            info["exam"].get("type", ""),  # Use .get() for safer access
             status,
-            info["exam"]["study"] if "study" in info["exam"] else None,
-            info["exam"]["series"] if "series" in info["exam"] else None
+            info["exam"].get("study"),  # Use .get() for safer access
+            info["exam"].get("series")  # Use .get() for safer access
         )
         conn.execute('''
             INSERT OR REPLACE INTO exams
