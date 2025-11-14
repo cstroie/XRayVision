@@ -461,10 +461,10 @@
 
             let examsHtml = '';
             data.forEach(item => {
-                let isPositive = item.report.positive;
-                let isReviewed = item.report.reviewed;
-                let isValid = item.report.valid;
-                let text = item.report.text || "";
+                let isPositive = item.report.ai.positive;
+                let isReviewed = item.report.ai.reviewed;
+                let isValid = item.report.ai.valid;
+                let text = item.report.ai.text || "";
                 
                 let date = item.exam.date;
                 let time = item.exam.time;
@@ -477,7 +477,7 @@
                 let clsReviewed = isReviewed ? 'reviewed' : '';
                 let clsValid = isValid ? '' : 'invalid';
                 let clsPositive = isPositive ? 'positive' : '';
-                let clsStatus = item.status || '';
+                let clsStatus = item.exam.status || '';
                 let signPozNeg = isPositive ? '&#x2795;' : '&#x2796;'
 
                 examsHtml += `
