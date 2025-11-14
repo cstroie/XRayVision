@@ -2029,6 +2029,51 @@ async def patient_handler(request):
         return web.json_response({"error": "Internal server error"}, status=500)
 
 
+async def exam_handler(request):
+    """Provide a single exam's data by UID.
+
+    Retrieves a specific exam from the database by its UID, including
+    all associated patient and report data.
+
+    Args:
+        request: aiohttp request object with UID parameter
+
+    Returns:
+        web.json_response: JSON response with exam data or error
+    """
+    try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
+        # Get UID from URL parameter
+        uid = request.match_info['uid']
+        
+        # Get exam from database
+        exams, _ = db_get_exams(search=uid)
+        if not exams:
+            return web.json_response({"error": "Exam not found"}, status=404)
+        
+        exam = exams[0]
+        
+        # Anonymize patient data for non-admin users
+        if user_role != 'admin':
+            # Anonymize the patient name
+            exam['patient']['name'] = extract_patient_initials(exam['patient']['name'])
+            # Show only first 7 digits of patient CNP
+            patient_cnp = exam['patient']['cnp']
+            if patient_cnp and len(patient_cnp) > 7:
+                exam['patient']['cnp'] = patient_cnp[:7] + '...'
+            elif patient_cnp:
+                exam['patient']['cnp'] = patient_cnp
+            else:
+                exam['patient']['cnp'] = 'Unknown'
+        
+        return web.json_response(exam)
+    except Exception as e:
+        logging.error(f"Exam endpoint error: {e}")
+        return web.json_response({"error": "Internal server error"}, status=500)
+
+
 async def manual_query(request):
     """Trigger a manual DICOM query/retrieve operation.
 
@@ -2814,6 +2859,7 @@ async def start_dashboard():
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/patients', patients_handler)
     app.router.add_get('/api/patients/{cnp}', patient_handler)
+    app.router.add_get('/api/exams/{uid}', exam_handler)
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/trigger_query', manual_query)

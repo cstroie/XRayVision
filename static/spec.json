@@ -797,6 +797,58 @@
         }
       }
     },
+    "/api/exams/{uid}": {
+      "get": {
+        "summary": "Get exam by UID",
+        "description": "Provide a single exam's data by UID",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exam UID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exam data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Exam"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exam not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/api/validate": {
       "post": {
         "summary": "Validate exam",

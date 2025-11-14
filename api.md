@@ -184,6 +184,48 @@ Provide a single patient's data by CNP.
 }
 ```
 
+#### GET /api/exams/{uid}
+Provide a single exam's data by UID.
+
+**Path Parameters:**
+- `uid` (string) - Exam UID
+
+**Response:**
+```json
+{
+  "uid": "string",
+  "patient": {
+    "name": "string",
+    "cnp": "string",
+    "age": "integer",
+    "sex": "string"
+  },
+  "exam": {
+    "created": "string",
+    "date": "string",
+    "time": "string",
+    "protocol": "string",
+    "region": "string"
+  },
+  "report": {
+    "text": "string",
+    "short": "string",
+    "datetime": "string",
+    "positive": "boolean",
+    "valid": "boolean",
+    "reviewed": "boolean"
+  },
+  "status": "string"
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": "Exam not found"
+}
+```
+
 #### POST /api/validate
 Mark a study as valid or invalid based on human review.
 
