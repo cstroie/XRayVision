@@ -1595,7 +1595,7 @@ def extract_dicom_metadata(ds):
     # Check gender
     if not info['patient']['sex'] in ['M', 'F', 'O']:
         # Try to determine from ID only if it's a valid Romanian ID
-        if validate_romanian_id(info['patient']['cnp']):
+        if validate_romanian_cnp(info['patient']['cnp']):
             try:
                 info['patient']['sex'] = int(info['patient']['cnp'][0]) % 2 == 0 and 'F' or 'M'
             except:
@@ -2406,7 +2406,7 @@ async def send_ntfy_notification(uid, report, info):
 
 
 # API operations
-def validate_romanian_id(patient_id):
+def validate_romanian_cnp(patient_id):
     """
     Validate Romanian personal identification number (CNP) format and checksum.
 
@@ -2483,7 +2483,7 @@ def validate_romanian_id(patient_id):
         # Compare with provided checksum digit
         return checksum == checksum_digit
     except Exception as e:
-        logging.debug(f"Error validating Romanian ID {patient_id}: {e}")
+        logging.debug(f"Error validating Romanian CNP {patient_id}: {e}")
         return False
 
 
@@ -2502,7 +2502,7 @@ def compute_age_from_id(patient_id):
         int: Age in years, or -1 if unable to compute
     """
     # First validate the Romanian ID format
-    if not validate_romanian_id(patient_id):
+    if not validate_romanian_cnp(patient_id):
         return -1
     try:
         # Ensure we have a string
