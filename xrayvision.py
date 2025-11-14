@@ -483,7 +483,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         **filters: Optional filters for querying exams:
             - reviewed: Filter by review status (0/1)
             - positive: Filter by AI prediction (0/1)
-            - valid: Filter by validation status (0/1)
+            - correct: Filter by correctness status (0/1)
             - region: Filter by anatomic region (case-insensitive partial
               match)
             - status: Filter by processing status (case-insensitive exact
@@ -506,9 +506,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if 'positive' in filters:
         conditions.append("ar.positive = ?")
         params.append(filters['positive'])
-    if 'valid' in filters:
+    if 'correct' in filters:
         conditions.append("ar.is_correct = ?")
-        params.append(filters['valid'])
+        params.append(filters['correct'])
     if 'region' in filters:
         conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
@@ -574,7 +574,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'short': row[10] and 'yes' or 'no' if row[10] is not None else 'no',
                         'datetime': row[8],
                         'positive': bool(row[10]) if row[10] is not None else False,
-                        'valid': bool(row[11]) if row[11] is not None else False,
+                        'correct': bool(row[11]) if row[11] is not None else False,
                         'reviewed': bool(row[12]) if row[12] is not None else False,
                         'confidence': row[13] if row[13] is not None else -1,
                         'model': row[14],
@@ -676,7 +676,7 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_
         confidence: AI confidence score (0-100)
         model: Name of the model used
         latency: Processing time in seconds
-        is_correct: Validation status (-1=not assessed, 0=incorrect, 1=correct)
+        is_correct: Correctness status (-1=not assessed, 0=incorrect, 1=correct)
     """
     with sqlite3.connect(DB_FILE) as conn:
         values = (
@@ -1368,36 +1368,35 @@ def db_backup():
         return None
 
 
-def db_validate(uid, normal = True, valid = None, enqueue = False):
+def db_validate(uid, normal = True, correct = None, enqueue = False):
     """
-    Mark the entry as valid or invalid based on human review.
+    Mark the entry as correct or incorrect based on human review.
 
     When a radiologist reviews a case, they indicate if the finding is normal (negative)
     or abnormal (positive). This function compares that human assessment with the AI's
-    prediction to determine if the AI was correct (valid=True) or incorrect (valid=False).
-
+    prediction to determine if the AI was correct (correct=True) or incorrect (correct=False).
     Args:
         uid: The unique identifier of the exam
         normal: Whether the human reviewer marked the case as normal (True) or abnormal (False)
-        valid: Optional override for validity. If None, will be calculated based on comparison
+        correct: Optional override for correctness. If None, will be calculated based on comparison
         enqueue: Whether to re-queue the exam for re-analysis
 
     Returns:
-        bool: The validity status (True if AI prediction matched human review)
+        bool: The correctness status (True if AI prediction matched human review)
     """
     with sqlite3.connect(DB_FILE) as conn:
-        if valid is None:
+        if correct is None:
             # Check if the report is positive from ai_reports table
             result = conn.execute("SELECT positive FROM ai_reports WHERE uid = ?", (uid,)).fetchone()
-            # Valid when review matches prediction
-            # If human says normal (True) and AI said negative (0), then valid
-            # If human says abnormal (False) and AI said positive (1), then valid
+            # C when review matches prediction
+            # If human says normal (True) and AI said negative (0), then correct
+            # If human says abnormal (False) and AI said positive (1), then correct
             if result and result[0] is not None:
-                # When human says normal (True) and AI says negative (0), they match -> valid
-                # When human says abnormal (False) and AI says positive (1), they match -> valid
-                valid = bool(normal) == (not bool(result[0]))
+                # When human says normal (True) and AI says negative (0), they match -> correct
+                # When human says abnormal (False) and AI says positive (1), they match -> correct
+                correct = bool(normal) == (not bool(result[0]))
             else:
-                valid = True
+                correct = True
         # Update the entry in exams table
         columns = []
         params = []
@@ -1407,9 +1406,9 @@ def db_validate(uid, normal = True, valid = None, enqueue = False):
         set_clause = 'SET ' + ','.join(columns) if columns else ''
         if set_clause:
             conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
-        # Update the ai_reports table with validation info
-        conn.execute("UPDATE ai_reports SET is_correct = ? WHERE uid = ?", (int(valid), uid))
-    return valid
+        # Update the ai_reports table with correctness info
+        conn.execute("UPDATE ai_reports SET is_correct = ? WHERE uid = ?", (int(correct), uid))
+    return correct
 
 
 def db_set_status(uid, status):
@@ -1903,7 +1902,7 @@ async def exams_handler(request):
         
         page = int(request.query.get("page", "1"))
         filters = {}
-        for filter in ['reviewed', 'positive', 'valid']:
+        for filter in ['reviewed', 'positive', 'correct']:
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value[0].lower() == 'y' and 1 or 0
@@ -2183,25 +2182,25 @@ async def manual_query(request):
 
 
 async def validate(request):
-    """Mark a study as valid or invalid based on human review.
+    """Mark a study as correct or incorrect based on human review.
 
-    Updates the validation status of an exam in the database based on
+    Updates the correctness status of an exam in the database based on
     radiologist review. Compares human assessment with AI prediction
-    to determine validity.
+    to determine correctness.
 
     Args:
         request: aiohttp request object with JSON body containing uid and normal status
 
     Returns:
-        web.json_response: JSON response with validation result
+        web.json_response: JSON response with correctness result
     """
     data = await request.json()
     # Get 'uid' and 'normal' from request
     uid = data.get('uid')
     normal = data.get('normal', None)
-    # Validate/Invalidate a study, send only the 'normal' attribute
+    # Correct/Incorrect a study, send only the 'normal' attribute
     is_correct = db_validate(uid, normal)
-    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {is_correct and 'validates' or 'invalidates'} the report.")
+    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {is_correct and 'corrects' or 'incorrects'} the report.")
     payload = {'uid': uid, 'is_correct': is_correct}
     await broadcast_dashboard_update(event = "validate", payload = payload)
     response = {'status': 'success'}
@@ -2212,7 +2211,7 @@ async def validate(request):
 async def lookagain(request):
     """Send an exam back to the processing queue for re-analysis.
 
-    Marks an exam as reviewed but invalid, then re-queues it for
+    Marks an exam as reviewed but incorrect, then re-queues it for
     re-analysis by the AI system.
 
     Args:
@@ -2225,12 +2224,12 @@ async def lookagain(request):
     # Get 'uid' and custom 'prompt' from request
     uid = data.get('uid')
     prompt = data.get('prompt', None)
-    # Mark reviewed, invalid and re-enqueue
-    valid = db_validate(uid, valid = False, enqueue = True)
+    # Mark reviewed, incorrect and re-enqueue
+    correct = db_validate(uid, correct = False, enqueue = True)
     logging.info(f"Exam {uid} sent to the processing queue (look again).")
     # Notify the queue
     QUEUE_EVENT.set()
-    payload = {'uid': uid, 'valid': valid}
+    payload = {'uid': uid, 'correct': correct}
     await broadcast_dashboard_update(event = "lookagain", payload = payload)
     response = {'status': 'success'}
     response.update(payload)
