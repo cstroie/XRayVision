@@ -2174,9 +2174,9 @@ async def validate(request):
     uid = data.get('uid')
     normal = data.get('normal', None)
     # Validate/Invalidate a study, send only the 'normal' attribute
-    valid = db_validate(uid, normal)
-    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {valid and 'validates' or 'invalidates'} the report.")
-    payload = {'uid': uid, 'valid': valid}
+    is_correct = db_validate(uid, normal)
+    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {is_correct and 'validates' or 'invalidates'} the report.")
+    payload = {'uid': uid, 'is_correct': is_correct}
     await broadcast_dashboard_update(event = "validate", payload = payload)
     response = {'status': 'success'}
     response.update(payload)
