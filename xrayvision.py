@@ -1583,6 +1583,8 @@ def extract_dicom_metadata(ds):
             'protocol': str(ds.ProtocolName),
             'created': created,
             'region': str(ds.ProtocolName),
+            'study': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
+            'series': str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None,
         }
     }
     # Check gender
