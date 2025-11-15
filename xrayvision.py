@@ -33,7 +33,8 @@ from pynetdicom.sop_class import (
     ComputedRadiographyImageStorage,
     DigitalXRayImageStorageForPresentation,
     PatientRootQueryRetrieveInformationModelFind,
-    PatientRootQueryRetrieveInformationModelMove
+    PatientRootQueryRetrieveInformationModelMove,
+    PatientRootQueryRetrieveInformationModelGet
 )
 
 # Logger config
@@ -67,7 +68,8 @@ DEFAULT_CONFIG = {
         'AE_PORT': '4010',
         'REMOTE_AE_TITLE': 'DICOM_SERVER',
         'REMOTE_AE_IP': '192.168.1.1',
-        'REMOTE_AE_PORT': '104'
+        'REMOTE_AE_PORT': '104',
+        'RETRIEVAL_METHOD': 'C-MOVE'
     },
     'openai': {
         'OPENAI_URL_PRIMARY': 'http://127.0.0.1:8080/v1/chat/completions',
@@ -124,6 +126,7 @@ AE_PORT = config.getint('dicom', 'AE_PORT')
 REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
 REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
 REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
+RETRIEVAL_METHOD = config.get('dicom', 'RETRIEVAL_METHOD')
 IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
 DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
@@ -977,7 +980,10 @@ async def query_and_retrieve(minutes=15):
                 if status and status.Status in (0xFF00, 0xFF01):
                     study_instance_uid = identifier.StudyInstanceUID
                     logging.info(f"Found Study {study_instance_uid}")
-                    await send_c_move(ae, study_instance_uid)
+                    if RETRIEVAL_METHOD.upper() == 'C-GET':
+                        await send_c_get(ae, study_instance_uid)
+                    else:
+                        await send_c_move(ae, study_instance_uid)
         # Release the association
         assoc.release()
     else:
@@ -1011,6 +1017,35 @@ async def send_c_move(ae, study_instance_uid):
         assoc.release()
     else:
         logging.error("Could not establish C-MOVE association.")
+
+
+async def send_c_get(ae, study_instance_uid):
+    """
+    Request a study to be sent from the remote PACS over the same association.
+
+    Sends a C-GET request to the remote DICOM server to transfer a specific
+    study (identified by Study Instance UID) directly over the current association.
+
+    Args:
+        ae: Application Entity instance
+        study_instance_uid: Unique identifier of the study to retrieve
+    """
+    # Create the association
+    assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
+    if assoc.is_established:
+        # The retrieval dataset
+        ds = Dataset()
+        ds.QueryRetrieveLevel = "STUDY"
+        ds.StudyInstanceUID = study_instance_uid
+        # Get the response
+        responses = assoc.send_c_get(
+            ds,
+            PatientRootQueryRetrieveInformationModelGet
+        )
+        # Release the association
+        assoc.release()
+    else:
+        logging.error("Could not establish C-GET association.")
 
 
 def dicom_store(event):
@@ -2549,6 +2584,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-query", action = "store_true", default=NO_QUERY, help = "Do not query the DICOM server automatically")
     parser.add_argument("--enable-ntfy", action = "store_true", default=ENABLE_NTFY, help = "Enable ntfy.sh notifications")
     parser.add_argument("--model", type=str, default=MODEL_NAME, help="Model name to use for analysis")
+    parser.add_argument("--retrieval-method", type=str, choices=['C-MOVE', 'C-GET'], default=RETRIEVAL_METHOD, help="DICOM retrieval method")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
@@ -2556,6 +2592,7 @@ if __name__ == '__main__':
     NO_QUERY = args.no_query
     ENABLE_NTFY = args.enable_ntfy
     MODEL_NAME = args.model
+    RETRIEVAL_METHOD = args.retrieval_method
 
     # Run
     try:
