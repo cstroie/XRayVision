@@ -30,6 +30,7 @@ from pydicom import dcmread
 from pydicom.dataset import Dataset
 from pynetdicom import AE, evt, QueryRetrievePresentationContexts, StoragePresentationContexts
 from pynetdicom.sop_class import (
+    VerificationSOPClass,
     ComputedRadiographyImageStorage,
     DigitalXRayImageStorageForPresentation,
     PatientRootQueryRetrieveInformationModelFind,
@@ -2446,13 +2447,16 @@ def start_dicom_server():
     """
     global dicom_server
     dicom_server = AE(ae_title = AE_TITLE)
-    # Accept everything
-    #ae.supported_contexts = StoragePresentationContexts
+    # Add verification service for C-ECHO
+    dicom_server.add_supported_context(VerificationSOPClass)
     # Accept only XRays
     dicom_server.add_supported_context(ComputedRadiographyImageStorage)
     dicom_server.add_supported_context(DigitalXRayImageStorageForPresentation)
     # C-Store handler
-    handlers = [(evt.EVT_C_STORE, dicom_store)]
+    handlers = [
+        (evt.EVT_C_STORE, dicom_store),
+        (evt.EVT_C_ECHO, lambda event: 0x0000)  # Simple C-ECHO handler that always succeeds
+    ]
     logging.info(f"Starting DICOM server on port {AE_PORT} with AE Title '{AE_TITLE}'...")
     dicom_server.start_server(("0.0.0.0", AE_PORT), evt_handlers = handlers, block = False)
 
