@@ -30,7 +30,7 @@ from pydicom import dcmread
 from pydicom.dataset import Dataset
 from pynetdicom import AE, evt, QueryRetrievePresentationContexts, StoragePresentationContexts
 from pynetdicom.sop_class import (
-    VerificationSOPClass,
+    Verification,
     ComputedRadiographyImageStorage,
     DigitalXRayImageStorageForPresentation,
     PatientRootQueryRetrieveInformationModelFind,
@@ -2448,7 +2448,7 @@ def start_dicom_server():
     global dicom_server
     dicom_server = AE(ae_title = AE_TITLE)
     # Add verification service for C-ECHO
-    dicom_server.add_supported_context(VerificationSOPClass)
+    dicom_server.add_supported_context(Verification)
     # Accept only XRays
     dicom_server.add_supported_context(ComputedRadiographyImageStorage)
     dicom_server.add_supported_context(DigitalXRayImageStorageForPresentation)
