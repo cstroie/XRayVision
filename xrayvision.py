@@ -279,6 +279,7 @@ KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DI
 LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
+VERBOSE = False  # Whether to enable verbose logging
 
 # Load region identification rules from config
 REGION_RULES = {}
@@ -3330,6 +3331,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-query", action = "store_true", default=NO_QUERY, help = "Do not query the DICOM server automatically")
     parser.add_argument("--enable-ntfy", action = "store_true", default=ENABLE_NTFY, help = "Enable ntfy.sh notifications")
     parser.add_argument("--model", type=str, default=MODEL_NAME, help="Model name to use for analysis")
+    parser.add_argument("--verbose", "-v", action = "store_true", default=VERBOSE, help = "Enable verbose logging")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
@@ -3337,6 +3339,7 @@ if __name__ == '__main__':
     NO_QUERY = args.no_query
     ENABLE_NTFY = args.enable_ntfy
     MODEL_NAME = args.model
+    VERBOSE = args.verbose
 
     # Run
     try:
