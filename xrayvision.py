@@ -1380,7 +1380,7 @@ def db_get_exam_ai_report(uid):
         (text, positive, confidence, model, latency, created, updated) = result
         return {
             'text': text,
-            'positive': bool(positive) if positive is not None else False,
+            'positive': positive,
             'confidence': confidence,
             'model': model,
             'latency': latency,
@@ -1411,7 +1411,7 @@ def db_get_exam_rad_report(uid):
         return {
             'id': id,
             'text': text,
-            'positive': bool(positive) if positive is not None else False,
+            'positive': positive,
             'severity': severity,
             'summary': summary,
             'type': type,
