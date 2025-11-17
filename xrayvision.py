@@ -909,37 +909,40 @@ async def db_get_stats():
         "throughput": 0,
         "error_stats": {}
     }
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        # Get count total and reviewed statistics in a single query
-        cursor.execute("""
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN ar.is_correct != -1 THEN 1 ELSE 0 END) AS reviewed
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status LIKE 'done'
-        """)
-        row = cursor.fetchone()
-        stats["total"] = row[0]
-        stats["reviewed"] = row[1] or 0
+    
+    # Get count total and reviewed statistics in a single query
+    query = """
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN ar.is_correct != -1 THEN 1 ELSE 0 END) AS reviewed
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+    """
+    row = db_execute_query(query, fetch_mode='one')
+    if row:
+        (total, reviewed) = row
+        stats["total"] = total
+        stats["reviewed"] = reviewed or 0
 
-        # Calculate correct (TP + TN) and wrong (FP + FN) predictions
-        cursor.execute("""
-            SELECT
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status LIKE 'done'
-        """)
-        metrics_row = cursor.fetchone()
-        tpos = metrics_row[0] or 0
-        tneg = metrics_row[1] or 0
-        fpos = metrics_row[2] or 0
-        fneg = metrics_row[3] or 0
+    # Calculate correct (TP + TN) and wrong (FP + FN) predictions
+    query = """
+        SELECT
+            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
+            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
+            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
+            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+    """
+    metrics_row = db_execute_query(query, fetch_mode='one')
+    if metrics_row:
+        (tpos, tneg, fpos, fneg) = metrics_row
+        tpos = tpos or 0
+        tneg = tneg or 0
+        fpos = fpos or 0
+        fneg = fneg or 0
         stats["correct"] = tpos + tneg
         stats["wrong"] = fpos + fneg
 
@@ -951,81 +954,87 @@ async def db_get_stats():
             mcc = (tpos * tneg - fpos * fneg) / denominator
             stats["mcc"] = round(mcc, 2)
 
-        # Get processing time statistics (last day only)
-        cursor.execute("""
-            SELECT
-                AVG(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) AS avg_processing_time,
-                COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) + 1) AS throughput
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status LIKE 'done'
-              AND ar.created IS NOT NULL
-              AND e.created IS NOT NULL
-              AND e.created >= datetime('now', '-1 days')
-        """)
-        timing_row = cursor.fetchone()
-        if timing_row and timing_row[0] is not None:
-            stats["avg_processing_time"] = round(timing_row[0], 2)
-            stats["throughput"] = round(timing_row[1] * 3600, 2)  # exams per hour
+    # Get processing time statistics (last day only)
+    query = """
+        SELECT
+            AVG(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) AS avg_processing_time,
+            COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) + 1) AS throughput
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+          AND ar.created IS NOT NULL
+          AND e.created IS NOT NULL
+          AND e.created >= datetime('now', '-1 days')
+    """
+    timing_row = db_execute_query(query, fetch_mode='one')
+    if timing_row and timing_row[0] is not None:
+        (avg_processing_time, throughput) = timing_row
+        stats["avg_processing_time"] = round(avg_processing_time, 2)
+        stats["throughput"] = round(throughput * 3600, 2)  # exams per hour
 
-        # Get error statistics
-        cursor.execute("""
-            SELECT status, COUNT(*) as count
-            FROM exams
-            WHERE status IN ('error', 'ignore')
-            GROUP BY status
-        """)
-        error_data = cursor.fetchall()
+    # Get error statistics
+    query = """
+        SELECT status, COUNT(*) as count
+        FROM exams
+        WHERE status IN ('error', 'ignore')
+        GROUP BY status
+    """
+    error_data = db_execute_query(query, fetch_mode='all')
+    if error_data:
         for row in error_data:
-            stats["error_stats"][row[0]] = row[1]
+            (status, count) = row
+            stats["error_stats"][status] = count
 
-        # Totals per anatomic part
-        cursor.execute("""
-            SELECT e.region,
-                    COUNT(*) AS total,
-                    SUM(CASE WHEN ar.is_correct != -1 THEN 1 ELSE 0 END) AS reviewed,
-                    SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
-                    SUM(CASE WHEN ar.is_correct = 0 THEN 1 ELSE 0 END) AS wrong,
-                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
-                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
-                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
-                    SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status LIKE 'done'
-            GROUP BY e.region
-        """)
-        for row in cursor.fetchall():
-            region = row[0] or 'unknown'
+    # Totals per anatomic part
+    query = """
+        SELECT e.region,
+                COUNT(*) AS total,
+                SUM(CASE WHEN ar.is_correct != -1 THEN 1 ELSE 0 END) AS reviewed,
+                SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
+                SUM(CASE WHEN ar.is_correct = 0 THEN 1 ELSE 0 END) AS wrong,
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
+                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+        GROUP BY e.region
+    """
+    region_data = db_execute_query(query, fetch_mode='all')
+    if region_data:
+        for row in region_data:
+            (region, total, reviewed, positive, wrong, tpos, tneg, fpos, fneg) = row
+            region = region or 'unknown'
             stats["region"][region] = {
-                "total": row[1],
-                "reviewed": row[2],
-                "positive": row[3],
-                "wrong": row[4],
-                "tpos": row[5],
-                "tneg": row[6],
-                "fpos": row[7],
-                "fneg": row[8],
+                "total": total,
+                "reviewed": reviewed,
+                "positive": positive,
+                "wrong": wrong,
+                "tpos": tpos,
+                "tneg": tneg,
+                "fpos": fpos,
+                "fneg": fneg,
                 "ppv": '-',
                 "pnv": '-',
                 "snsi": '-',
                 "spci": '-',
             }
             # Calculate metrics safely
-            if (row[5] + row[7]) != 0:
-                stats["region"][region]["ppv"] = int(100.0 * row[5] / (row[5] + row[7]))
-            if (row[6] + row[8])  != 0:
-                stats["region"][region]["pnv"] = int(100.0 * row[6] / (row[6] + row[8]))
-            if (row[5] + row[8]) != 0:
-                stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
-            if (row[6] + row[7]) != 0:
-                stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
+            if (tpos + fpos) != 0:
+                stats["region"][region]["ppv"] = int(100.0 * tpos / (tpos + fpos))
+            if (tneg + fneg) != 0:
+                stats["region"][region]["pnv"] = int(100.0 * tneg / (tneg + fneg))
+            if (tpos + fneg) != 0:
+                stats["region"][region]["snsi"] = int(100.0 * tpos / (tpos + fneg))
+            if (tneg + fpos) != 0:
+                stats["region"][region]["spci"] = int(100.0 * tneg / (tneg + fpos))
 
             # Calculate Matthews Correlation Coefficient (MCC)
-            tp = row[5] or 0
-            tn = row[6] or 0
-            fp = row[7] or 0
-            fn = row[8] or 0
+            tp = tpos or 0
+            tn = tneg or 0
+            fp = fpos or 0
+            fn = fneg or 0
             denominator = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
             if denominator == 0:
                 stats["region"][region]["mcc"] = 0.0
@@ -1034,25 +1043,24 @@ async def db_get_stats():
                 # Round to 2 decimal places
                 stats["region"][region]["mcc"] = round(mcc, 2)
 
-
-        # Get temporal trends (last 30 days only to reduce memory usage)
-        cursor.execute("""
-            SELECT DATE(e.created) as date,
-                   e.region,
-                   COUNT(*) as total,
-                   SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status LIKE 'done'
-              AND e.created >= date('now', '-30 days')
-            GROUP BY DATE(e.created), e.region
-            ORDER BY date
-        """)
-        trends_data = cursor.fetchall()
-
+    # Get temporal trends (last 30 days only to reduce memory usage)
+    query = """
+        SELECT DATE(e.created) as date,
+               e.region,
+               COUNT(*) as total,
+               SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+          AND e.created >= date('now', '-30 days')
+        GROUP BY DATE(e.created), e.region
+        ORDER BY date
+    """
+    trends_data = db_execute_query(query, fetch_mode='all')
+    if trends_data:
         # Process trends data into a structured format
         for row in trends_data:
-            date, region, total, positive = row
+            (date, region, total, positive) = row
             if region not in stats["trends"]:
                 stats["trends"][region] = []
             stats["trends"][region].append({
@@ -1061,24 +1069,24 @@ async def db_get_stats():
                 "positive": positive
             })
 
-        # Get monthly trends (last 12 months only to reduce memory usage)
-        cursor.execute("""
-            SELECT strftime('%Y-%m', e.created) as month,
-                   e.region,
-                   COUNT(*) as total,
-                   SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status LIKE 'done'
-              AND e.created >= date('now', '-12 months')
-            GROUP BY strftime('%Y-%m', e.created), e.region
-            ORDER BY month
-        """)
-        monthly_trends_data = cursor.fetchall()
-
+    # Get monthly trends (last 12 months only to reduce memory usage)
+    query = """
+        SELECT strftime('%Y-%m', e.created) as month,
+               e.region,
+               COUNT(*) as total,
+               SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+          AND e.created >= date('now', '-12 months')
+        GROUP BY strftime('%Y-%m', e.created), e.region
+        ORDER BY month
+    """
+    monthly_trends_data = db_execute_query(query, fetch_mode='all')
+    if monthly_trends_data:
         # Process monthly trends data into a structured format
         for row in monthly_trends_data:
-            month, region, total, positive = row
+            (month, region, total, positive) = row
             if region not in stats["monthly_trends"]:
                 stats["monthly_trends"][region] = []
             stats["monthly_trends"][region].append({
