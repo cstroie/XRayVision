@@ -3468,6 +3468,16 @@ async def process_exams_without_rad_reports(session):
             if 'id' in study:
                 report = await get_fhir_diagnosticreport(session, study['id'])
                 if report and 'conclusion' in report and report['conclusion']:
+                    # Extract radiologist name from resultsInterpreter if available
+                    radiologist = 'HIS'  # Default value
+                    try:
+                        if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
+                            interpreter = report['resultsInterpreter'][0]
+                            if 'display' in interpreter:
+                                radiologist = interpreter['display']
+                    except Exception as e:
+                        logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
+                    
                     # Add the radiologist report to our database
                     db_add_rad_report(
                         uid=exam_uid,
@@ -3477,12 +3487,12 @@ async def process_exams_without_rad_reports(session):
                         severity=-1,  # Will be determined later
                         summary='',   # Will be determined later
                         report_type='radio',
-                        radiologist='HIS',
+                        radiologist=radiologist,
                         justification='',
                         model='',
                         latency=-1
                     )
-                    logging.info(f"Added FHIR report for exam {exam_uid}")
+                    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist}")
 
 
 async def query_retrieve_loop():
