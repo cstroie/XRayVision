@@ -260,7 +260,7 @@
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
                             card.classList.remove('incorrect');
-                            if (!(data.event.payload.is_correct)) {
+                            if (!(data.event.payload.report.correct)) {
                                 card.classList.add('incorrect');
                             }
                         }
