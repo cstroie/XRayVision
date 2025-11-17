@@ -1527,11 +1527,10 @@ def db_rad_review(uid, normal, radiologist='rad'):
     Returns:
         None
     """
-    positive = normal is True and 0 or 1
+    positive = 0 if normal else 1
     query = "UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?"
     params = (positive, radiologist, uid)
     db_execute_query_retry(query, params)
-    print(normal, positive, query, params)
 
 
 def db_set_status(uid, status):
