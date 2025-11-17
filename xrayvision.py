@@ -747,7 +747,10 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 WHEN ar.positive = rr.positive THEN 1
                 ELSE 0
             END AS correct,
-            (rr.positive > -1) AS reviewed
+            CASE
+                WHEN rr.positive > -1 THEN 1
+                ELSE 0
+            END AS reviewed
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
@@ -1509,7 +1512,7 @@ def db_backup():
         return None
 
 
-def db_rad_review(uid, normal=True, radiologist='rad'):
+def db_rad_review(uid, normal, radiologist='rad'):
     """
     Update radiologist report with normal/abnormal status.
 
@@ -1524,10 +1527,11 @@ def db_rad_review(uid, normal=True, radiologist='rad'):
     Returns:
         None
     """
-    abnormal = not normal
+    positive = normal is True and 0 or 1
     query = "UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?"
-    params = (int(abnormal), radiologist, uid)
+    params = (positive, radiologist, uid)
     db_execute_query_retry(query, params)
+    print(normal, positive, query, params)
 
 
 def db_set_status(uid, status):
@@ -2360,13 +2364,10 @@ async def rad_review(request):
         db_rad_review(uid, normal, radiologist)
         
         # Get the updated exam data
-        exam_data = db_get_exam_by_uid(uid)
-        
-        logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}.")
-        payload = {'uid': uid, 'normal': normal, 'radiologist': radiologist, 'exam': exam_data}
-        await broadcast_dashboard_update(event = "rad_review", payload = payload)
+        exam_data = db_get_exam_by_uid(uid)        
+        logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}, which {exam_data['report']['correct'] and 'validates' or 'invalidates'} the AI report.")
+        await broadcast_dashboard_update(event = "radreview", payload = exam_data)
         response = {'status': 'success'}
-        response.update(payload)
         return web.json_response(response)
     except Exception as e:
         logging.error(f"Error processing radiologist review: {e}")
