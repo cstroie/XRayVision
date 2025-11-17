@@ -6,13 +6,176 @@ import os
 import sys
 import shutil
 import configparser
+import sqlite3
 
 # Add the project directory to the path so we can import the modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import the modules we want to test
 import xrayvision
-import qr
+
+class TestXRayVisionDatabase(unittest.TestCase):
+    """Test cases for the xrayvision database operations"""
+    
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.test_dir = tempfile.mkdtemp()
+        self.db_file = os.path.join(self.test_dir, 'test.db')
+        # Set the database file path for testing
+        xrayvision.DB_FILE = self.db_file
+        
+    def tearDown(self):
+        """Tear down test fixtures after each test method."""
+        # Clean up temporary directory
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+    
+    def test_db_init_creates_tables(self):
+        """Test that db_init creates all required tables"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Check that all tables were created
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            
+            # Check patients table
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='patients'")
+            self.assertIsNotNone(cursor.fetchone(), "patients table should exist")
+            
+            # Check exams table
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='exams'")
+            self.assertIsNotNone(cursor.fetchone(), "exams table should exist")
+            
+            # Check ai_reports table
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_reports'")
+            self.assertIsNotNone(cursor.fetchone(), "ai_reports table should exist")
+            
+            # Check rad_reports table
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='rad_reports'")
+            self.assertIsNotNone(cursor.fetchone(), "rad_reports table should exist")
+    
+    def test_db_init_creates_indexes(self):
+        """Test that db_init creates all required indexes"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Check that indexes were created
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            
+            # Get all indexes
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
+            indexes = [row[0] for row in cursor.fetchall()]
+            
+            # Check for expected indexes
+            expected_indexes = [
+                'idx_exams_status',
+                'idx_exams_region',
+                'idx_exams_cnp',
+                'idx_exams_created',
+                'idx_exams_study',
+                'idx_ai_reports_created',
+                'idx_rad_reports_created',
+                'idx_patients_name'
+            ]
+            
+            for index in expected_indexes:
+                self.assertIn(index, indexes, f"Index {index} should exist")
+    
+    def test_db_add_patient_inserts_new_patient(self):
+        """Test that db_add_patient inserts a new patient"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Add a patient
+        cnp = "1234567890123"
+        id = "P001"
+        name = "John Doe"
+        age = 30
+        sex = "M"
+        
+        result = xrayvision.db_add_patient(cnp, id, name, age, sex)
+        
+        # Check that the operation was successful
+        self.assertIsNotNone(result, "db_add_patient should return a result")
+        
+        # Verify the patient was inserted
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?", (cnp,))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "Patient should be inserted")
+            self.assertEqual(row[0], cnp)
+            self.assertEqual(row[1], id)
+            self.assertEqual(row[2], name)
+            self.assertEqual(row[3], age)
+            self.assertEqual(row[4], sex)
+    
+    def test_db_add_patient_updates_existing_patient(self):
+        """Test that db_add_patient updates an existing patient"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Add a patient first
+        cnp = "1234567890123"
+        id = "P001"
+        name = "John Doe"
+        age = 30
+        sex = "M"
+        
+        xrayvision.db_add_patient(cnp, id, name, age, sex)
+        
+        # Update the patient with new information
+        new_id = "P002"
+        new_name = "Jane Smith"
+        new_age = 25
+        new_sex = "F"
+        
+        result = xrayvision.db_add_patient(cnp, new_id, new_name, new_age, new_sex)
+        
+        # Check that the operation was successful
+        self.assertIsNotNone(result, "db_add_patient should return a result")
+        
+        # Verify the patient was updated
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?", (cnp,))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "Patient should exist")
+            self.assertEqual(row[0], cnp)
+            self.assertEqual(row[1], new_id)
+            self.assertEqual(row[2], new_name)
+            self.assertEqual(row[3], new_age)
+            self.assertEqual(row[4], new_sex)
+    
+    def test_db_add_patient_with_invalid_sex(self):
+        """Test that db_add_patient handles invalid sex values"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Add a patient with invalid sex - this should still be inserted
+        cnp = "1234567890124"
+        id = "P003"
+        name = "Invalid Sex Patient"
+        age = 40
+        sex = "X"  # Invalid sex value
+        
+        result = xrayvision.db_add_patient(cnp, id, name, age, sex)
+        
+        # Check that the operation was successful
+        self.assertIsNotNone(result, "db_add_patient should return a result")
+        
+        # Verify the patient was inserted even with invalid sex
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT cnp, sex FROM patients WHERE cnp = ?", (cnp,))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "Patient should be inserted")
+            self.assertEqual(row[0], cnp)
+            self.assertEqual(row[1], sex)
 
 class TestXRayVision(unittest.TestCase):
     """Test cases for the xrayvision module"""
