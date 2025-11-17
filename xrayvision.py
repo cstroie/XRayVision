@@ -646,7 +646,7 @@ def db_get_exam_without_rad_report():
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE (rr.uid IS NULL OR rr.id IS NULL OR rr.id = '')
+        WHERE (rr.id IS NULL OR rr.id = '')
         AND e.status = 'done'
         ORDER BY e.created ASC
         LIMIT 1
@@ -3437,6 +3437,7 @@ async def process_exams_without_rad_reports(session):
     """
     # Get the oldest exam without a radiologist report
     exam = db_get_exam_without_rad_report()
+    print(exam)
     if not exam:
         return
     
