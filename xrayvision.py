@@ -3683,7 +3683,7 @@ async def process_exams_without_rad_reports(session):
     # If we have patient ID, search for imaging studies
     studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
     if not studies:
-        logging.info(f"No imaging studies found for exam {exam_uid}")
+        logging.warning(f"No imaging studies found for exam {exam_uid}")
         return
     elif len(studies) > 1:
          logging.info(f"Multiple close imaging studies found for exam {exam_uid}, skipping.")
@@ -3722,6 +3722,8 @@ async def process_exams_without_rad_reports(session):
         except Exception as e:
             logging.warning(f"Could not extract justification from FHIR report: {e}")
 
+        # Log the retrieved report
+        logging.info(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report['conclusion'].split()[:10])}...")
         # Add the radiologist report to our database
         db_add_rad_report(
             uid=exam_uid,
