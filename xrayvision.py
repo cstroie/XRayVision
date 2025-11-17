@@ -840,11 +840,10 @@ def db_check_already_processed(uid):
     Returns:
         bool: True if exam exists with status 'done', 'queued', or 'processing'
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute(
-            "SELECT status FROM exams WHERE uid = ? AND status IN ('done', 'queued', 'processing')", (uid,)
-        ).fetchone()
-        return result is not None
+    query = "SELECT status FROM exams WHERE uid = ? AND status IN ('done', 'queued', 'processing')"
+    params = (uid,)
+    result = db_execute_query(query, params, fetch_mode='one')
+    return result is not None
 
 
 async def db_get_stats():
