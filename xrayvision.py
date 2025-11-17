@@ -1552,8 +1552,9 @@ def db_update_rad_report(uid, normal=True, radiologist='rad'):
         None
     """
     abnormal = not normal
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?", (int(abnormal), radiologist, uid))
+    query = "UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?"
+    params = (int(abnormal), radiologist, uid)
+    db_execute_query_retry(query, params)
 
 
 def db_set_status(uid, status):
