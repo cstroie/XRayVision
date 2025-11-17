@@ -1497,7 +1497,7 @@ def db_backup():
         return None
 
 
-def db_validate(uid, normal=True, correct=None, enqueue=False):
+def db_validate(uid, normal=True, correct=None):
     """
     Mark the entry as correct or incorrect based on human review.
 
@@ -1509,7 +1509,6 @@ def db_validate(uid, normal=True, correct=None, enqueue=False):
         uid: The unique identifier of the exam
         normal: Whether the human reviewer marked the case as normal (True) or abnormal (False)
         correct: Optional override for correctness. If None, will be calculated based on comparison
-        enqueue: Whether to re-queue the exam for re-analysis
 
     Returns:
         bool: The correctness status (True if AI prediction matched human review)
@@ -1526,9 +1525,6 @@ def db_validate(uid, normal=True, correct=None, enqueue=False):
                 correct = bool(abnormal) == bool(result[0])
             else:
                 correct = True
-        # Update the entry in exams table
-        if enqueue:
-            conn.execute("UPDATE exams SET status = 'queued' WHERE uid = ?", (uid,))
         # Update the ai_reports table with correctness info and mark as reviewed
         #conn.execute("UPDATE ai_reports SET is_correct = ?, reviewed = TRUE, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
         # Update the rad_reports table to mark as reviewed
@@ -2387,32 +2383,6 @@ async def validate(request):
     return web.json_response(response)
 
 
-async def lookagain(request):
-    """Send an exam back to the processing queue for re-analysis.
-
-    Marks an exam as reviewed but incorrect, then re-queues it for
-    re-analysis by the AI system.
-
-    Args:
-        request: aiohttp request object with JSON body containing uid and optional prompt
-
-    Returns:
-        web.json_response: JSON response with re-queue status
-    """
-    data = await request.json()
-    # Get 'uid' and custom 'prompt' from request
-    uid = data.get('uid')
-    prompt = data.get('prompt', None)
-    # Mark reviewed, incorrect and re-enqueue
-    correct = db_validate(uid, correct = False, enqueue = True)
-    logging.info(f"Exam {uid} sent to the processing queue (look again).")
-    # Notify the queue
-    QUEUE_EVENT.set()
-    payload = {'uid': uid, 'correct': correct}
-    await broadcast_dashboard_update(event = "lookagain", payload = payload)
-    response = {'status': 'success'}
-    response.update(payload)
-    return web.json_response(response)
 
 
 async def requeue_exam(request):
@@ -3132,7 +3102,6 @@ async def start_dashboard():
     app.router.add_get('/api/patients', patients_handler)
     app.router.add_get('/api/patients/{cnp}', patient_handler)
     app.router.add_post('/api/validate', validate)
-    app.router.add_post('/api/lookagain', lookagain)
     app.router.add_post('/api/requeue', requeue_exam)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_post('/api/check', check_report_handler)
