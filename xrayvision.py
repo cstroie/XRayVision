@@ -1067,10 +1067,9 @@ def db_get_queue_size():
     Returns:
         int: Number of exams with status 'queued'
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("SELECT COUNT(*) FROM exams WHERE status = 'queued'").fetchone()
-        return result[0]
-    return 0
+    query = "SELECT COUNT(*) FROM exams WHERE status = 'queued'"
+    result = db_execute_query(query, fetch_mode='one')
+    return result[0] if result else 0
 
 
 def db_get_error_stats():
@@ -1081,16 +1080,17 @@ def db_get_error_stats():
         dict: Dictionary with 'error' and 'ignore' counts
     """
     stats = {'error': 0, 'ignore': 0}
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT status, COUNT(*) as count
-            FROM exams
-            WHERE status IN ('error', 'ignore')
-            GROUP BY status
-        """)
-        for row in cursor.fetchall():
-            stats[row[0]] = row[1]
+    query = """
+        SELECT status, COUNT(*) as count
+        FROM exams
+        WHERE status IN ('error', 'ignore')
+        GROUP BY status
+    """
+    rows = db_execute_query(query, fetch_mode='all')
+    if rows:
+        for row in rows:
+            (status, count) = row
+            stats[status] = count
     return stats
 
 
@@ -1101,15 +1101,15 @@ def db_get_weekly_processed_count():
     Returns:
         int: Number of exams with status 'done' reported in the last week
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("""
-            SELECT COUNT(*)
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status = 'done'
-            AND ar.created >= datetime('now', '-7 days')
-        """).fetchone()
-        return result[0] if result else 0
+    query = """
+        SELECT COUNT(*)
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status = 'done'
+        AND ar.created >= datetime('now', '-7 days')
+    """
+    result = db_execute_query(query, fetch_mode='one')
+    return result[0] if result else 0
 
 
 # Convenience functions for database access
@@ -1212,9 +1212,10 @@ def db_count_exams_by_status(status):
     Returns:
         int: Count of exams with the specified status
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("SELECT COUNT(*) FROM exams WHERE status = ?", (status,)).fetchone()
-        return result[0] if result else 0
+    query = "SELECT COUNT(*) FROM exams WHERE status = ?"
+    params = (status,)
+    result = db_execute_query(query, params, fetch_mode='one')
+    return result[0] if result else 0
 
 
 def db_get_exam_report(uid):
@@ -1227,22 +1228,24 @@ def db_get_exam_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("""
-            SELECT text, positive, confidence, is_correct, model, latency, created, updated
-            FROM ai_reports WHERE uid = ?
-        """, (uid,)).fetchone()
-        if result:
-            return {
-                'text': result[0],
-                'positive': bool(result[1]) if result[1] is not None else False,
-                'confidence': result[2],
-                'is_correct': result[3],
-                'model': result[4],
-                'latency': result[5],
-                'created': result[6],
-                'updated': result[7]
-            }
+    query = """
+        SELECT text, positive, confidence, is_correct, model, latency, created, updated
+        FROM ai_reports WHERE uid = ?
+    """
+    params = (uid,)
+    result = db_execute_query(query, params, fetch_mode='one')
+    if result:
+        (text, positive, confidence, is_correct, model, latency, created, updated) = result
+        return {
+            'text': text,
+            'positive': bool(positive) if positive is not None else False,
+            'confidence': confidence,
+            'is_correct': is_correct,
+            'model': model,
+            'latency': latency,
+            'created': created,
+            'updated': updated
+        }
     return None
 
 
@@ -1256,18 +1259,20 @@ def db_get_patient_by_cnp(cnp):
     Returns:
         dict: Patient data or None if not found
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("""
-            SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?
-        """, (cnp,)).fetchone()
-        if result:
-            return {
-                'cnp': result[0],
-                'id': result[1],
-                'name': result[2],
-                'age': result[3],
-                'sex': result[4]
-            }
+    query = """
+        SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?
+    """
+    params = (cnp,)
+    result = db_execute_query(query, params, fetch_mode='one')
+    if result:
+        (cnp, id, name, age, sex) = result
+        return {
+            'cnp': cnp,
+            'id': id,
+            'name': name,
+            'age': age,
+            'sex': sex
+        }
     return None
 
 
