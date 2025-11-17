@@ -634,7 +634,7 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
 
 def db_get_exam_without_rad_report():
     """
-    Get the oldest exam that doesn't have a radiologist report yet.
+    Get the oldest exam that doesn't have a radiologist report yet or has a report with null ID.
 
     Returns:
         dict: Exam data or None if not found
@@ -645,7 +645,8 @@ def db_get_exam_without_rad_report():
             p.name, p.cnp, p.id, p.age, p.sex
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
-        WHERE e.uid NOT IN (SELECT uid FROM rad_reports WHERE text IS NOT NULL AND text != '')
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE (rr.uid IS NULL OR rr.id IS NULL OR rr.id = '')
         AND e.status = 'done'
         ORDER BY e.created ASC
         LIMIT 1
