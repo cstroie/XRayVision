@@ -2296,7 +2296,7 @@ async def exam_handler(request):
         return web.json_response({"error": "Internal server error"}, status=500)
 
 
-async def manual_query(request):
+async def dicom_query(request):
     """Trigger a manual DICOM query/retrieve operation.
 
     Allows manual triggering of DICOM query operations for specified time
@@ -3078,9 +3078,9 @@ async def start_dashboard():
     app.router.add_get('/api/config', config_handler)
     
     # API endpoints - Actions
-    app.router.add_post('/api/rad-review', rad_review)
+    app.router.add_post('/api/radreview', rad_review)
     app.router.add_post('/api/requeue', requeue_exam)
-    app.router.add_post('/api/trigger_query', manual_query)
+    app.router.add_post('/api/dicomquery', dicom_query)
     app.router.add_post('/api/check', check_report_handler)
     
     # API endpoints - Metadata
