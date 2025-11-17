@@ -543,11 +543,12 @@ def db_add_patient(cnp, id, name, age, sex):
         age: Patient age in years
         sex: Patient sex ('M', 'F', or 'O')
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute('''
-            INSERT OR REPLACE INTO patients (cnp, id, name, age, sex)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (cnp, id, name, age, sex))
+    query = '''
+        INSERT OR REPLACE INTO patients (cnp, id, name, age, sex)
+        VALUES (?, ?, ?, ?, ?)
+    '''
+    params = (cnp, id, name, age, sex)
+    return db_execute_query_retry(query, params)
 
 
 def db_add_exam(info, report=None, positive=None, confidence=None):
