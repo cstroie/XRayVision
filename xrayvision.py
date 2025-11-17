@@ -1575,6 +1575,38 @@ def db_set_status(uid, status):
     return status
 
 
+def db_requeue_exam(uid):
+    """
+    Re-queue an exam for processing.
+
+    This function sets the exam status to 'queued' so it will be processed again.
+    It also clears any existing AI report data to ensure a fresh analysis.
+
+    Args:
+        uid: Unique identifier of the exam to re-queue
+
+    Returns:
+        bool: True if successfully re-queued, False otherwise
+    """
+    try:
+        # Set the status to queued
+        db_set_status(uid, 'queued')
+        
+        # Clear existing AI report data to ensure fresh analysis
+        query = """
+            UPDATE ai_reports 
+            SET text = NULL, positive = -1, confidence = -1, model = NULL, latency = -1, updated = CURRENT_TIMESTAMP
+            WHERE uid = ?
+        """
+        params = (uid,)
+        db_execute_query_retry(query, params)
+        
+        return True
+    except Exception as e:
+        logging.error(f"Failed to re-queue exam {uid}: {e}")
+        return False
+
+
 # DICOM network operations
 async def query_and_retrieve(minutes=15):
     """
@@ -2383,6 +2415,42 @@ async def lookagain(request):
     return web.json_response(response)
 
 
+async def requeue_exam(request):
+    """Re-queue an exam for processing.
+
+    Sets an exam's status to 'queued' so it will be processed again by the AI.
+    Clears existing AI report data to ensure fresh analysis.
+
+    Args:
+        request: aiohttp request object with JSON body containing uid
+
+    Returns:
+        web.json_response: JSON response with re-queue status
+    """
+    try:
+        data = await request.json()
+        uid = data.get('uid')
+        
+        if not uid:
+            return web.json_response({'status': 'error', 'message': 'UID is required'}, status=400)
+        
+        # Re-queue the exam
+        success = db_requeue_exam(uid)
+        
+        if success:
+            logging.info(f"Exam {uid} re-queued for processing.")
+            # Notify the queue
+            QUEUE_EVENT.set()
+            payload = {'uid': uid}
+            await broadcast_dashboard_update(event="requeue", payload=payload)
+            return web.json_response({'status': 'success', 'message': f'Exam {uid} re-queued'})
+        else:
+            return web.json_response({'status': 'error', 'message': f'Failed to re-queue exam {uid}'}, status=500)
+    except Exception as e:
+        logging.error(f"Error re-queuing exam: {e}")
+        return web.json_response({'status': 'error', 'message': str(e)}, status=500)
+
+
 async def check_report_handler(request):
     """Analyze a free-text radiology report for pathological findings.
 
@@ -3059,6 +3127,7 @@ async def start_dashboard():
     app.router.add_get('/api/patients/{cnp}', patient_handler)
     app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/lookagain', lookagain)
+    app.router.add_post('/api/requeue', requeue_exam)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_post('/api/check', check_report_handler)
     app.router.add_get('/api/spec', serve_api_spec)
