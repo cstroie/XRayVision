@@ -3582,7 +3582,23 @@ async def process_exams_without_rad_reports(session):
                                     break
         except Exception as e:
             logging.warning(f"Could not extract justification from FHIR report: {e}")
-        
+
+        # Add the radiologist report to our database
+        db_add_rad_report(
+            uid=exam_uid,
+            report_id=study['id'],
+            report_text=report['conclusion'],
+            positive=-1,
+            severity=-1,
+            summary="",
+            report_type='radio',
+            radiologist=radiologist,
+            justification=justification,
+            model=MODEL_NAME,
+            latency=-1
+        )
+
+
         # Process the report with LLM and update database
         await process_fhir_report_with_llm(
             exam_uid, 
