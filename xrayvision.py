@@ -533,13 +533,13 @@ def db_init():
         logging.info("Initialized SQLite database with normalized schema.")
 
 
-def db_build_insert_query(table_name, columns):
+def db_build_insert_query(table_name, *columns):
     """
     Convenience function to build INSERT OR REPLACE query strings.
 
     Args:
         table_name: Name of the table to insert into
-        columns: List of column names
+        *columns: Variable number of column names
 
     Returns:
         str: Formatted SQL query string with placeholders
