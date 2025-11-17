@@ -3118,6 +3118,12 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
             'dt': exam_datetime
         }
         
+        # If the study is older than 5 months, add full=yes parameter
+        exam_date = datetime.strptime(exam_datetime, "%Y-%m-%d %H:%M:%S")
+        five_months_ago = datetime.now() - timedelta(days=150)  # Approximately 5 months
+        if exam_date < five_months_ago:
+            params['full'] = 'yes'
+        
         async with session.get(url, auth=auth, params=params, timeout=30) as resp:
             if resp.status == 200:
                 data = await resp.json()
