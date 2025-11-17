@@ -681,7 +681,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
     )
     query = db_create_insert_query('exams', 'uid', 'cnp', 'id', 'created', 'protocol', 'region', 'type', 'status', 'study', 'series')
     db_upsert(query, params)
-    
+
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
         db_add_ai_report(
