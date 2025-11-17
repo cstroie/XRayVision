@@ -1518,6 +1518,7 @@ def db_rad_review(uid, normal, radiologist='rad'):
 
     When a radiologist reviews a case, they indicate if the finding is normal (negative)
     or abnormal (positive). This function updates the radiologist report with that information.
+    If no report entry exists for this UID, a new one is created.
 
     Args:
         uid: The unique identifier of the exam
@@ -1528,8 +1529,27 @@ def db_rad_review(uid, normal, radiologist='rad'):
         None
     """
     positive = 0 if normal else 1
-    query = "UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?"
-    params = (positive, radiologist, uid)
+    # Use INSERT OR REPLACE to ensure a row exists before updating specific fields
+    # Default values are used for non-critical fields if the row is new
+    query = """
+        INSERT OR REPLACE INTO rad_reports 
+        (uid, id, created, updated, text, positive, severity, summary, type, radiologist, justification, model, latency)
+        VALUES 
+        (?, '', 
+         COALESCE((SELECT created FROM rad_reports WHERE uid = ?), CURRENT_TIMESTAMP),
+         CURRENT_TIMESTAMP, 
+         COALESCE((SELECT text FROM rad_reports WHERE uid = ?), ''),
+         ?, 
+         COALESCE((SELECT severity FROM rad_reports WHERE uid = ?), -1),
+         COALESCE((SELECT summary FROM rad_reports WHERE uid = ?), ''),
+         COALESCE((SELECT type FROM rad_reports WHERE uid = ?), ''),
+         ?, 
+         COALESCE((SELECT justification FROM rad_reports WHERE uid = ?), ''),
+         COALESCE((SELECT model FROM rad_reports WHERE uid = ?), ''),
+         COALESCE((SELECT latency FROM rad_reports WHERE uid = ?), -1)
+        )
+    """
+    params = (uid, uid, uid, positive, uid, uid, uid, radiologist, uid, uid, uid)
     db_execute_query_retry(query, params)
 
 
