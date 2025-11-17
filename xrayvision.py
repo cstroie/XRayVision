@@ -3037,14 +3037,12 @@ async def get_fhir_diagnosticreport(session, report_id):
         dict or None: Diagnostic report from FHIR if successful, None otherwise
     """
     try:
-        headers = {
-            'X-Username': FHIR_USERNAME,
-            'X-Password': FHIR_PASSWORD,
-        }
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
         
         url = f"{FHIR_URL}/fhir/DiagnosticReport/{report_id}"
         
-        async with session.get(url, headers=headers, timeout=30) as resp:
+        async with session.get(url, auth=auth, timeout=30) as resp:
             if resp.status == 200:
                 return await resp.json()
             else:
