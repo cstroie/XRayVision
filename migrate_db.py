@@ -15,7 +15,7 @@ from datetime import datetime
 # Add the current directory to Python path to import xrayvision
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from xrayvision import db_init
+from xrayvision import db_init, db_add_patient
 
 def migrate_database(old_db_path, new_db_path):
     """
@@ -140,7 +140,6 @@ def migrate_data(old_db_path, new_db_path):
             cnp = patient_id if patient_id else uid
             
             # Add patient record using db_add_patient function
-            from xrayvision import db_add_patient
             db_add_patient(patient_id, None, patient_name, patient_age, patient_sex)
             
             # Add exam record

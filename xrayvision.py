@@ -311,7 +311,7 @@ dashboard = {
 
 
 
-def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
+async def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
     """Execute a database query and return results.
 
     Executes a parameterized SQL query and returns results based on the
@@ -325,25 +325,23 @@ def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') ->
     Returns:
         Query results based on fetch_mode, or None on error
     """
-    if not conn:
-        raise Exception("Database connection not available")
+    with sqlite3.connect(DB_FILE) as conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
 
-    try:
-        cursor = conn.cursor()
-        cursor.execute(query, params)
-
-        if fetch_mode == 'all':
-            return cursor.fetchall()
-        elif fetch_mode == 'one':
-            return cursor.fetchone()
-        elif fetch_mode == 'none':
-            conn.commit()
-            return cursor.rowcount
-    except Exception as e:
-        return handle_error(e, "database query execution", None, raise_on_error=True)
+            if fetch_mode == 'all':
+                return cursor.fetchall()
+            elif fetch_mode == 'one':
+                return cursor.fetchone()
+            elif fetch_mode == 'none':
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            return handle_error(e, "database query execution", None, raise_on_error=True)
 
 
-def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
+async def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
     """Execute a database query with retry logic.
 
     Executes a database query with exponential backoff retry logic in case
@@ -357,17 +355,18 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3)
     Returns:
         Number of affected rows or None on error
     """
-    for attempt in range(max_retries):
-        try:
-            cursor = self.conn.cursor()
-            cursor.execute(query, params)
-            self.conn.commit()
-            return cursor.rowcount
-        except Exception as e:
-            if attempt < max_retries - 1:
-                time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
-                continue
-            return self.handle_error(e, "database query with retry", None, raise_on_error=True)
+    with sqlite3.connect(DB_FILE) as conn:
+        for attempt in range(max_retries):
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                conn.commit()
+                return cursor.rowcount
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    continue
+                return handle_error(e, "database query with retry", None, raise_on_error=True)
     return None
 
 # Database operations
