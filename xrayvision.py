@@ -54,6 +54,9 @@ logging.getLogger('pynetdicom').setLevel(logging.WARNING)
 # DICOM file operations
 logging.getLogger('pydicom').setLevel(logging.WARNING)
 
+# Set default log level
+logging.getLogger().setLevel(logging.INFO)
+
 # Configuration
 import configparser
 
@@ -280,7 +283,6 @@ KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DI
 LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
-VERBOSE = False  # Whether to enable verbose logging
 
 # Load region identification rules from config
 REGION_RULES = {}
@@ -3338,7 +3340,7 @@ def handle_error(e, context="", default_return=None, raise_on_error=False):
     """Unified error handling wrapper.
 
     Provides consistent error handling across the application with optional
-    verbose logging and exception re-raising capabilities.
+    exception re-raising capabilities.
 
     Args:
         e (Exception): The exception that occurred
@@ -3349,9 +3351,8 @@ def handle_error(e, context="", default_return=None, raise_on_error=False):
     Returns:
         The default_return value or re-raises the exception
     """
-    if VERBOSE:
-        error_msg = f"Error{f' in {context}' if context else ''}: {e}"
-        logging.error(error_msg)
+    error_msg = f"Error{f' in {context}' if context else ''}: {e}"
+    logging.error(error_msg)
 
     if raise_on_error:
         raise e
@@ -3419,7 +3420,7 @@ if __name__ == '__main__':
     parser.add_argument("--no-query", action = "store_true", default=NO_QUERY, help = "Do not query the DICOM server automatically")
     parser.add_argument("--enable-ntfy", action = "store_true", default=ENABLE_NTFY, help = "Enable ntfy.sh notifications")
     parser.add_argument("--model", type=str, default=MODEL_NAME, help="Model name to use for analysis")
-    parser.add_argument("--verbose", "-v", action = "store_true", default=VERBOSE, help = "Enable verbose logging")
+    parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Set logging level")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
@@ -3427,7 +3428,8 @@ if __name__ == '__main__':
     NO_QUERY = args.no_query
     ENABLE_NTFY = args.enable_ntfy
     MODEL_NAME = args.model
-    VERBOSE = args.verbose
+    # Set log level
+    logging.getLogger().setLevel(getattr(logging, args.log_level))
 
     # Run
     try:
