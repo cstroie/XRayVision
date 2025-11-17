@@ -453,13 +453,16 @@ class TestXRayVision(unittest.TestCase):
     def test_validate_romanian_cnp(self):
         """Test Romanian ID validation function"""
         # Test valid Romanian ID
-        self.assertTrue(xrayvision.validate_romanian_cnp("1234567890123"))
+        result = xrayvision.validate_romanian_cnp("1234567890123")
+        self.assertTrue(result['valid'])
         
         # Test invalid Romanian ID (wrong length)
-        self.assertFalse(xrayvision.validate_romanian_cnp("12345"))
+        result = xrayvision.validate_romanian_cnp("12345")
+        self.assertFalse(result['valid'])
         
         # Test invalid Romanian ID (non-numeric)
-        self.assertFalse(xrayvision.validate_romanian_cnp("abcdefghijk"))
+        result = xrayvision.validate_romanian_cnp("abcdefghijk")
+        self.assertFalse(result['valid'])
     
     def test_compute_age_from_cnp(self):
         """Test age computation from Romanian ID"""
@@ -495,17 +498,17 @@ class TestXRayVision(unittest.TestCase):
     def test_identify_imaging_projection(self):
         """Test imaging projection identification"""
         # Test AP projection
-        info = {"exam": {"protocol": "Chest AP"}}
+        info = {"exam": {"protocol": "Chest A.P."}}
         projection = xrayvision.identify_imaging_projection(info)
         self.assertEqual(projection, "frontal")
         
         # Test PA projection
-        info = {"exam": {"protocol": "Chest PA"}}
+        info = {"exam": {"protocol": "Chest P.A."}}
         projection = xrayvision.identify_imaging_projection(info)
         self.assertEqual(projection, "frontal")
         
         # Test lateral projection
-        info = {"exam": {"protocol": "Chest Lateral"}}
+        info = {"exam": {"protocol": "Chest Lat."}}
         projection = xrayvision.identify_imaging_projection(info)
         self.assertEqual(projection, "lateral")
         
