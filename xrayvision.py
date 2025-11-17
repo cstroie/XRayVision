@@ -2309,6 +2309,29 @@ async def regions_handler(request):
         return web.json_response([], status = 500)
 
 
+async def diagnostics_handler(request):
+    """Provide distinct diagnostic summaries from radiologist reports.
+
+    Returns the list of unique diagnostic summaries (from rad_reports.summary)
+    for use in filtering or display in the frontend.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with diagnostic summaries list
+    """
+    try:
+        # Get distinct diagnostic summaries from the database
+        query = "SELECT DISTINCT summary FROM rad_reports WHERE summary IS NOT NULL AND summary != '' ORDER BY summary"
+        rows = db_execute_query(query, fetch_mode='all')
+        diagnostics = [row[0] for row in rows] if rows else []
+        return web.json_response(diagnostics)
+    except Exception as e:
+        logging.error(f"Diagnostics endpoint error: {e}")
+        return web.json_response([], status = 500)
+
+
 async def patients_handler(request):
     """Provide paginated patient data with optional filters.
 
@@ -3372,6 +3395,7 @@ async def start_dashboard():
     app.router.add_get('/api/patients/{cnp}', patient_handler)
     app.router.add_get('/api/stats', stats_handler)
     app.router.add_get('/api/regions', regions_handler)
+    app.router.add_get('/api/diagnostics', diagnostics_handler)
     app.router.add_get('/api/config', config_handler)
     
     # API endpoints - Actions
