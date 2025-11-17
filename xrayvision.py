@@ -2404,7 +2404,7 @@ async def diagnostics_handler(request):
             ORDER BY summary
         """
         rows = db_execute_query(query, fetch_mode='all')
-        diagnostics = {row[0]: row[1] for row in rows} if rows else {}
+        diagnostics = {summary: count for summary, count in rows} if rows else {}
         return web.json_response(diagnostics)
     except Exception as e:
         logging.error(f"Diagnostics endpoint error: {e}")
