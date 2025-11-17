@@ -659,10 +659,70 @@ def db_update_rad_report(uid, positive, severity, summary, model, latency):
 def db_get_exam_without_rad_report():
     """
     Get a random exam that doesn't have a radiologist report yet or has a report with null ID.
+    
+    Newer exams have a higher chance of being selected. If no exam is found in the initial
+    time window, the window is doubled (up to 52 weeks) and tried once more.
 
     Returns:
         dict: Exam data or None if not found
     """
+    import random
+    from datetime import datetime, timedelta
+    
+    # Randomly choose number of weeks (1-52) for initial search
+    weeks = random.randint(1, 52)
+    
+    # Try twice - first with random weeks, then double if no results
+    for attempt in range(2):
+        # Calculate cutoff date
+        cutoff_date = datetime.now() - timedelta(weeks=weeks)
+        cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
+        
+        query = """
+            SELECT 
+                e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
+                p.name, p.cnp, p.id, p.age, p.sex
+            FROM exams e
+            INNER JOIN patients p ON e.cnp = p.cnp
+            LEFT JOIN rad_reports rr ON e.uid = rr.uid
+            WHERE (rr.id IS NULL OR rr.id = '')
+            AND e.status = 'done'
+            AND e.created >= ?
+            ORDER BY RANDOM()
+            LIMIT 1
+        """
+        row = db_execute_query(query, (cutoff_date_str,), fetch_mode='one')
+        
+        if row:
+            (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
+             patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
+            
+            return {
+                'uid': uid,
+                'exam': {
+                    'created': exam_created,
+                    'protocol': exam_protocol,
+                    'region': exam_region,
+                    'status': exam_status,
+                    'type': exam_type,
+                    'study': exam_study,
+                    'series': exam_series,
+                    'id': exam_id,
+                },
+                'patient': {
+                    'name': patient_name,
+                    'cnp': patient_cnp,
+                    'id': patient_id,
+                    'age': patient_age,
+                    'sex': patient_sex,
+                }
+            }
+        
+        # If no exam found, double the interval for second attempt (max 52 weeks)
+        if attempt == 0:
+            weeks = min(weeks * 2, 52)
+    
+    # If still no exam found, try without date constraint
     query = """
         SELECT 
             e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
@@ -676,6 +736,7 @@ def db_get_exam_without_rad_report():
         LIMIT 1
     """
     row = db_execute_query(query, fetch_mode='one')
+    
     if row:
         (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
          patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
@@ -700,6 +761,7 @@ def db_get_exam_without_rad_report():
                 'sex': patient_sex,
             }
         }
+    
     return None
 
 def db_update_patient_id(cnp, patient_id):
