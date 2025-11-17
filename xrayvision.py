@@ -3781,6 +3781,8 @@ async def process_exams_without_rad_reports(session):
 
         # Set the exam status to 'check' for LLM processing in queue
         db_set_status(exam_uid, "check")
+        # Notify the queue
+        QUEUE_EVENT.set()
     else:
         logging.debug(f"No conclusion found in diagnostic report for exam {exam_uid}")
 
