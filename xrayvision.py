@@ -3407,14 +3407,14 @@ async def fhir_health_check():
     while True:
         try:
             async with aiohttp.ClientSession() as session:
-                # Test FHIR connectivity
+                # Test FHIR connectivity using the proper metadata endpoint
                 headers = {
                     'X-Username': FHIR_USERNAME,
                     'X-Password': FHIR_PASSWORD,
                 }
                 
-                async with session.get(f"{FHIR_URL}/fhir/Patient?q=1234567890123", headers=headers, timeout=10) as resp:
-                    health_status[FHIR_URL] = resp.status in [200, 400]  # 400 is expected for invalid search
+                async with session.get(f"{FHIR_URL}/fhir/Metadata", headers=headers, timeout=10) as resp:
+                    health_status[FHIR_URL] = resp.status == 200
                     logging.info(f"Health check {FHIR_URL} → {resp.status}")
                 
                 if health_status[FHIR_URL]:
