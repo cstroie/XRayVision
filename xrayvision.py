@@ -580,32 +580,34 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
     
     # Insert into database
     exam = info["exam"]
-    with sqlite3.connect(DB_FILE) as conn:
-        values = (
-            info['uid'],
-            patient["cnp"],
-            exam.get("id",""),
-            exam['created'],
-            exam["protocol"],
-            exam['region'],
-            exam.get("type", ""),
-            status,
-            exam.get("study"),
-            exam.get("series")
-        )
-        conn.execute('''
-            INSERT OR REPLACE INTO exams
-                (uid, cnp, id, created, protocol, region, type, status, study, series)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', values)
+    values = (
+        info['uid'],
+        patient["cnp"],
+        exam.get("id",""),
+        exam['created'],
+        exam["protocol"],
+        exam['region'],
+        exam.get("type", ""),
+        status,
+        exam.get("study"),
+        exam.get("series")
+    )
+    query = '''
+        INSERT OR REPLACE INTO exams
+            (uid, cnp, id, created, protocol, region, type, status, study, series)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    '''
+    db_execute_query_retry(query, values)
         
-        # If report is provided, add it to ai_reports table
-        if report is not None and positive is not None:
-            conn.execute('''
-                INSERT OR REPLACE INTO ai_reports
-                    (uid, text, positive, confidence, is_correct, reviewed, model)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME))
+    # If report is provided, add it to ai_reports table
+    if report is not None and positive is not None:
+        query = '''
+            INSERT OR REPLACE INTO ai_reports
+                (uid, text, positive, confidence, is_correct, reviewed, model)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        '''
+        values = (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME)
+        db_execute_query_retry(query, values)
 
 
 def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
