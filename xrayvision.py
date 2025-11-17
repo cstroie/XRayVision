@@ -3516,6 +3516,9 @@ async def process_exams_without_rad_reports(session):
                     except Exception as e:
                         logging.warning(f"Could not extract justification from FHIR report: {e}")
                     
+                    # Log the current status before sending to LLM
+                    logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
+                    
                     # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
                     analysis_result = await check_report(report['conclusion'])
                     
