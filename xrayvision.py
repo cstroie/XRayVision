@@ -2400,22 +2400,28 @@ async def diagnostics_handler(request):
 
 
 async def radiologists_handler(request):
-    """Provide distinct radiologist names from radiologist reports.
+    """Provide distinct radiologist names from radiologist reports along with their report counts.
 
-    Returns the list of unique radiologist names (from rad_reports.radiologist)
+    Returns the list of unique radiologist names (from rad_reports.radiologist) and their report counts
     for use in filtering or display in the frontend.
 
     Args:
         request: aiohttp request object
 
     Returns:
-        web.json_response: JSON response with radiologist names list
+        web.json_response: JSON response with radiologist names and report counts
     """
     try:
-        # Get distinct radiologist names from the database
-        query = "SELECT DISTINCT radiologist FROM rad_reports WHERE radiologist IS NOT NULL AND radiologist != '' ORDER BY radiologist"
+        # Get distinct radiologist names and their report counts from the database
+        query = """
+            SELECT radiologist, COUNT(*) as report_count 
+            FROM rad_reports 
+            WHERE radiologist IS NOT NULL AND radiologist != '' 
+            GROUP BY radiologist 
+            ORDER BY radiologist
+        """
         rows = db_execute_query(query, fetch_mode='all')
-        radiologists = [row[0] for row in rows] if rows else []
+        radiologists = [{'name': row[0], 'report_count': row[1]} for row in rows] if rows else []
         return web.json_response(radiologists)
     except Exception as e:
         logging.error(f"Radiologists endpoint error: {e}")
