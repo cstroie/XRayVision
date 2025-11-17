@@ -312,7 +312,7 @@ Re-queue an exam for processing.
 }
 ```
 
-#### POST /api/trigger_query
+#### POST /api/dicomquery
 Trigger a manual DICOM query/retrieve operation.
 
 **Request Body:**

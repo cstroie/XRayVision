@@ -562,13 +562,13 @@
             "description": "Filter by AI prediction"
           },
           {
-            "name": "valid",
+            "name": "correct",
             "in": "query",
             "schema": {
               "type": "string",
               "enum": ["any", "yes", "no"]
             },
-            "description": "Filter by validation status"
+            "description": "Filter by correctness status"
           },
           {
             "name": "region",
