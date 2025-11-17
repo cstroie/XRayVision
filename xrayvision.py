@@ -312,66 +312,6 @@ dashboard = {
 
 
 
-def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
-    """Execute a database query and return results.
-
-    Executes a parameterized SQL query and returns results based on the
-    specified fetch mode.
-
-    Args:
-        query (str): SQL query to execute
-        params (tuple): Query parameters
-        fetch_mode (str): 'all', 'one', or 'none' for fetchall(), fetchone(), or no fetch
-
-    Returns:
-        Query results based on fetch_mode, or None on error
-    """
-    with sqlite3.connect(DB_FILE) as conn:
-        try:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-
-            if fetch_mode == 'all':
-                return cursor.fetchall()
-            elif fetch_mode == 'one':
-                return cursor.fetchone()
-            elif fetch_mode == 'none':
-                conn.commit()
-                return cursor.rowcount
-        except Exception as e:
-            return handle_error(e, "database query execution", None, raise_on_error=True)
-
-
-def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
-    """Execute a database query with retry logic.
-
-    Executes a database query with exponential backoff retry logic in case
-    of failures.
-
-    Args:
-        query (str): SQL query to execute
-        params (tuple): Query parameters
-        max_retries (int): Maximum number of retry attempts
-
-    Returns:
-        Number of affected rows or None on error
-    """
-    with sqlite3.connect(DB_FILE) as conn:
-        for attempt in range(max_retries):
-            try:
-                cursor = conn.cursor()
-                cursor.execute(query, params)
-                conn.commit()
-                return cursor.rowcount
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    # Use sync sleep for synchronous function
-                    import time
-                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
-                    continue
-                return handle_error(e, "database query with retry", None, raise_on_error=True)
-    return None
-
 # Database operations
 def db_init():
     """
@@ -473,8 +413,6 @@ def db_init():
                 text TEXT,
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
-                is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
-                reviewed INTEGER DEFAULT 0 CHECK(reviewed IN (0, 1)),
                 model TEXT,
                 latency INTEGER DEFAULT -1,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
@@ -535,6 +473,67 @@ def db_init():
             ON patients(name)
         ''')
         logging.info("Initialized SQLite database with normalized schema.")
+
+
+def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
+    """Execute a database query and return results.
+
+    Executes a parameterized SQL query and returns results based on the
+    specified fetch mode.
+
+    Args:
+        query (str): SQL query to execute
+        params (tuple): Query parameters
+        fetch_mode (str): 'all', 'one', or 'none' for fetchall(), fetchone(), or no fetch
+
+    Returns:
+        Query results based on fetch_mode, or None on error
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            if fetch_mode == 'all':
+                return cursor.fetchall()
+            elif fetch_mode == 'one':
+                return cursor.fetchone()
+            elif fetch_mode == 'none':
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            return handle_error(e, "database query execution", None, raise_on_error=True)
+
+
+def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
+    """Execute a database query with retry logic.
+
+    Executes a database query with exponential backoff retry logic in case
+    of failures.
+
+    Args:
+        query (str): SQL query to execute
+        params (tuple): Query parameters
+        max_retries (int): Maximum number of retry attempts
+
+    Returns:
+        Number of affected rows or None on error
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        for attempt in range(max_retries):
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                conn.commit()
+                return cursor.rowcount
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Use sync sleep for synchronous function
+                    import time
+                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    continue
+                return handle_error(e, "database query with retry", None, raise_on_error=True)
+    return None
 
 
 def db_create_insert_query(table_name, *columns):
@@ -789,19 +788,19 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 'report': {
                     'ai': {
                         'text': ai_text,
-                        'short': ai_positive and 'yes' or 'no' if ai_positive is not None else 'no',
+                        'short': ai_positive and 'yes' or 'no' if (ai_positive > -1) is not None else 'no',
                         'datetime': ai_created,
-                        'positive': bool(ai_positive) if ai_positive is not None else False,
-                        'correct': (ai_positive == rad_positive and ai_positive is not None and rad_positive > -1) if (ai_positive is not None and rad_positive is not None) else None,
-                        'reviewed': bool(rad_severity >= 0) if rad_severity is not None else False,
-                        'confidence': ai_confidence if ai_confidence is not None else -1,
+                        'positive': bool(ai_positive) if (ai_positive > -1) else False,
+                        'correct': (ai_positive == rad_positive and ai_positive > -1 and rad_positive > -1) if (ai_positive is not None and rad_positive is not None) else None,
+                        'reviewed': bool(rad_positive > -1) if rad_positive is not None else False,
+                        'confidence': ai_confidence,
                         'model': ai_model,
-                        'latency': ai_latency if ai_latency is not None else -1,
+                        'latency': ai_latency,
                     },
                     'rad': {
                         'text': rad_text,
-                        'positive': bool(rad_positive) if rad_positive is not None else False,
-                        'severity': rad_severity if rad_severity is not None else -1,
+                        'positive': bool(rad_positive) if (rad_positive > -1) else False,
+                        'severity': rad_severity,
                         'summary': rad_summary,
                         'created': rad_created,
                         'updated': rad_updated,
@@ -810,7 +809,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'radiologist': rad_radiologist,
                         'justification': rad_justification,
                         'model': rad_model,
-                        'latency': rad_latency if rad_latency is not None else -1,
+                        'latency': rad_latency,
                     }
                 },
             })
