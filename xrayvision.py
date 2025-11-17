@@ -1288,7 +1288,7 @@ def db_get_patient_exam_uids(cnp):
     query = "SELECT uid FROM exams WHERE cnp = ? ORDER BY created DESC"
     params = (cnp,)
     rows = db_execute_query(query, params, fetch_mode='all')
-    return [row[0] for row in rows] if rows else []
+    return [uid for (uid,) in rows] if rows else []
 
 
 def db_get_regions():
@@ -1300,7 +1300,7 @@ def db_get_regions():
     """
     query = "SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' AND status = 'done' ORDER BY region"
     rows = db_execute_query(query, fetch_mode='all')
-    return [row[0] for row in rows] if rows else []
+    return [region for (region,) in rows] if rows else []
 
 
 def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
