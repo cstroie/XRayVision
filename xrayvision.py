@@ -3622,10 +3622,10 @@ async def openai_health_check():
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url.replace("/chat/completions", "/models"), timeout = 5) as resp:
                         health_status[url] = (resp.status == 200)
-                        logging.info(f"Health check {url} → {resp.status}")
+                        logging.debug(f"Health check {url} → {resp.status}")
             except Exception as e:
                 health_status[url] = False
-                logging.warning(f"Health check failed for {url}: {e}")
+                logging.debug(f"Health check failed for {url}: {e}")
 
         if health_status.get(OPENAI_URL_PRIMARY):
             active_openai_url = OPENAI_URL_PRIMARY
