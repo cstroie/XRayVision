@@ -452,8 +452,8 @@ class TestXRayVision(unittest.TestCase):
     
     def test_validate_romanian_cnp(self):
         """Test Romanian ID validation function"""
-        # Test valid Romanian ID
-        result = xrayvision.validate_romanian_cnp("1234567890123")
+        # Test valid Romanian ID (example: male, born 1990-01-01, Bucharest)
+        result = xrayvision.validate_romanian_cnp("1900101400008")
         self.assertTrue(result['valid'])
         
         # Test invalid Romanian ID (wrong length)
