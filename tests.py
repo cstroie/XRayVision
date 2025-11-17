@@ -177,6 +177,127 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[0], cnp)
             self.assertEqual(row[1], sex)
 
+    def test_db_add_exam_inserts_new_exam(self):
+        """Test that db_add_exam inserts a new exam"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # First add a patient
+        cnp = "1234567890123"
+        patient_id = "P001"
+        patient_name = "John Doe"
+        patient_age = 30
+        patient_sex = "M"
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        
+        # Add an exam
+        exam_info = {
+            'uid': '1.2.3.4.5',
+            'patient': {
+                'cnp': cnp,
+                'id': patient_id,
+                'name': patient_name,
+                'age': patient_age,
+                'sex': patient_sex
+            },
+            'exam': {
+                'id': 'E001',
+                'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray',
+                'region': 'chest',
+                'type': 'CR',
+                'study': '1.2.3.4.5.6',
+                'series': '1.2.3.4.5.6.7'
+            }
+        }
+        
+        # Call db_add_exam without report
+        xrayvision.db_add_exam(exam_info)
+        
+        # Verify the exam was inserted
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT uid, cnp, id, created, protocol, region, type, status, study, series 
+                FROM exams WHERE uid = ?
+            """, (exam_info['uid'],))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "Exam should be inserted")
+            self.assertEqual(row[0], exam_info['uid'])
+            self.assertEqual(row[1], cnp)
+            self.assertEqual(row[2], exam_info['exam']['id'])
+            self.assertEqual(row[3], exam_info['exam']['created'])
+            self.assertEqual(row[4], exam_info['exam']['protocol'])
+            self.assertEqual(row[5], exam_info['exam']['region'])
+            self.assertEqual(row[6], exam_info['exam']['type'])
+            self.assertEqual(row[7], 'queued')  # Default status
+            self.assertEqual(row[8], exam_info['exam']['study'])
+            self.assertEqual(row[9], exam_info['exam']['series'])
+    
+    def test_db_add_exam_with_report_inserts_ai_report(self):
+        """Test that db_add_exam with report also inserts AI report"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # First add a patient
+        cnp = "1234567890123"
+        patient_id = "P001"
+        patient_name = "John Doe"
+        patient_age = 30
+        patient_sex = "M"
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        
+        # Add an exam with report
+        exam_info = {
+            'uid': '1.2.3.4.5',
+            'patient': {
+                'cnp': cnp,
+                'id': patient_id,
+                'name': patient_name,
+                'age': patient_age,
+                'sex': patient_sex
+            },
+            'exam': {
+                'id': 'E001',
+                'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray',
+                'region': 'chest',
+                'type': 'CR',
+                'study': '1.2.3.4.5.6',
+                'series': '1.2.3.4.5.6.7'
+            }
+        }
+        report_text = "No significant findings."
+        positive = False
+        confidence = 95
+        
+        # Call db_add_exam with report
+        xrayvision.db_add_exam(exam_info, report=report_text, positive=positive, confidence=confidence)
+        
+        # Verify the exam was inserted
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT uid FROM exams WHERE uid = ?", (exam_info['uid'],))
+            row = cursor.fetchone()
+            self.assertIsNotNone(row, "Exam should be inserted")
+            
+            # Verify the AI report was inserted
+            cursor.execute("""
+                SELECT uid, text, positive, confidence, is_correct, reviewed, model
+                FROM ai_reports WHERE uid = ?
+            """, (exam_info['uid'],))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "AI report should be inserted")
+            self.assertEqual(row[0], exam_info['uid'])
+            self.assertEqual(row[1], report_text)
+            self.assertEqual(row[2], int(positive))
+            self.assertEqual(row[3], confidence)
+            self.assertEqual(row[4], -1)  # is_correct defaults to -1
+            self.assertEqual(row[5], 0)   # reviewed defaults to False
+            self.assertEqual(row[6], xrayvision.MODEL_NAME)  # model from config
+
 class TestXRayVision(unittest.TestCase):
     """Test cases for the xrayvision module"""
     
