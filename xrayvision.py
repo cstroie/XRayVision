@@ -1229,18 +1229,17 @@ def db_get_exam_report(uid):
         dict: Report data or None if not found
     """
     query = """
-        SELECT text, positive, confidence, is_correct, model, latency, created, updated
+        SELECT text, positive, confidence, model, latency, created, updated
         FROM ai_reports WHERE uid = ?
     """
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
-        (text, positive, confidence, is_correct, model, latency, created, updated) = result
+        (text, positive, confidence, model, latency, created, updated) = result
         return {
             'text': text,
             'positive': bool(positive) if positive is not None else False,
             'confidence': confidence,
-            'is_correct': is_correct,
             'model': model,
             'latency': latency,
             'created': created,
