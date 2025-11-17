@@ -48,7 +48,7 @@ Provide paginated exam data with optional filters.
 - `page` (integer, default: 1) - Page number
 - `reviewed` (string, enum: any, yes, no) - Filter by review status
 - `positive` (string, enum: any, yes, no) - Filter by AI prediction
-- `valid` (string, enum: any, yes, no) - Filter by validation status
+- `correct` (string, enum: any, yes, no) - Filter by correctness status
 - `region` (string) - Filter by anatomic region
 - `status` (string) - Filter by processing status
 - `search` (string) - Filter by patient name
