@@ -3549,7 +3549,7 @@ async def process_exams_without_rad_reports(session):
                         model=MODEL_NAME,
                         latency=-1
                     )
-                    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with justification: {justification}")
+                    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with summary: {summary}")
 
 
 async def query_retrieve_loop():
