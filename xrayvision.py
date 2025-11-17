@@ -2350,7 +2350,8 @@ async def rad_review(request):
         # Get 'uid', 'normal', and optional 'radiologist' from request
         uid = data.get('uid')
         normal = data.get('normal', None)
-        radiologist = data.get('radiologist', 'rad')
+        # Use authenticated username as radiologist name, fallback to 'rad' if not available
+        radiologist = getattr(request, 'username', 'rad')
         
         if uid is None or normal is None:
             return web.json_response({'status': 'error', 'message': 'UID and normal status are required'}, status=400)
