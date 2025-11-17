@@ -2004,7 +2004,7 @@ async def serve_favicon(request):
 
 
 async def serve_api_spec(request):
-    """Serve the OpenAPI specification file.
+    """Serve the OpenAPI specification file from static/spec.json.
 
     Args:
         request: aiohttp request object
