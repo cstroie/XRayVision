@@ -2578,7 +2578,7 @@ async def check_report(report_text):
         logging.info(f"Report check request received with report length: {len(report_text)} characters")
         
         if not report_text:
-            logging.warning("Report check request failed: No report text provided")
+            logging.warning("Report check request failed: no report text provided")
             return {'error': 'No report text provided'}
         
         # Prepare the request headers
@@ -2623,25 +2623,25 @@ async def check_report(report_text):
             
             try:
                 parsed_response = json.loads(response_text)
-                logging.info(f"Successfully parsed AI response: {parsed_response}")
+                logging.info(f"AI responded: {parsed_response}")
                 
                 # Validate required fields
                 if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
-                    raise ValueError("Missing required fields in response")
+                    raise ValueError("Missing required fields in AI response")
                 
                 # Validate pathologic field
                 if parsed_response["pathologic"] not in ["yes", "no"]:
-                    raise ValueError("Invalid pathologic value")
+                    raise ValueError("Invalid pathologic value in AI response")
                 
                 # Validate severity field
                 if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
-                    raise ValueError("Invalid severity value")
+                    raise ValueError("Invalid severity value in AI response")
                 
                 # Validate summary field
                 if not isinstance(parsed_response["summary"], str):
-                    raise ValueError("Invalid summary value")
+                    raise ValueError("Invalid summary value in AI response")
                 
-                logging.info(f"Report check completed successfully. Pathologic: {parsed_response['pathologic']}, Severity: {parsed_response['severity']}")
+                logging.info(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
                 return parsed_response
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
@@ -3556,7 +3556,7 @@ async def process_fhir_report_with_llm(exam_uid):
     # Log the current status before sending to LLM
     logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
     
-    # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
+    # Use LLM to analyze the diagnostic report and fill positive, severity, and summary fields
     start_time = asyncio.get_event_loop().time()
     analysis_result = await check_report(report_text)
     end_time = asyncio.get_event_loop().time()
@@ -3574,9 +3574,9 @@ async def process_fhir_report_with_llm(exam_uid):
             severity = analysis_result['severity']
             summary = analysis_result['summary']
         except Exception as e:
-            logging.warning(f"Could not extract analysis results from check_report: {e}")
+            logging.warning(f"Could not extract analysis results from LLM: {e}")
     else:
-        logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
+        logging.warning(f"LLM failed for exam {exam_uid}: {analysis_result['error']}")
         processing_time = -1  # Set to -1 if failed
     
     # Update the radiologist report in our database
@@ -3679,8 +3679,8 @@ async def process_exams_without_rad_reports(session):
             latency=-1
         )
 
-        # Process the report with LLM and update database
-        await process_fhir_report_with_llm(exam_uid)
+        # Set the exam status to 'check' for LLM processing in queue
+        db_set_status(exam_uid, "check")
     else:
         logging.debug(f"No conclusion found in diagnostic report for exam {exam_uid}")
 
