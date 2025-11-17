@@ -1390,6 +1390,41 @@ def db_get_exam_ai_report(uid):
     return None
 
 
+def db_get_exam_rad_report(uid):
+    """
+    Get radiologist report for a specific exam.
+
+    Args:
+        uid: Unique identifier of the exam
+
+    Returns:
+        dict: Report data or None if not found
+    """
+    query = """
+        SELECT id, text, positive, severity, summary, type, radiologist, justification, model, latency, created, updated
+        FROM rad_reports WHERE uid = ?
+    """
+    params = (uid,)
+    result = db_execute_query(query, params, fetch_mode='one')
+    if result:
+        (id, text, positive, severity, summary, type, radiologist, justification, model, latency, created, updated) = result
+        return {
+            'id': id,
+            'text': text,
+            'positive': bool(positive) if positive is not None else False,
+            'severity': severity,
+            'summary': summary,
+            'type': type,
+            'radiologist': radiologist,
+            'justification': justification,
+            'model': model,
+            'latency': latency,
+            'created': created,
+            'updated': updated
+        }
+    return None
+
+
 def db_get_patient_by_cnp(cnp):
     """
     Get patient information by CNP.
