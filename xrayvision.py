@@ -2997,10 +2997,8 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
         list: List of imaging studies from FHIR
     """
     try:
-        headers = {
-            'X-Username': FHIR_USERNAME,
-            'X-Password': FHIR_PASSWORD,
-        }
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
         
         url = f"{FHIR_URL}/fhir/Observation"
         params = {
@@ -3009,7 +3007,7 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
             'dt': exam_datetime
         }
         
-        async with session.get(url, headers=headers, params=params, timeout=30) as resp:
+        async with session.get(url, auth=auth, params=params, timeout=30) as resp:
             if resp.status == 200:
                 data = await resp.json()
                 if data.get('resourceType') == 'Bundle' and 'entry' in data:
