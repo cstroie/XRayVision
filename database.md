@@ -49,7 +49,6 @@ Stores AI-generated reports and analysis results.
 | text | TEXT | AI-generated report content |
 | positive | INTEGER | Binary indicator (-1=not assessed, 0=no findings, 1=findings) |
 | confidence | INTEGER | AI self-confidence score (0-100, -1 if not assessed) |
-| is_correct | INTEGER | Validation status (-1=not assessed, 0=incorrect, 1=correct) |
 | model | TEXT | Name of the model used to analyze the image |
 | latency | INTEGER | Time in seconds needed to analyze the image by the AI (-1 if not assessed) |
 
@@ -60,7 +59,7 @@ Stores radiologist reports and clinical information.
 | Column | Type | Description |
 |--------|------|-------------|
 | uid | TEXT (PRIMARY KEY, FOREIGN KEY) | References exams.uid |
-| id | TEXT | HIS report ID |
+| id | TEXT | Diagnostic report ID from HIS |
 | created | TIMESTAMP | Report creation timestamp (default: CURRENT_TIMESTAMP) |
 | updated | TIMESTAMP | Report last update timestamp (default: CURRENT_TIMESTAMP) |
 | text | TEXT | Radiologist report content |
@@ -98,6 +97,5 @@ To optimize query performance, the following indexes are created:
 - The `sex` column in the `patients` table is constrained to values 'M', 'F', or 'O'
 - The `positive` column in `ai_reports` is constrained to values -1, 0, or 1
 - The `confidence` column in `ai_reports` is constrained to values between -1 and 100
-- The `is_correct` column in `ai_reports` is constrained to values -1, 0, or 1
 - The `positive` column in `rad_reports` is constrained to values -1, 0, or 1
 - The `severity` column in `rad_reports` is constrained to values between -1 and 10
