@@ -2994,7 +2994,7 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
         exam_datetime: Exam datetime to search around
 
     Returns:
-        list: List of imaging studies from FHIR
+        list: List of imaging studies from FHIR (exactly one study) or empty list
     """
     try:
         # Use basic authentication
@@ -3012,7 +3012,13 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
                 data = await resp.json()
                 if data.get('resourceType') == 'Bundle' and 'entry' in data:
                     studies = [entry['resource'] for entry in data['entry'] if entry['resource'].get('resourceType') == 'Observation']
-                    return studies
+                    # We need exactly one study
+                    if len(studies) == 1:
+                        return studies
+                    elif len(studies) > 1:
+                        logging.warning(f"FHIR imaging studies search returned {len(studies)} studies, expected exactly one")
+                    # Return empty list if no studies or more than one
+                    return []
             else:
                 logging.warning(f"FHIR imaging studies search failed with status {resp.status}")
     except Exception as e:
