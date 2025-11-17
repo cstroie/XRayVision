@@ -3065,6 +3065,10 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     # Save to exams database
                     is_positive = short == "yes"
                     db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
+                    # Update the AI report with the processing time
+                    query = "UPDATE ai_reports SET latency = ? WHERE uid = ?"
+                    params = (processing_time, exam['uid'])
+                    db_execute_query_retry(query, params)
                     # Send notification for positive cases
                     if is_positive:
                         try:
@@ -3074,7 +3078,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     # Calculate timing statistics
                     global timings
                     end_time = asyncio.get_event_loop().time()
-                    timings['total'] = int((end_time - start_time) * 1000)  # Convert to milliseconds
+                    processing_time = end_time - start_time  # In seconds
+                    timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
                     if timings['average'] > 0:
                         timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
                     else:
