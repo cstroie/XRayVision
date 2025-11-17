@@ -756,52 +756,59 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     rows = db_execute_query(query, params, fetch_mode='all')
     if rows:
         for row in rows:
-            dt = datetime.strptime(row[5], "%Y-%m-%d %H:%M:%S")
+            # Unpack row into named variables for better readability
+            (uid, patient_name, patient_cnp, patient_age, patient_sex,
+             exam_created, exam_protocol, exam_region,
+             ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_model, ai_latency,
+             rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
+             exam_status, exam_type, exam_study, exam_series, exam_id) = row
+                
+            dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
             exams.append({
-                'uid': row[0],
+                'uid': uid,
                 'patient': {
-                    'name': row[1],
-                    'cnp': row[2],
-                    'age': row[3],
-                    'sex': row[4],
+                    'name': patient_name,
+                    'cnp': patient_cnp,
+                    'age': patient_age,
+                    'sex': patient_sex,
                 },
                 'exam': {
-                    'created': row[5],
+                    'created': exam_created,
                     'date': dt.strftime('%Y%m%d'),
                     'time': dt.strftime('%H%M%S'),
-                    'protocol': row[6],
-                    'region': row[7],
-                    'status': row[28],
-                    'type': row[29],
-                    'study': row[30],
-                    'series': row[31],
-                    'id': row[32],
+                    'protocol': exam_protocol,
+                    'region': exam_region,
+                    'status': exam_status,
+                    'type': exam_type,
+                    'study': exam_study,
+                    'series': exam_series,
+                    'id': exam_id,
                 },
                 'report': {
                     'ai': {
-                        'text': row[9],
-                        'short': row[10] and 'yes' or 'no' if row[10] is not None else 'no',
-                        'datetime': row[8],
-                        'positive': bool(row[10]) if row[10] is not None else False,
-                        'correct': (row[10] == row[19] and row[10] is not None and row[19] > -1) if (row[10] is not None and row[19] is not None) else None,
-                        'reviewed': bool(row[18] >= 0) if row[18] is not None else False,
-                        'confidence': row[13] if row[13] is not None else -1,
-                        'model': row[14],
-                        'latency': row[15] if row[15] is not None else -1,
+                        'text': ai_text,
+                        'short': ai_positive and 'yes' or 'no' if ai_positive is not None else 'no',
+                        'datetime': ai_created,
+                        'positive': bool(ai_positive) if ai_positive is not None else False,
+                        'correct': (ai_positive == rad_positive and ai_positive is not None and rad_positive > -1) if (ai_positive is not None and rad_positive is not None) else None,
+                        'reviewed': bool(rad_severity >= 0) if rad_severity is not None else False,
+                        'confidence': ai_confidence if ai_confidence is not None else -1,
+                        'model': ai_model,
+                        'latency': ai_latency if ai_latency is not None else -1,
                     },
                     'rad': {
-                        'text': row[16],
-                        'positive': bool(row[17]) if row[17] is not None else False,
-                        'severity': row[18] if row[18] is not None else -1,
-                        'summary': row[19],
-                        'created': row[20],
-                        'updated': row[21],
-                        'id': row[22],
-                        'type': row[23],
-                        'radiologist': row[24],
-                        'justification': row[25],
-                        'model': row[26],
-                        'latency': row[27] if row[27] is not None else -1,
+                        'text': rad_text,
+                        'positive': bool(rad_positive) if rad_positive is not None else False,
+                        'severity': rad_severity if rad_severity is not None else -1,
+                        'summary': rad_summary,
+                        'created': rad_created,
+                        'updated': rad_updated,
+                        'id': rad_id,
+                        'type': rad_type,
+                        'radiologist': rad_radiologist,
+                        'justification': rad_justification,
+                        'model': rad_model,
+                        'latency': rad_latency if rad_latency is not None else -1,
                     }
                 },
             })
@@ -1338,12 +1345,13 @@ def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
     with sqlite3.connect(DB_FILE) as conn:
         rows = conn.execute(query, params)
         for row in rows:
+            (cnp, id, name, age, sex) = row
             patients.append({
-                'cnp': row[0],
-                'id': row[1],
-                'name': row[2],
-                'age': row[3],
-                'sex': row[4],
+                'cnp': cnp,
+                'id': id,
+                'name': name,
+                'age': age,
+                'sex': sex,
             })
         # Get the total for pagination
         count_query = "SELECT COUNT(*) FROM patients"
@@ -1351,7 +1359,8 @@ def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
         if conditions:
             count_query += ' WHERE ' + " AND ".join(conditions)
             count_params = params[:-2]  # Exclude limit and offset parameters
-        total = conn.execute(count_query, count_params).fetchone()[0]
+        total_row = conn.execute(count_query, count_params).fetchone()
+        (total,) = total_row
     return patients, total
 
 
