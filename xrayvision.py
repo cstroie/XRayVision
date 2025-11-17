@@ -3415,7 +3415,7 @@ async def fhir_loop():
                 # Health check does not require authentication
                 async with session.get(f"{FHIR_URL}/fhir/Metadata", timeout=10) as resp:
                     health_status[FHIR_URL] = resp.status == 200
-                    logging.info(f"Health check {FHIR_URL} → {resp.status}")
+                    logging.info(f"FHIR check {FHIR_URL} → {resp.status}")
                 
                 if health_status[FHIR_URL]:
                     # Process exams without radiologist reports
@@ -3427,8 +3427,8 @@ async def fhir_loop():
         # WebSocket broadcast
         await broadcast_dashboard_update()
         
-        # Random delay between 1 and 10 minutes
-        delay = random.randint(60, 600)
+        # Random delay between 1 and 2 minutes
+        delay = random.randint(60, 120)
         await asyncio.sleep(delay)
 
 async def process_exams_without_rad_reports(session):
