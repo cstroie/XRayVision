@@ -3408,12 +3408,8 @@ async def fhir_health_check():
         try:
             async with aiohttp.ClientSession() as session:
                 # Test FHIR connectivity using the proper metadata endpoint
-                headers = {
-                    'X-Username': FHIR_USERNAME,
-                    'X-Password': FHIR_PASSWORD,
-                }
-                
-                async with session.get(f"{FHIR_URL}/fhir/Metadata", headers=headers, timeout=10) as resp:
+                # Health check does not require authentication
+                async with session.get(f"{FHIR_URL}/fhir/Metadata", timeout=10) as resp:
                     health_status[FHIR_URL] = resp.status == 200
                     logging.info(f"Health check {FHIR_URL} → {resp.status}")
                 
