@@ -799,11 +799,8 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
     # Update the conditions with proper parameterization
     if 'reviewed' in filters:
-        if filters['reviewed'] == 1:
-            conditions.append("rr.positive > -1")
-        else:
-            conditions.append("rr.positive = -1")
-        params.append(filters['reviewed'])
+        conditions.append("rr.positive > ?")
+        params.append("-1")
     if 'positive' in filters:
         conditions.append("ar.positive = ?")
         params.append(filters['positive'])
