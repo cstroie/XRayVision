@@ -3440,7 +3440,7 @@ async def fhir_loop():
                 # Health check does not require authentication
                 async with session.get(f"{FHIR_URL}/fhir/Metadata", timeout=10) as resp:
                     health_status[FHIR_URL] = resp.status == 200
-                    logging.info(f"FHIR check {FHIR_URL} → {resp.status}")
+                    logging.debug(f"FHIR check {FHIR_URL} → {resp.status}")
                 
                 if health_status[FHIR_URL]:
                     # Process exams without radiologist reports
@@ -3468,6 +3468,7 @@ async def process_exams_without_rad_reports(session):
     if not exam:
         return
     
+    # Extract necessary information
     patient_cnp = exam['patient']['cnp']
     exam_datetime = exam['exam']['created']
     exam_uid = exam['uid']
@@ -3482,82 +3483,96 @@ async def process_exams_without_rad_reports(session):
             patient_id = fhir_patient['id']
             # Update patient ID in database
             db_update_patient_id(patient_cnp, patient_id)
+    # If still no patient ID, log and skip
+    if not patient_id:
+        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp}, skipping exam {exam_uid}")
+        return
     
     # If we have patient ID, search for imaging studies
-    if patient_id:
-        studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
-        # If exactly one study found, get its diagnostic report
-        if len(studies) == 1:
-            study = studies[0]
-            if 'id' in study:
-                report = await get_fhir_diagnosticreport(session, study['id'])
-                if report and 'conclusion' in report and report['conclusion']:
-                    # Extract radiologist name from resultsInterpreter if available
-                    radiologist = 'HIS'  # Default value
-                    try:
-                        if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
-                            interpreter = report['resultsInterpreter'][0]
-                            if 'display' in interpreter:
-                                radiologist = interpreter['display']
-                    except Exception as e:
-                        logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
-                    
-                    # Extract justification from extensions if available
-                    justification = ''  # Default value
-                    try:
-                        if 'extension' in report:
-                            for ext in report['extension']:
-                                if 'diagnostic-report-reason' in ext.get('url', ''):
-                                    if 'extension' in ext:
-                                        for nested_ext in ext['extension']:
-                                            if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
-                                                justification = nested_ext['valueString']
-                                                break
-                    except Exception as e:
-                        logging.warning(f"Could not extract justification from FHIR report: {e}")
-                    
-                    # Log the current status before sending to LLM
-                    logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
-                    
-                    # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
-                    start_time = asyncio.get_event_loop().time()
-                    analysis_result = await check_report(report['conclusion'])
-                    end_time = asyncio.get_event_loop().time()
-                    processing_time = end_time - start_time  # In seconds
-                    
-                    # Set default values in case of analysis failure
-                    positive = -1
-                    severity = -1
-                    summary = ''
-                    
-                    # Extract values from analysis result if successful
-                    if 'error' not in analysis_result:
-                        try:
-                            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
-                            severity = analysis_result['severity']
-                            summary = analysis_result['summary']
-                        except Exception as e:
-                            logging.warning(f"Could not extract analysis results from check_report: {e}")
-                    else:
-                        logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
-                        processing_time = -1  # Set to -1 if failed
-                    
-                    # Add the radiologist report to our database
-                    db_add_rad_report(
-                        uid=exam_uid,
-                        report_id=study['id'],
-                        report_text=report['conclusion'],
-                        positive=positive,
-                        severity=severity,
-                        summary=summary,
-                        report_type='radio',
-                        radiologist=radiologist,
-                        justification=justification,
-                        model=MODEL_NAME,
-                        latency=processing_time
-                    )
-                    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with summary: {summary}")
+    studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
+    if not studies:
+        logging.info(f"No imaging studies found for exam {exam_uid}")
+        return
+    elif len(studies) > 1:
+         logging.info(f"Multiple close imaging studies found for exam {exam_uid}, skipping.")
+         return
 
+    # Get the single study
+    study = studies[0]
+    if not 'id' in study:
+        logging.warning(f"Imaging study for exam {exam_uid} has no ID, skipping.")
+        return
+    
+    # If exactly one study found, get its diagnostic report
+    report = await get_fhir_diagnosticreport(session, study['id'])
+    if report and 'conclusion' in report and report['conclusion']:
+        # Extract radiologist name from resultsInterpreter if available
+        radiologist = 'rad'  # Default value
+        try:
+            if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
+                interpreter = report['resultsInterpreter'][0]
+                if 'display' in interpreter:
+                    radiologist = interpreter['display']
+        except Exception as e:
+            logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
+        
+        # Extract justification from extensions if available
+        justification = ''  # Default value
+        try:
+            if 'extension' in report:
+                for ext in report['extension']:
+                    if 'diagnostic-report-reason' in ext.get('url', ''):
+                        if 'extension' in ext:
+                            for nested_ext in ext['extension']:
+                                if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
+                                    justification = nested_ext['valueString']
+                                    break
+        except Exception as e:
+            logging.warning(f"Could not extract justification from FHIR report: {e}")
+        
+        # Log the current status before sending to LLM
+        logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
+        
+        # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
+        start_time = asyncio.get_event_loop().time()
+        analysis_result = await check_report(report['conclusion'])
+        end_time = asyncio.get_event_loop().time()
+        processing_time = end_time - start_time  # In seconds
+        
+        # Set default values in case of analysis failure
+        positive = -1
+        severity = -1
+        summary = ''
+        
+        # Extract values from analysis result if successful
+        if 'error' not in analysis_result:
+            try:
+                positive = 1 if analysis_result['pathologic'] == 'yes' else 0
+                severity = analysis_result['severity']
+                summary = analysis_result['summary']
+            except Exception as e:
+                logging.warning(f"Could not extract analysis results from check_report: {e}")
+        else:
+            logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
+            processing_time = -1  # Set to -1 if failed
+        
+        # Add the radiologist report to our database
+        db_add_rad_report(
+            uid=exam_uid,
+            report_id=study['id'],
+            report_text=report['conclusion'],
+            positive=positive,
+            severity=severity,
+            summary=summary,
+            report_type='radio',
+            radiologist=radiologist,
+            justification=justification,
+            model=MODEL_NAME,
+            latency=processing_time
+        )
+        logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with summary: {summary}")
+    else:
+        logging.debug(f"No conclusion found in diagnostic report for exam {exam_uid}")
 
 async def query_retrieve_loop():
     """
