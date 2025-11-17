@@ -15,7 +15,8 @@ from datetime import datetime
 # Add the current directory to Python path to import xrayvision
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from xrayvision import db_init, db_add_patient
+# Import required functions directly to avoid DB_FILE conflicts
+from xrayvision import db_init, db_create_insert_query, db_execute_query_retry
 
 def migrate_database(old_db_path, new_db_path):
     """
@@ -31,20 +32,17 @@ def migrate_database(old_db_path, new_db_path):
         print(f"Error: Old database file {old_db_path} not found.")
         return False
     
-    # Create new database with updated schema by importing db_init
+    # Create new database with updated schema
     print("Creating new database schema...")
     # Temporarily override DB_FILE to use the new database path
-    original_db_file = os.environ.get('XRAYVISION_DB_PATH')
+    original_db_file = os.environ.get('XRAYVISION_DB_PATH', 'xrayvision.db')
     os.environ['XRAYVISION_DB_PATH'] = new_db_path
     try:
         db_init()
         print("New database schema created successfully.")
     finally:
         # Restore original DB_FILE
-        if original_db_file:
-            os.environ['XRAYVISION_DB_PATH'] = original_db_file
-        else:
-            os.environ.pop('XRAYVISION_DB_PATH', None)
+        os.environ['XRAYVISION_DB_PATH'] = original_db_file
     
     # Migrate data
     print("Migrating data...")
@@ -126,9 +124,9 @@ def migrate_data(old_db_path, new_db_path):
             region = row_data.get('region', '')
             reported = row_data.get('reported')  # This will map to ai_reports.created
             report = row_data.get('report')
-            positive = row_data.get('positive', 0)
-            valid = row_data.get('valid', 1)  # valid -> is_correct
-            reviewed = row_data.get('reviewed', 0)
+            positive = row_data.get('positive', -1)
+            valid = row_data.get('valid', -1)  # valid -> is_correct
+            reviewed = row_data.get('reviewed', -1)
             status = row_data.get('status', 'none')
             
             # Validate required fields
@@ -139,15 +137,15 @@ def migrate_data(old_db_path, new_db_path):
             # Use patient_id as CNP for now (may need adjustment based on actual data)
             cnp = patient_id if patient_id else uid
             
-            # Add patient record using db_add_patient function
-            db_add_patient(patient_id, None, patient_name, patient_age, patient_sex)
+            # Add patient record
+            patient_query = db_create_insert_query('patients', 'cnp', 'id', 'name', 'age', 'sex')
+            patient_params = (cnp, None, patient_name, patient_age, patient_sex)
+            new_conn.execute(patient_query, patient_params)
             
             # Add exam record
-            new_conn.execute('''
-                INSERT OR REPLACE INTO exams 
-                (uid, cnp, id, created, protocol, region, type, status, study, series)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (uid, cnp, None, created, protocol, region, '', status or 'none', None, None))
+            exam_query = db_create_insert_query('exams', 'uid', 'cnp', 'id', 'created', 'protocol', 'region', 'type', 'status', 'study', 'series')
+            exam_params = (uid, cnp, None, created, protocol, region, '', status or 'none', None, None)
+            new_conn.execute(exam_query, exam_params)
             
             # Add AI report if it exists
             if report is not None:
@@ -164,29 +162,22 @@ def migrate_data(old_db_path, new_db_path):
                 # Use 'reported' timestamp if available, otherwise use current timestamp
                 report_created = reported if reported else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 
-                new_conn.execute('''
-                    INSERT OR REPLACE INTO ai_reports
-                    (uid, created, updated, text, positive, confidence, is_correct, reviewed, model, latency)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (uid, report_created, report_created, report, 
-                      int(positive) if positive is not None else -1, 
-                      -1,  # confidence
-                      is_correct,  # is_correct (mapped from old 'valid' field)
-                      is_reviewed,  # reviewed (mapped from old 'reviewed' field)
-                      None,  # model
-                      -1))  # latency
+                ai_query = db_create_insert_query('ai_reports', 'uid', 'created', 'updated', 'text', 'positive', 'confidence', 'is_correct', 'reviewed', 'model', 'latency')
+                ai_params = (uid, report_created, report_created, report, 
+                            int(positive) if positive is not None else -1, 
+                            -1,  # confidence
+                            is_correct,  # is_correct (mapped from old 'valid' field)
+                            is_reviewed,  # reviewed (mapped from old 'reviewed' field)
+                            None,  # model
+                            -1)  # latency
+                new_conn.execute(ai_query, ai_params)
                 
-                # Add radiologist report if valid is True (1)
-                # Map: uid->uid, id->empty, created->reported, updated->empty, text->empty, 
-                # positive->positive from old exams if valid is true, severity->-1, summary->empty,
-                # type->empty, justification->empty, radiologist->'Dr. Stroie Costin', model->empty, latency->-1
-                new_conn.execute('''
-                    INSERT OR REPLACE INTO rad_reports
-                    (uid, id, created, updated, text, positive, severity, summary, type, radiologist, justification, model, latency)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (uid, None, report_created, None, None, 
-                        int(positive) if valid == 1 else not(positive),
-                        -1, None, None, 'Dr. Stroie Costin' if reviewed else None, None, None, -1))
+                # Add radiologist report
+                rad_query = db_create_insert_query('rad_reports', 'uid', 'id', 'created', 'updated', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
+                rad_params = (uid, None, report_created, None, None, 
+                             int(positive) if valid == 1 else (0 if positive == 1 else 1) if positive is not None else -1,
+                             -1, None, None, 'Dr. Stroie Costin' if reviewed else None, None, None, -1)
+                new_conn.execute(rad_query, rad_params)
             
             migrated_count += 1
         
