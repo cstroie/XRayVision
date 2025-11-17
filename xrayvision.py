@@ -1377,37 +1377,45 @@ def db_purge_ignored_errors():
     Returns:
         int: Number of records deleted
     """
-    deleted_uids = []
-    with sqlite3.connect(DB_FILE) as conn:
-        # First delete associated AI reports
-        conn.execute('''
-            DELETE FROM ai_reports
-            WHERE uid IN (
-                SELECT uid FROM exams
-                WHERE status IN ('ignore', 'error')
-                AND created < datetime('now', '-7 days')
-            )
-        ''')
-        
-        # Then delete associated radiologist reports
-        conn.execute('''
-            DELETE FROM rad_reports
-            WHERE uid IN (
-                SELECT uid FROM exams
-                WHERE status IN ('ignore', 'error')
-                AND created < datetime('now', '-7 days')
-            )
-        ''')
-        
-        # Finally delete the exams and get the UIDs for file cleanup
-        cursor = conn.execute('''
-            DELETE FROM exams
+    # First delete associated AI reports
+    ai_query = '''
+        DELETE FROM ai_reports
+        WHERE uid IN (
+            SELECT uid FROM exams
             WHERE status IN ('ignore', 'error')
             AND created < datetime('now', '-7 days')
-            RETURNING uid
-        ''')
-        deleted_uids = [row[0] for row in cursor.fetchall()]
-        deleted_count = cursor.rowcount
+        )
+    '''
+    db_execute_query_retry(ai_query)
+    
+    # Then delete associated radiologist reports
+    rad_query = '''
+        DELETE FROM rad_reports
+        WHERE uid IN (
+            SELECT uid FROM exams
+            WHERE status IN ('ignore', 'error')
+            AND created < datetime('now', '-7 days')
+        )
+    '''
+    db_execute_query_retry(rad_query)
+    
+    # Get UIDs for file cleanup before deleting exams
+    uid_query = '''
+        SELECT uid FROM exams
+        WHERE status IN ('ignore', 'error')
+        AND created < datetime('now', '-7 days')
+    '''
+    uid_rows = db_execute_query(uid_query, fetch_mode='all')
+    deleted_uids = [row[0] for row in uid_rows] if uid_rows else []
+    
+    # Finally delete the exams
+    exam_query = '''
+        DELETE FROM exams
+        WHERE status IN ('ignore', 'error')
+        AND created < datetime('now', '-7 days')
+    '''
+    deleted_count = db_execute_query_retry(exam_query)
+    
     # Delete associated files
     for uid in deleted_uids:
         for ext in ('dcm', 'png'):
