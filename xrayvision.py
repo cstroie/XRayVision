@@ -569,7 +569,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
     patient = info["patient"]
     db_add_patient(
         patient["cnp"],
-        "",
+        patient.get("id",""),
         patient["name"],
         patient["age"],
         patient["sex"]
