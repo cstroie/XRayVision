@@ -3351,7 +3351,7 @@ def handle_error(e, context="", default_return=None, raise_on_error=False):
     """
     if VERBOSE:
         error_msg = f"Error{f' in {context}' if context else ''}: {e}"
-        print(error_msg)
+        logging.error(error_msg)
 
     if raise_on_error:
         raise e
