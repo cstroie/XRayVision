@@ -243,6 +243,7 @@ RULES:
 - "summary": diagnosis in maximum 5 words (e.g., "fracture", "pneumonia", "lung nodule")
 - If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
 - Ignore spelling errors
+- Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
 - Respond ONLY with the JSON, without additional text
 
 EXAMPLES:
@@ -251,6 +252,9 @@ Report: "Hazy opacity in the left mid lung field, possibly representing consolid
 Response: {"pathologic": "yes", "severity": 6, "summary": "pulmonary consolidation"}
 
 Report: "No pathological changes. Heart of normal size."
+Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
+
+Report: "Fără semne de fractură sau leziuni osteolitice."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 """)
 
