@@ -298,6 +298,139 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[5], 0)   # reviewed defaults to False
             self.assertEqual(row[6], xrayvision.MODEL_NAME)  # model from config
 
+    def test_db_add_ai_report_inserts_new_report(self):
+        """Test that db_add_ai_report inserts a new AI report"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Add a patient and exam first
+        cnp = "1234567890123"
+        patient_id = "P001"
+        patient_name = "John Doe"
+        patient_age = 30
+        patient_sex = "M"
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        
+        exam_info = {
+            'uid': '1.2.3.4.5',
+            'patient': {
+                'cnp': cnp,
+                'id': patient_id,
+                'name': patient_name,
+                'age': patient_age,
+                'sex': patient_sex
+            },
+            'exam': {
+                'id': 'E001',
+                'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray',
+                'region': 'chest',
+                'type': 'CR',
+                'study': '1.2.3.4.5.6',
+                'series': '1.2.3.4.5.6.7'
+            }
+        }
+        xrayvision.db_add_exam(exam_info)
+        
+        # Add an AI report
+        uid = '1.2.3.4.5'
+        report_text = "Findings suggest possible pneumonia."
+        positive = True
+        confidence = 85
+        model = "test-model"
+        latency = 2.5
+        
+        xrayvision.db_add_ai_report(uid, report_text, positive, confidence, model, latency)
+        
+        # Verify the AI report was inserted
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT uid, text, positive, confidence, is_correct, model, latency
+                FROM ai_reports WHERE uid = ?
+            """, (uid,))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "AI report should be inserted")
+            self.assertEqual(row[0], uid)
+            self.assertEqual(row[1], report_text)
+            self.assertEqual(row[2], int(positive))
+            self.assertEqual(row[3], confidence)
+            self.assertEqual(row[4], -1)  # is_correct defaults to -1
+            self.assertEqual(row[5], model)
+            self.assertEqual(row[6], latency)
+
+    def test_db_add_rad_report_inserts_new_report(self):
+        """Test that db_add_rad_report inserts a new radiologist report"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Add a patient and exam first
+        cnp = "1234567890123"
+        patient_id = "P001"
+        patient_name = "John Doe"
+        patient_age = 30
+        patient_sex = "M"
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        
+        exam_info = {
+            'uid': '1.2.3.4.5',
+            'patient': {
+                'cnp': cnp,
+                'id': patient_id,
+                'name': patient_name,
+                'age': patient_age,
+                'sex': patient_sex
+            },
+            'exam': {
+                'id': 'E001',
+                'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray',
+                'region': 'chest',
+                'type': 'CR',
+                'study': '1.2.3.4.5.6',
+                'series': '1.2.3.4.5.6.7'
+            }
+        }
+        xrayvision.db_add_exam(exam_info)
+        
+        # Add a radiologist report
+        uid = '1.2.3.4.5'
+        report_id = "R001"
+        report_text = "Confirmed pneumonia with consolidation in right lower lobe."
+        positive = 1
+        severity = 7
+        summary = "pneumonia"
+        report_type = "CR"
+        radiologist = "Dr. Smith"
+        justification = "Clinical presentation consistent with pneumonia"
+        model = "test-model"
+        latency = 5.0
+        
+        xrayvision.db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency)
+        
+        # Verify the radiologist report was inserted
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency
+                FROM rad_reports WHERE uid = ?
+            """, (uid,))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "Radiologist report should be inserted")
+            self.assertEqual(row[0], uid)
+            self.assertEqual(row[1], report_id)
+            self.assertEqual(row[2], report_text)
+            self.assertEqual(row[3], positive)
+            self.assertEqual(row[4], severity)
+            self.assertEqual(row[5], summary)
+            self.assertEqual(row[6], report_type)
+            self.assertEqual(row[7], radiologist)
+            self.assertEqual(row[8], justification)
+            self.assertEqual(row[9], model)
+            self.assertEqual(row[10], latency)
+
 class TestXRayVision(unittest.TestCase):
     """Test cases for the xrayvision module"""
     
