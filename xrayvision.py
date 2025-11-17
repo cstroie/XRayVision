@@ -533,6 +533,22 @@ def db_init():
         logging.info("Initialized SQLite database with normalized schema.")
 
 
+def db_build_insert_query(table_name, columns):
+    """
+    Convenience function to build INSERT OR REPLACE query strings.
+
+    Args:
+        table_name: Name of the table to insert into
+        columns: List of column names
+
+    Returns:
+        str: Formatted SQL query string with placeholders
+    """
+    placeholders = ', '.join(['?'] * len(columns))
+    columns_str = ', '.join(columns)
+    return f'INSERT OR REPLACE INTO {table_name} ({columns_str}) VALUES ({placeholders})'
+
+
 def db_upsert(query, params):
     """
     Convenience function to perform INSERT OR REPLACE operations.
