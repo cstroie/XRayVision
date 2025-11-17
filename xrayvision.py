@@ -579,56 +579,6 @@ def db_add_patient(cnp, id, name, age, sex):
     return db_upsert(query, params)
 
 
-def db_add_exam(info, report=None, positive=None, confidence=None):
-    """
-    Add or update an exam entry in the database.
-
-    This function handles queuing new exams for processing. It sets status to 'queued'
-    and stores exam metadata. Patient information is stored in the patients table.
-
-    Args:
-        info: Dictionary containing exam metadata (uid, patient info, exam details)
-        report: Optional AI report text
-        positive: Optional AI positive finding indicator
-        confidence: Optional AI confidence score (0-100)
-    """
-    # Add or update patient information
-    patient = info["patient"]
-    db_add_patient(
-        patient["cnp"],
-        patient.get("id",""),
-        patient["name"],
-        patient["age"],
-        patient["sex"]
-    )
-    
-    # Set status to queued for new exams
-    status = 'queued'
-    
-    # Insert into database
-    exam = info["exam"]
-    values = (
-        info['uid'],
-        patient["cnp"],
-        exam.get("id",""),
-        exam['created'],
-        exam["protocol"],
-        exam['region'],
-        exam.get("type", ""),
-        status,
-        exam.get("study"),
-        exam.get("series")
-    )
-    query = db_create_insert_query('exams', 'uid', 'cnp', 'id', 'created', 'protocol', 'region', 'type', 'status', 'study', 'series')
-    db_upsert(query, values)
-        
-    # If report is provided, add it to ai_reports table
-    if report is not None and positive is not None:
-        query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'is_correct', 'reviewed', 'model')
-        values = (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME)
-        db_upsert(query, values)
-
-
 def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
     """
     Add or update an AI report entry in the database.
@@ -687,6 +637,56 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
     )
     query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
     db_upsert(query, values)
+
+
+def db_add_exam(info, report=None, positive=None, confidence=None):
+    """
+    Add or update an exam entry in the database.
+
+    This function handles queuing new exams for processing. It sets status to 'queued'
+    and stores exam metadata. Patient information is stored in the patients table.
+
+    Args:
+        info: Dictionary containing exam metadata (uid, patient info, exam details)
+        report: Optional AI report text
+        positive: Optional AI positive finding indicator
+        confidence: Optional AI confidence score (0-100)
+    """
+    # Add or update patient information
+    patient = info["patient"]
+    db_add_patient(
+        patient["cnp"],
+        patient.get("id",""),
+        patient["name"],
+        patient["age"],
+        patient["sex"]
+    )
+    
+    # Set status to queued for new exams
+    status = 'queued'
+    
+    # Insert into database
+    exam = info["exam"]
+    params = (
+        info['uid'],
+        patient["cnp"],
+        exam.get("id",""),
+        exam['created'],
+        exam["protocol"],
+        exam['region'],
+        exam.get("type", ""),
+        status,
+        exam.get("study"),
+        exam.get("series")
+    )
+    query = db_create_insert_query('exams', 'uid', 'cnp', 'id', 'created', 'protocol', 'region', 'type', 'status', 'study', 'series')
+    db_upsert(query, params)
+        
+    # If report is provided, add it to ai_reports table
+    if report is not None and positive is not None:
+        query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'is_correct', 'reviewed', 'model')
+        params = (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME)
+        db_upsert(query, params])
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
