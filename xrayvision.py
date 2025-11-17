@@ -1536,6 +1536,26 @@ def db_validate(uid, normal=True, correct=None, enqueue=False):
     return correct
 
 
+def db_update_rad_report(uid, normal=True, radiologist='rad'):
+    """
+    Update radiologist report with normal/abnormal status.
+
+    When a radiologist reviews a case, they indicate if the finding is normal (negative)
+    or abnormal (positive). This function updates the radiologist report with that information.
+
+    Args:
+        uid: The unique identifier of the exam
+        normal: Whether the radiologist marked the case as normal (True) or abnormal (False)
+        radiologist: Name/identifier of the radiologist (default: 'rad')
+
+    Returns:
+        None
+    """
+    abnormal = not normal
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?", (int(abnormal), radiologist, uid))
+
+
 def db_set_status(uid, status):
     """
     Set the processing status for a specific exam.
