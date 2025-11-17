@@ -3520,7 +3520,10 @@ async def process_exams_without_rad_reports(session):
                     logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
                     
                     # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
+                    start_time = asyncio.get_event_loop().time()
                     analysis_result = await check_report(report['conclusion'])
+                    end_time = asyncio.get_event_loop().time()
+                    processing_time = end_time - start_time  # In seconds
                     
                     # Set default values in case of analysis failure
                     positive = -1
@@ -3537,6 +3540,7 @@ async def process_exams_without_rad_reports(session):
                             logging.warning(f"Could not extract analysis results from check_report: {e}")
                     else:
                         logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
+                        processing_time = -1  # Set to -1 if failed
                     
                     # Add the radiologist report to our database
                     db_add_rad_report(
@@ -3550,7 +3554,7 @@ async def process_exams_without_rad_reports(session):
                         radiologist=radiologist,
                         justification=justification,
                         model=MODEL_NAME,
-                        latency=-1
+                        latency=processing_time
                     )
                     logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with summary: {summary}")
 
