@@ -691,7 +691,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
             confidence if confidence is not None else -1,
             MODEL_NAME,
             -1
-        )                                                                                                                     
+        )
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
