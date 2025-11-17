@@ -672,8 +672,8 @@ def db_get_exam_without_rad_report():
     # Randomly choose number of weeks (1-52) for initial search
     weeks = random.randint(1, 52)
     
-    # Try twice - first with random weeks, then double if no results
-    for attempt in range(2):
+    # Try three - first with random weeks, then double if no results
+    for attempt in range(3):
         # Calculate cutoff date
         cutoff_date = datetime.now() - timedelta(weeks=weeks)
         cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
@@ -722,46 +722,7 @@ def db_get_exam_without_rad_report():
         if attempt == 0:
             weeks = min(weeks * 2, 52)
     
-    # If still no exam found, try without date constraint
-    query = """
-        SELECT 
-            e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
-            p.name, p.cnp, p.id, p.age, p.sex
-        FROM exams e
-        INNER JOIN patients p ON e.cnp = p.cnp
-        LEFT JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE (rr.id IS NULL OR rr.id = '')
-        AND e.status = 'done'
-        ORDER BY RANDOM()
-        LIMIT 1
-    """
-    row = db_execute_query(query, fetch_mode='one')
-    
-    if row:
-        (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
-         patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
-        
-        return {
-            'uid': uid,
-            'exam': {
-                'created': exam_created,
-                'protocol': exam_protocol,
-                'region': exam_region,
-                'status': exam_status,
-                'type': exam_type,
-                'study': exam_study,
-                'series': exam_series,
-                'id': exam_id,
-            },
-            'patient': {
-                'name': patient_name,
-                'cnp': patient_cnp,
-                'id': patient_id,
-                'age': patient_age,
-                'sex': patient_sex,
-            }
-        }
-    
+    # No exam found after several attempts
     return None
 
 def db_update_patient_id(cnp, patient_id):
@@ -1283,7 +1244,7 @@ def db_get_queue_size():
     Returns:
         int: Number of exams with status 'queued'
     """
-    query = "SELECT COUNT(*) FROM exams WHERE status = 'queued'"
+    query = "SELECT COUNT(*) FROM exams WHERE status IN ('queued', 'requeue', 'check')"
     result = db_execute_query(query, fetch_mode='one')
     return result[0] if result else 0
 
