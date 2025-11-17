@@ -2392,7 +2392,7 @@ async def diagnostics_handler(request):
         request: aiohttp request object
 
     Returns:
-        web.json_response: JSON response with diagnostic summaries and report counts
+        web.json_response: JSON response with diagnostic summaries and report counts in {'summary': 3} format
     """
     try:
         # Get distinct diagnostic summaries and their report counts from the database
@@ -2404,11 +2404,11 @@ async def diagnostics_handler(request):
             ORDER BY summary
         """
         rows = db_execute_query(query, fetch_mode='all')
-        diagnostics = [{'name': row[0], 'report_count': row[1]} for row in rows] if rows else []
+        diagnostics = {row[0]: row[1] for row in rows} if rows else {}
         return web.json_response(diagnostics)
     except Exception as e:
         logging.error(f"Diagnostics endpoint error: {e}")
-        return web.json_response([], status = 500)
+        return web.json_response({}, status = 500)
 
 
 async def radiologists_handler(request):
