@@ -3669,8 +3669,8 @@ async def fhir_loop():
         # WebSocket broadcast
         await broadcast_dashboard_update()
         
-        # Random delay between 1 and 2 minutes
-        delay = random.randint(60, 120)
+        # Random delay between 1 and 5 minutes
+        delay = random.randint(60, 300)
         await asyncio.sleep(delay)
 
 async def process_fhir_report_with_llm(exam_uid):
