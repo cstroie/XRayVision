@@ -1532,7 +1532,7 @@ def db_validate(uid, normal=True, correct=None):
     return correct
 
 
-def db_update_rad_report(uid, normal=True, radiologist='rad'):
+def db_rad_review(uid, normal=True, radiologist='rad'):
     """
     Update radiologist report with normal/abnormal status.
 
