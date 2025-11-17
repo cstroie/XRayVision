@@ -12,6 +12,11 @@ import os
 import sys
 from datetime import datetime
 
+# Add the current directory to Python path to import xrayvision
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from xrayvision import db_init
+
 def migrate_database(old_db_path, new_db_path):
     """
     Migrate database from old format to new format.
@@ -26,8 +31,20 @@ def migrate_database(old_db_path, new_db_path):
         print(f"Error: Old database file {old_db_path} not found.")
         return False
     
-    # Create new database with updated schema
-    create_new_schema(new_db_path)
+    # Create new database with updated schema by importing db_init
+    print("Creating new database schema...")
+    # Temporarily override DB_FILE to use the new database path
+    original_db_file = os.environ.get('XRAYVISION_DB_PATH')
+    os.environ['XRAYVISION_DB_PATH'] = new_db_path
+    try:
+        db_init()
+        print("New database schema created successfully.")
+    finally:
+        # Restore original DB_FILE
+        if original_db_file:
+            os.environ['XRAYVISION_DB_PATH'] = original_db_file
+        else:
+            os.environ.pop('XRAYVISION_DB_PATH', None)
     
     # Migrate data
     print("Migrating data...")
@@ -40,113 +57,6 @@ def migrate_database(old_db_path, new_db_path):
         import traceback
         traceback.print_exc()
         return False
-
-def create_new_schema(db_path):
-    """Create the new database schema."""
-    print("Creating new database schema...")
-    with sqlite3.connect(db_path) as conn:
-        # Enable foreign key constraints
-        conn.execute('PRAGMA foreign_keys = ON')
-        
-        # Patients table
-        conn.execute('''
-            CREATE TABLE patients (
-                cnp TEXT PRIMARY KEY,
-                id TEXT,
-                name TEXT,
-                age INTEGER,
-                sex TEXT CHECK(sex IN ('M', 'F', 'O'))
-            )
-        ''')
-        
-        # Exams table
-        conn.execute('''
-            CREATE TABLE exams (
-                uid TEXT PRIMARY KEY,
-                cnp TEXT,
-                id TEXT,
-                created TIMESTAMP,
-                protocol TEXT,
-                region TEXT,
-                type TEXT,
-                status TEXT DEFAULT 'none',
-                study TEXT,
-                series TEXT,
-                FOREIGN KEY (cnp) REFERENCES patients(cnp)
-            )
-        ''')
-        
-        # AI reports table
-        conn.execute('''
-            CREATE TABLE ai_reports (
-                uid TEXT PRIMARY KEY,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                text TEXT,
-                positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
-                confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
-                is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
-                reviewed BOOLEAN DEFAULT FALSE,
-                model TEXT,
-                latency INTEGER DEFAULT -1,
-                FOREIGN KEY (uid) REFERENCES exams(uid)
-            )
-        ''')
-        
-        # Radiologist reports table
-        conn.execute('''
-            CREATE TABLE rad_reports (
-                uid TEXT PRIMARY KEY,
-                id TEXT,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                text TEXT,
-                positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
-                severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
-                summary TEXT,
-                type TEXT,
-                radiologist TEXT,
-                justification TEXT,
-                model TEXT,
-                latency INTEGER DEFAULT -1,
-                FOREIGN KEY (uid) REFERENCES exams(uid)
-            )
-        ''')
-        
-        # Indexes for common query filters
-        conn.execute('''
-            CREATE INDEX idx_exams_status
-            ON exams(status)
-        ''')
-        conn.execute('''
-            CREATE INDEX idx_exams_region
-            ON exams(region)
-        ''')
-        conn.execute('''
-            CREATE INDEX idx_exams_cnp
-            ON exams(cnp)
-        ''')
-        conn.execute('''
-            CREATE INDEX idx_exams_created
-            ON exams(created)
-        ''')
-        conn.execute('''
-            CREATE INDEX idx_exams_study
-            ON exams(study)
-        ''')
-        conn.execute('''
-            CREATE INDEX idx_ai_reports_created
-            ON ai_reports(created)
-        ''')
-        conn.execute('''
-            CREATE INDEX idx_rad_reports_created
-            ON rad_reports(created)
-        ''')
-        conn.execute('''
-            CREATE INDEX idx_patients_name
-            ON patients(name)
-        ''')
-    print("New database schema created successfully.")
 
 def migrate_data(old_db_path, new_db_path):
     """Migrate data from old database to new database."""
