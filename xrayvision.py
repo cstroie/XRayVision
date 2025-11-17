@@ -2399,6 +2399,29 @@ async def diagnostics_handler(request):
         return web.json_response([], status = 500)
 
 
+async def radiologists_handler(request):
+    """Provide distinct radiologist names from radiologist reports.
+
+    Returns the list of unique radiologist names (from rad_reports.radiologist)
+    for use in filtering or display in the frontend.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with radiologist names list
+    """
+    try:
+        # Get distinct radiologist names from the database
+        query = "SELECT DISTINCT radiologist FROM rad_reports WHERE radiologist IS NOT NULL AND radiologist != '' ORDER BY radiologist"
+        rows = db_execute_query(query, fetch_mode='all')
+        radiologists = [row[0] for row in rows] if rows else []
+        return web.json_response(radiologists)
+    except Exception as e:
+        logging.error(f"Radiologists endpoint error: {e}")
+        return web.json_response([], status = 500)
+
+
 async def patients_handler(request):
     """Provide paginated patient data with optional filters.
 
@@ -3470,6 +3493,7 @@ async def start_dashboard():
     app.router.add_get('/api/stats', stats_handler)
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/diagnostics', diagnostics_handler)
+    app.router.add_get('/api/radiologists', radiologists_handler)
     app.router.add_get('/api/config', config_handler)
     
     # API endpoints - Actions
