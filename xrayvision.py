@@ -634,11 +634,12 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
 
     This function handles queuing new exams for processing. It sets status to 'queued'
     and stores exam metadata. Patient information is stored in the patients table.
+    If report data is provided, it also creates an entry in the ai_reports table.
 
     Args:
         info: Dictionary containing exam metadata (uid, patient info, exam details)
         report: Optional AI report text
-        positive: Optional AI positive finding indicator
+        positive: Optional AI positive finding indicator (True/False)
         confidence: Optional AI confidence score (0-100)
     """
     # Add or update patient information
@@ -687,6 +688,10 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     """
     Load exams from the database with optional filters and pagination.
 
+    Retrieves exams with associated patient information, AI reports, and radiologist
+    reports. Calculates correctness based on agreement between AI and radiologist
+    predictions.
+
     Args:
         limit: Maximum number of exams to return (default: PAGE_SIZE)
         offset: Number of exams to skip for pagination (default: 0)
@@ -698,13 +703,13 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
               match)
             - status: Filter by processing status (case-insensitive exact
               match)
-            - search: Filter by patient name (case-insensitive partial
-              match)
+            - search: Filter by patient name, CNP, or UID (case-insensitive
+              partial match for name/CNP, exact for UID)
 
     Returns:
         tuple: (exams_list, total_count) where exams_list is a list of
-               exam dictionaries and total_count is the total number of
-               exams matching the filters
+               exam dictionaries containing patient, exam, and report data,
+               and total_count is the total number of exams matching the filters
     """
     conditions = []
     params = []
@@ -1518,7 +1523,7 @@ def db_rad_review(uid, normal, radiologist='rad'):
 
     When a radiologist reviews a case, they indicate if the finding is normal (negative)
     or abnormal (positive). This function updates the radiologist report with that information.
-    If no report entry exists for this UID, a new one is created.
+    If no report entry exists for this UID, a new one is created with default values.
 
     Args:
         uid: The unique identifier of the exam
@@ -2356,10 +2361,13 @@ async def rad_review(request):
     """Record radiologist's review of an exam as normal or abnormal.
 
     Updates the radiologist report with the normal/abnormal status based on
-    the radiologist's assessment.
+    the radiologist's assessment. Uses the authenticated username as the
+    radiologist identifier.
 
     Args:
-        request: aiohttp request object with JSON body containing uid, normal status, and optional radiologist name
+        request: aiohttp request object with JSON body containing:
+            - uid: The unique identifier of the exam
+            - normal: Whether the radiologist marked the case as normal (True) or abnormal (False)
 
     Returns:
         web.json_response: JSON response with review status
@@ -2395,10 +2403,11 @@ async def requeue_exam(request):
     """Re-queue an exam for processing.
 
     Sets an exam's status to 'queued' so it will be processed again by the AI.
-    Clears existing AI report data to ensure fresh analysis.
+    Clears existing AI report data (except text for reference) to ensure fresh analysis.
 
     Args:
-        request: aiohttp request object with JSON body containing uid
+        request: aiohttp request object with JSON body containing:
+            - uid: The unique identifier of the exam to re-queue
 
     Returns:
         web.json_response: JSON response with re-queue status
