@@ -3519,14 +3519,13 @@ async def process_fhir_report_with_llm(exam_uid):
         exam_uid: The exam UID to process
     """
     # Get the radiologist report from the database
-    query = "SELECT text FROM rad_reports WHERE uid = ?"
-    result = db_execute_query(query, (exam_uid,), fetch_mode='one')
+    rad_report = db_get_exam_rad_report(exam_uid)
     
-    if not result or not result[0]:
+    if not rad_report or not rad_report.get('text'):
         logging.warning(f"No radiologist report found for exam {exam_uid}")
         return
     
-    report_text = result[0]
+    report_text = rad_report['text']
     
     # Log the current status before sending to LLM
     logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
