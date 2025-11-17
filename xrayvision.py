@@ -146,6 +146,9 @@ AE_PORT = config.getint('dicom', 'AE_PORT')
 REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
 REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
 REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
+FHIR_URL = config.get('fhir', 'FHIR_URL')
+FHIR_USERNAME = config.get('fhir', 'FHIR_USERNAME')
+FHIR_PASSWORD = config.get('fhir', 'FHIR_PASSWORD')
 IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
 DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
@@ -269,7 +272,8 @@ web_server = None  # Web server instance for dashboard and API
 active_openai_url = None  # Currently active OpenAI API endpoint
 health_status = {
     OPENAI_URL_PRIMARY: False,  # Health status of primary OpenAI endpoint
-    OPENAI_URL_SECONDARY: False  # Health status of secondary OpenAI endpoint
+    OPENAI_URL_SECONDARY: False,  # Health status of secondary OpenAI endpoint
+    FHIR_URL: False  # Health status of FHIR endpoint
 }
 # OpenAI timings
 timings = {
@@ -626,6 +630,63 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
     )
     query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
     db_execute_query_retry(query, values)
+
+def db_get_exam_without_rad_report():
+    """
+    Get the oldest exam that doesn't have a radiologist report yet.
+
+    Returns:
+        dict: Exam data or None if not found
+    """
+    query = """
+        SELECT 
+            e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
+            p.name, p.cnp, p.id, p.age, p.sex
+        FROM exams e
+        INNER JOIN patients p ON e.cnp = p.cnp
+        WHERE e.uid NOT IN (SELECT uid FROM rad_reports WHERE text IS NOT NULL AND text != '')
+        AND e.status = 'done'
+        ORDER BY e.created ASC
+        LIMIT 1
+    """
+    row = db_execute_query(query, fetch_mode='one')
+    if row:
+        (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
+         patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
+        
+        return {
+            'uid': uid,
+            'exam': {
+                'created': exam_created,
+                'protocol': exam_protocol,
+                'region': exam_region,
+                'status': exam_status,
+                'type': exam_type,
+                'study': exam_study,
+                'series': exam_series,
+                'id': exam_id,
+            },
+            'patient': {
+                'name': patient_name,
+                'cnp': patient_cnp,
+                'id': patient_id,
+                'age': patient_age,
+                'sex': patient_sex,
+            }
+        }
+    return None
+
+def db_update_patient_id(cnp, patient_id):
+    """
+    Update patient ID in the database.
+
+    Args:
+        cnp: Patient CNP
+        patient_id: Patient ID from HIS
+    """
+    query = "UPDATE patients SET id = ? WHERE cnp = ?"
+    params = (patient_id, cnp)
+    db_execute_query_retry(query, params)
 
 
 def db_add_exam(info, report=None, positive=None, confidence=None):
@@ -2889,6 +2950,107 @@ def determine_patient_gender_description(info):
     return gender
 
 
+async def get_fhir_patient(session, cnp):
+    """
+    Search for a patient in FHIR system by CNP.
+
+    Args:
+        session: aiohttp ClientSession instance
+        cnp: Patient CNP
+
+    Returns:
+        dict or None: Patient data from FHIR if successful, None otherwise
+    """
+    try:
+        headers = {
+            'X-Username': FHIR_USERNAME,
+            'X-Password': FHIR_PASSWORD,
+        }
+        
+        url = f"{FHIR_URL}/fhir/Patient"
+        params = {'q': cnp}
+        
+        async with session.get(url, headers=headers, params=params, timeout=30) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data.get('resourceType') == 'Patient':
+                    # Single patient returned
+                    return data
+                elif data.get('resourceType') == 'Bundle' and 'entry' in data:
+                    # Bundle of patients returned
+                    if len(data['entry']) > 0:
+                        return data['entry'][0]['resource']
+            else:
+                logging.warning(f"FHIR patient search failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR patient search error: {e}")
+    return None
+
+async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
+    """
+    Search for imaging studies for a patient in FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        patient_id: Patient ID from HIS
+        exam_datetime: Exam datetime to search around
+
+    Returns:
+        list: List of imaging studies from FHIR
+    """
+    try:
+        headers = {
+            'X-Username': FHIR_USERNAME,
+            'X-Password': FHIR_PASSWORD,
+        }
+        
+        url = f"{FHIR_URL}/fhir/Observation"
+        params = {
+            'patient': patient_id,
+            'type': 'radio',
+            'dt': exam_datetime
+        }
+        
+        async with session.get(url, headers=headers, params=params, timeout=30) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data.get('resourceType') == 'Bundle' and 'entry' in data:
+                    studies = [entry['resource'] for entry in data['entry'] if entry['resource'].get('resourceType') == 'Observation']
+                    return studies
+            else:
+                logging.warning(f"FHIR imaging studies search failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR imaging studies search error: {e}")
+    return []
+
+async def get_fhir_diagnosticreport(session, report_id):
+    """
+    Get a diagnostic report from FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        report_id: Report ID
+
+    Returns:
+        dict or None: Diagnostic report from FHIR if successful, None otherwise
+    """
+    try:
+        headers = {
+            'X-Username': FHIR_USERNAME,
+            'X-Password': FHIR_PASSWORD,
+        }
+        
+        url = f"{FHIR_URL}/fhir/DiagnosticReport/{report_id}"
+        
+        async with session.get(url, headers=headers, timeout=30) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            else:
+                logging.warning(f"FHIR diagnostic report failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR diagnostic report error: {e}")
+    return None
+
 async def send_to_openai(session, headers, payload):
     """
     Send a request to the currently active OpenAI API endpoint.
@@ -3235,6 +3397,92 @@ async def openai_health_check():
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 
+async def fhir_health_check():
+    """
+    Periodically check the health status of FHIR API endpoint and process exams.
+
+    Tests FHIR endpoint health and processes exams without radiologist reports.
+    """
+    import random
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Test FHIR connectivity
+                headers = {
+                    'X-Username': FHIR_USERNAME,
+                    'X-Password': FHIR_PASSWORD,
+                }
+                
+                async with session.get(f"{FHIR_URL}/fhir/Patient?q=1234567890123", headers=headers, timeout=10) as resp:
+                    health_status[FHIR_URL] = resp.status in [200, 400]  # 400 is expected for invalid search
+                    logging.info(f"Health check {FHIR_URL} → {resp.status}")
+                
+                if health_status[FHIR_URL]:
+                    # Process exams without radiologist reports
+                    await process_exams_without_rad_reports(session)
+        except Exception as e:
+            health_status[FHIR_URL] = False
+            logging.warning(f"Health check failed for FHIR: {e}")
+        
+        # WebSocket broadcast
+        await broadcast_dashboard_update()
+        
+        # Random delay between 1 and 10 minutes
+        delay = random.randint(60, 600)
+        await asyncio.sleep(delay)
+
+async def process_exams_without_rad_reports(session):
+    """
+    Process exams that don't have radiologist reports yet.
+
+    This function identifies exams without radiologist reports, finds the
+    corresponding patient in HIS, and retrieves the radiologist report.
+    """
+    # Get the oldest exam without a radiologist report
+    exam = db_get_exam_without_rad_report()
+    if not exam:
+        return
+    
+    patient_cnp = exam['patient']['cnp']
+    exam_datetime = exam['exam']['created']
+    exam_uid = exam['uid']
+    
+    # Get patient from database
+    patient_id = exam['patient']['id']
+    
+    # If patient ID is not known, search for it in FHIR
+    if not patient_id:
+        fhir_patient = await get_fhir_patient(session, patient_cnp)
+        if fhir_patient and 'id' in fhir_patient:
+            patient_id = fhir_patient['id']
+            # Update patient ID in database
+            db_update_patient_id(patient_cnp, patient_id)
+    
+    # If we have patient ID, search for imaging studies
+    if patient_id:
+        studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
+        # If exactly one study found, get its diagnostic report
+        if len(studies) == 1:
+            study = studies[0]
+            if 'id' in study:
+                report = await get_fhir_diagnosticreport(session, study['id'])
+                if report and 'conclusion' in report and report['conclusion']:
+                    # Add the radiologist report to our database
+                    db_add_rad_report(
+                        uid=exam_uid,
+                        report_id=study['id'],
+                        report_text=report['conclusion'],
+                        positive=-1,  # Will be determined later
+                        severity=-1,  # Will be determined later
+                        summary='',   # Will be determined later
+                        report_type='radio',
+                        radiologist='HIS',
+                        justification='',
+                        model='',
+                        latency=-1
+                    )
+                    logging.info(f"Added FHIR report for exam {exam_uid}")
+
 
 async def query_retrieve_loop():
     """
@@ -3425,6 +3673,7 @@ async def main():
     tasks.append(asyncio.create_task(relay_to_openai_loop()))
     tasks.append(asyncio.create_task(query_retrieve_loop()))
     tasks.append(asyncio.create_task(maintenance_loop()))
+    tasks.append(asyncio.create_task(fhir_health_check()))
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
