@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Testing script for XRayVision.
+"""
+
 import unittest
 import asyncio
 from unittest.mock import Mock, patch, MagicMock
