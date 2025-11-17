@@ -97,15 +97,16 @@ http://localhost:8000
 XRayVision uses a configuration file (`xrayvision.cfg`) for all settings. A default configuration is provided in the file, and you can override settings by creating a `local.cfg` file with your custom values.
 
 Key configuration sections include:
-* `general` - User credentials, database path, backup directory
-* `dicom` - DICOM server settings
+* `general` - Database path, backup directory
+* `users` - User credentials with roles (admin, user)
+* `dicom` - DICOM server settings (AE title, port, remote server details)
 * `openai` - OpenAI API endpoints and credentials
 * `dashboard` - Dashboard port
 * `notifications` - ntfy.sh notification URL
-* `processing` - Processing options
-* `regions` - Anatomic region identification rules
+* `processing` - Processing options (page size, DICOM file handling, query settings)
+* `regions` - Anatomic region identification rules (keywords for region detection)
 * `questions` - Region-specific questions for AI analysis
-* `supported_regions` - List of regions to process
+* `supported_regions` - List of regions to process (enable/disable regions)
 
 ---
 
@@ -125,20 +126,28 @@ Timestamps, info, warnings, and errors are all captured.
 * `/` - Main dashboard
 * `/stats` - Statistics page
 * `/about` - About page
+* `/check` - Report check page
 * `/ws` - WebSocket for real-time updates
 * `/api/exams` - Get exams with pagination and filtering
 * `/api/stats` - Get statistics data
 * `/api/config` - Get configuration parameters
-* `/api/validate` - Validate/invalidate an exam
-* `/api/lookagain` - Send an exam back for re-analysis
-* `/api/trigger_query` - Manually trigger DICOM QueryRetrieve
+* `/api/regions` - Get supported regions
+* `/api/patients` - Get patients with pagination and filtering
+* `/api/patients/{cnp}` - Get patient by CNP
+* `/api/exams/{uid}` - Get exam by UID
+* `/api/radreview` - Record radiologist review of an exam
+* `/api/requeue` - Re-queue an exam for processing
+* `/api/dicomquery` - Manually trigger DICOM QueryRetrieve
+* `/api/check` - Analyze a free-text radiology report
+* `/api/spec` - Get OpenAPI specification
 
 ---
 
 ## Future Improvements
 
-* Docker support
-* Enhanced authentication and user management
+* Enhanced user management with role-based access control
 * More detailed audit logging
 * Export functionality for reports
 * Integration with more DICOM modalities
+* Improved error handling and recovery mechanisms
+* Enhanced statistics and reporting capabilities
