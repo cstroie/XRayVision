@@ -312,7 +312,7 @@ dashboard = {
 
 
 
-async def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
+def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
     """Execute a database query and return results.
 
     Executes a parameterized SQL query and returns results based on the
@@ -342,7 +342,7 @@ async def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'al
             return handle_error(e, "database query execution", None, raise_on_error=True)
 
 
-async def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
+def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
     """Execute a database query with retry logic.
 
     Executes a database query with exponential backoff retry logic in case
@@ -365,7 +365,9 @@ async def db_execute_query_retry(query: str, params: tuple = (), max_retries: in
                 return cursor.rowcount
             except Exception as e:
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    # Use sync sleep for synchronous function
+                    import time
+                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
                     continue
                 return handle_error(e, "database query with retry", None, raise_on_error=True)
     return None
