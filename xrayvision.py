@@ -800,7 +800,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     },
                     'rad': {
                         'text': rad_text,
-                        'positive': bool(rad_positive) if (rad_positive > -1) else False,
+                        'positive': bool(rad_positive) if (rad_positive is not None and rad_positive > -1) else False,
                         'severity': rad_severity,
                         'summary': rad_summary,
                         'created': rad_created,
