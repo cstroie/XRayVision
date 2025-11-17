@@ -3044,7 +3044,12 @@ async def get_fhir_diagnosticreport(session, report_id):
         
         async with session.get(url, auth=auth, timeout=30) as resp:
             if resp.status == 200:
-                return await resp.json()
+                data = await resp.json()
+                # Ensure the resource type is DiagnosticReport
+                if data.get('resourceType') == 'DiagnosticReport':
+                    return data
+                else:
+                    logging.warning(f"FHIR diagnostic report has incorrect resource type: {data.get('resourceType')}")
             else:
                 logging.warning(f"FHIR diagnostic report failed with status {resp.status}")
     except Exception as e:
