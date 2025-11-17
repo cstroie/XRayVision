@@ -533,6 +533,20 @@ def db_init():
         logging.info("Initialized SQLite database with normalized schema.")
 
 
+def db_upsert(query, params):
+    """
+    Convenience function to perform INSERT OR REPLACE operations.
+
+    Args:
+        query: SQL query string with placeholders
+        params: Tuple of parameters for the query
+
+    Returns:
+        Number of affected rows or None on error
+    """
+    return db_execute_query_retry(query, params)
+
+
 def db_add_patient(cnp, id, name, age, sex):
     """
     Add a new patient to the database or update existing patient information.
@@ -549,7 +563,7 @@ def db_add_patient(cnp, id, name, age, sex):
         VALUES (?, ?, ?, ?, ?)
     '''
     params = (cnp, id, name, age, sex)
-    return db_execute_query_retry(query, params)
+    return db_upsert(query, params)
 
 
 def db_add_exam(info, report=None, positive=None, confidence=None):
@@ -597,7 +611,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
             (uid, cnp, id, created, protocol, region, type, status, study, series)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     '''
-    db_execute_query_retry(query, values)
+    db_upsert(query, values)
         
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
@@ -607,7 +621,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
             VALUES (?, ?, ?, ?, ?, ?, ?)
         '''
         values = (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME)
-        db_execute_query_retry(query, values)
+        db_upsert(query, values)
 
 
 def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
@@ -623,21 +637,21 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_
         latency: Processing time in seconds
         is_correct: Correctness status (-1=not assessed, 0=incorrect, 1=correct)
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        values = (
-            uid,
-            report_text,
-            int(positive),
-            confidence,
-            is_correct if is_correct is not None else -1,
-            model,
-            latency
-        )
-        conn.execute('''
-            INSERT OR REPLACE INTO ai_reports
-                (uid, text, positive, confidence, is_correct, model, latency)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', values)
+    values = (
+        uid,
+        report_text,
+        int(positive),
+        confidence,
+        is_correct if is_correct is not None else -1,
+        model,
+        latency
+    )
+    query = '''
+        INSERT OR REPLACE INTO ai_reports
+            (uid, text, positive, confidence, is_correct, model, latency)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    '''
+    db_upsert(query, values)
 
 
 def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
@@ -657,25 +671,25 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
         model: Name of the model used
         latency: Processing time in seconds
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        values = (
-            uid,
-            report_id,
-            report_text,
-            positive,
-            severity,
-            summary,
-            report_type,
-            radiologist,
-            justification,
-            model,
-            latency
-        )
-        conn.execute('''
-            INSERT OR REPLACE INTO rad_reports
-                (uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', values)
+    values = (
+        uid,
+        report_id,
+        report_text,
+        positive,
+        severity,
+        summary,
+        report_type,
+        radiologist,
+        justification,
+        model,
+        latency
+    )
+    query = '''
+        INSERT OR REPLACE INTO rad_reports
+            (uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    '''
+    db_upsert(query, values)
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
