@@ -3527,14 +3527,14 @@ async def process_fhir_report_with_llm(exam_uid):
     
     # If the report has already been assessed (positive > -1), skip processing
     if rad_report.get('positive', -1) > -1:
-        logging.info(f"Radiologist report for exam {exam_uid} already assessed, skipping LLM processing")
+        logging.debug(f"Radiologist report for exam {exam_uid} already assessed, skipping LLM processing")
         return
     
-    if not rad_report.get('text'):
+    # Extract the report text
+    report_text = rad_report.get('text', "").strip()
+    if not report_text:
         logging.warning(f"No text in radiologist report for exam {exam_uid}")
         return
-    
-    report_text = rad_report['text']
     
     # Log the current status before sending to LLM
     logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
