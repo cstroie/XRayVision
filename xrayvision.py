@@ -533,7 +533,7 @@ def db_init():
         logging.info("Initialized SQLite database with normalized schema.")
 
 
-def db_build_insert_query(table_name, *columns):
+def db_create_insert_query(table_name, *columns):
     """
     Convenience function to build INSERT OR REPLACE query strings.
 
@@ -574,10 +574,7 @@ def db_add_patient(cnp, id, name, age, sex):
         age: Patient age in years
         sex: Patient sex ('M', 'F', or 'O')
     """
-    query = '''
-        INSERT OR REPLACE INTO patients (cnp, id, name, age, sex)
-        VALUES (?, ?, ?, ?, ?)
-    '''
+    query = db_create_insert_query('patients', 'cnp', 'id', 'name', 'age', 'sex')
     params = (cnp, id, name, age, sex)
     return db_upsert(query, params)
 
@@ -622,20 +619,12 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
         exam.get("study"),
         exam.get("series")
     )
-    query = '''
-        INSERT OR REPLACE INTO exams
-            (uid, cnp, id, created, protocol, region, type, status, study, series)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    '''
+    query = db_create_insert_query('exams', 'uid', 'cnp', 'id', 'created', 'protocol', 'region', 'type', 'status', 'study', 'series')
     db_upsert(query, values)
         
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
-        query = '''
-            INSERT OR REPLACE INTO ai_reports
-                (uid, text, positive, confidence, is_correct, reviewed, model)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        '''
+        query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'is_correct', 'reviewed', 'model')
         values = (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME)
         db_upsert(query, values)
 
@@ -662,11 +651,7 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_
         model,
         latency
     )
-    query = '''
-        INSERT OR REPLACE INTO ai_reports
-            (uid, text, positive, confidence, is_correct, model, latency)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    '''
+    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'is_correct', 'model', 'latency')
     db_upsert(query, values)
 
 
@@ -700,11 +685,7 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
         model,
         latency
     )
-    query = '''
-        INSERT OR REPLACE INTO rad_reports
-            (uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    '''
+    query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
     db_upsert(query, values)
 
 
