@@ -929,12 +929,13 @@ async def db_get_stats():
     # Calculate correct (TP + TN) and wrong (FP + FN) predictions
     query = """
         SELECT
-            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
-            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
-            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
-            SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
+            SUM(CASE WHEN (ar.positive = rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 1 THEN 1 ELSE 0 END) AS tpos,
+            SUM(CASE WHEN (ar.positive = rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 0 THEN 1 ELSE 0 END) AS tneg,
+            SUM(CASE WHEN (ar.positive != rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 1 THEN 1 ELSE 0 END) AS fpos,
+            SUM(CASE WHEN (ar.positive != rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 0 THEN 1 ELSE 0 END) AS fneg
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done'
     """
     metrics_row = db_execute_query(query, fetch_mode='one')
@@ -990,15 +991,16 @@ async def db_get_stats():
     query = """
         SELECT e.region,
                 COUNT(*) AS total,
-                SUM(CASE WHEN ar.is_correct != -1 THEN 1 ELSE 0 END) AS reviewed,
+                SUM(CASE WHEN rr.positive > -1 THEN 1 ELSE 0 END) AS reviewed,
                 SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
-                SUM(CASE WHEN ar.is_correct = 0 THEN 1 ELSE 0 END) AS wrong,
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tpos,
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 1 THEN 1 ELSE 0 END) AS tneg,
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 1 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fpos,
-                SUM(CASE WHEN ar.is_correct != -1 AND ar.positive = 0 AND ar.is_correct = 0 THEN 1 ELSE 0 END) AS fneg
+                SUM(CASE WHEN (ar.positive != rr.positive AND ar.positive > -1 AND rr.positive > -1) THEN 1 ELSE 0 END) AS wrong,
+                SUM(CASE WHEN (ar.positive = rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 1 THEN 1 ELSE 0 END) AS tpos,
+                SUM(CASE WHEN (ar.positive = rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 0 THEN 1 ELSE 0 END) AS tneg,
+                SUM(CASE WHEN (ar.positive != rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 1 THEN 1 ELSE 0 END) AS fpos,
+                SUM(CASE WHEN (ar.positive != rr.positive AND ar.positive > -1 AND rr.positive > -1) AND ar.positive = 0 THEN 1 ELSE 0 END) AS fneg
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done'
         GROUP BY e.region
     """
