@@ -19,6 +19,7 @@ import math
 import os
 import re
 import sqlite3
+import random
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -3397,13 +3398,12 @@ async def openai_health_check():
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 
-async def fhir_health_check():
+async def fhir_loop():
     """
     Periodically check the health status of FHIR API endpoint and process exams.
 
     Tests FHIR endpoint health and processes exams without radiologist reports.
     """
-    import random
     while True:
         try:
             async with aiohttp.ClientSession() as session:
@@ -3669,7 +3669,7 @@ async def main():
     tasks.append(asyncio.create_task(relay_to_openai_loop()))
     tasks.append(asyncio.create_task(query_retrieve_loop()))
     tasks.append(asyncio.create_task(maintenance_loop()))
-    tasks.append(asyncio.create_task(fhir_health_check()))
+    tasks.append(asyncio.create_task(fhir_loop()))
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
