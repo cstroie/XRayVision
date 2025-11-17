@@ -3426,24 +3426,33 @@ async def relay_to_openai_loop():
             dashboard['queue_size'] = total
             dashboard['processing'] = extract_patient_initials(exam['patient']['name'])
             await broadcast_dashboard_update()
-            # Send to AI for processing
-            result = await send_exam_to_openai(exam)
-            # Check the result
-            if result:
-                # Set the status
-                db_set_status(exam['uid'], "done")
-                # Remove the DICOM file
-                if not KEEP_DICOM:
-                    try:
-                        os.remove(dicom_file)
-                        logging.info(f"DICOM file {dicom_file} deleted after processing.")
-                    except Exception as e:
-                        logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+            
+            # Check the exam status and process accordingly
+            exam_status = exam['exam']['status']
+            if exam_status in ['queued', 'requeue']:
+                # Send to AI for processing
+                result = await send_exam_to_openai(exam)
+                # Check the result
+                if result:
+                    # Set the status
+                    db_set_status(exam['uid'], "done")
+                    # Remove the DICOM file
+                    if not KEEP_DICOM:
+                        try:
+                            os.remove(dicom_file)
+                            logging.info(f"DICOM file {dicom_file} deleted after processing.")
+                        except Exception as e:
+                            logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+                    else:
+                        logging.debug(f"Keeping DICOM file: {dicom_file}")
                 else:
-                    logging.debug(f"Keeping DICOM file: {dicom_file}")
-            else:
-                # Error already set in send_exam_to_openai
-                pass
+                    # Error already set in send_exam_to_openai
+                    pass
+            elif exam_status == 'check':
+                # Process FHIR report with LLM
+                await process_fhir_report_with_llm(exam['uid'])
+                # Set the status to done
+                db_set_status(exam['uid'], "done")
         except Exception as e:
             logging.error(f"Unexpected error processing {exam['uid']}: {e}")
             db_set_status(exam['uid'], "error")
