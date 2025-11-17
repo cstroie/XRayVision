@@ -1360,7 +1360,7 @@ def db_count_exams_by_status(status):
     return result[0] if result else 0
 
 
-def db_get_exam_report(uid):
+def db_get_exam_ai_report(uid):
     """
     Get AI report for a specific exam.
 
