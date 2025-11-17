@@ -244,6 +244,8 @@ RULES:
 - If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
 - Ignore spelling errors
 - Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
+- Note: In Romanian reports, "SCD" means "costo-diaphragmatic sinuses" 
+- Note: In Romanian reports, "liber" means "clear" or "free"
 - Respond ONLY with the JSON, without additional text
 
 EXAMPLES:
@@ -255,6 +257,9 @@ Report: "No pathological changes. Heart of normal size."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 
 Report: "Fără semne de fractură sau leziuni osteolitice."
+Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
+
+Report: "SCD libere, fără lichid pleural."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 """)
 
