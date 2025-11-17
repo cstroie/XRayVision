@@ -785,7 +785,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             - region: Filter by anatomic region (case-insensitive partial
               match)
             - status: Filter by processing status (case-insensitive exact
-              match)
+              match or list of statuses)
             - search: Filter by patient name, CNP, or UID (case-insensitive
               partial match for name/CNP, exact for UID)
 
@@ -811,8 +811,16 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
     if 'status' in filters:
-        conditions.append("LOWER(e.status) = ?")
-        params.append(filters['status'].lower())
+        status_value = filters['status']
+        if isinstance(status_value, list):
+            # Handle list of statuses
+            placeholders = ','.join(['?'] * len(status_value))
+            conditions.append(f"LOWER(e.status) IN ({placeholders})")
+            params.extend([s.lower() for s in status_value])
+        else:
+            # Handle single status
+            conditions.append("LOWER(e.status) = ?")
+            params.append(status_value.lower())
     if 'search' in filters:
         conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.cnp) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
