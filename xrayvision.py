@@ -1487,8 +1487,9 @@ def db_set_status(uid, status):
     Returns:
         str: The status that was set
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("UPDATE exams SET status = ? WHERE uid = ?", (status, uid))
+    query = "UPDATE exams SET status = ? WHERE uid = ?"
+    params = (status, uid)
+    db_execute_query_retry(query, params)
     # Return the status
     return status
 
