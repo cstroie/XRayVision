@@ -3456,6 +3456,59 @@ async def fhir_loop():
         delay = random.randint(60, 120)
         await asyncio.sleep(delay)
 
+async def process_fhir_report_with_llm(exam_uid, study_id, report_text, radiologist='rad', justification=''):
+    """
+    Process a FHIR diagnostic report with the LLM and update the database.
+
+    Args:
+        exam_uid: The exam UID to update
+        study_id: The FHIR study ID
+        report_text: The diagnostic report text
+        radiologist: The radiologist name
+        justification: The clinical justification
+    """
+    # Log the current status before sending to LLM
+    logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
+    
+    # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
+    start_time = asyncio.get_event_loop().time()
+    analysis_result = await check_report(report_text)
+    end_time = asyncio.get_event_loop().time()
+    processing_time = end_time - start_time  # In seconds
+    
+    # Set default values in case of analysis failure
+    positive = -1
+    severity = -1
+    summary = ''
+    
+    # Extract values from analysis result if successful
+    if 'error' not in analysis_result:
+        try:
+            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
+            severity = analysis_result['severity']
+            summary = analysis_result['summary']
+        except Exception as e:
+            logging.warning(f"Could not extract analysis results from check_report: {e}")
+    else:
+        logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
+        processing_time = -1  # Set to -1 if failed
+    
+    # Add the radiologist report to our database
+    db_add_rad_report(
+        uid=exam_uid,
+        report_id=study_id,
+        report_text=report_text,
+        positive=positive,
+        severity=severity,
+        summary=summary,
+        report_type='radio',
+        radiologist=radiologist,
+        justification=justification,
+        model=MODEL_NAME,
+        latency=processing_time
+    )
+    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with summary: {summary}")
+
 async def process_exams_without_rad_reports(session):
     """
     Process exams that don't have radiologist reports yet.
@@ -3530,47 +3583,14 @@ async def process_exams_without_rad_reports(session):
         except Exception as e:
             logging.warning(f"Could not extract justification from FHIR report: {e}")
         
-        # Log the current status before sending to LLM
-        logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
-        
-        # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
-        start_time = asyncio.get_event_loop().time()
-        analysis_result = await check_report(report['conclusion'])
-        end_time = asyncio.get_event_loop().time()
-        processing_time = end_time - start_time  # In seconds
-        
-        # Set default values in case of analysis failure
-        positive = -1
-        severity = -1
-        summary = ''
-        
-        # Extract values from analysis result if successful
-        if 'error' not in analysis_result:
-            try:
-                positive = 1 if analysis_result['pathologic'] == 'yes' else 0
-                severity = analysis_result['severity']
-                summary = analysis_result['summary']
-            except Exception as e:
-                logging.warning(f"Could not extract analysis results from check_report: {e}")
-        else:
-            logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
-            processing_time = -1  # Set to -1 if failed
-        
-        # Add the radiologist report to our database
-        db_add_rad_report(
-            uid=exam_uid,
-            report_id=study['id'],
-            report_text=report['conclusion'],
-            positive=positive,
-            severity=severity,
-            summary=summary,
-            report_type='radio',
-            radiologist=radiologist,
-            justification=justification,
-            model=MODEL_NAME,
-            latency=processing_time
+        # Process the report with LLM and update database
+        await process_fhir_report_with_llm(
+            exam_uid, 
+            study['id'], 
+            report['conclusion'], 
+            radiologist, 
+            justification
         )
-        logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with summary: {summary}")
     else:
         logging.debug(f"No conclusion found in diagnostic report for exam {exam_uid}")
 
