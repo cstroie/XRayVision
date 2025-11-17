@@ -3478,6 +3478,20 @@ async def process_exams_without_rad_reports(session):
                     except Exception as e:
                         logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
                     
+                    # Extract justification from extensions if available
+                    justification = ''  # Default value
+                    try:
+                        if 'extension' in report:
+                            for ext in report['extension']:
+                                if 'diagnostic-report-reason' in ext.get('url', ''):
+                                    if 'extension' in ext:
+                                        for nested_ext in ext['extension']:
+                                            if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
+                                                justification = nested_ext['valueString']
+                                                break
+                    except Exception as e:
+                        logging.warning(f"Could not extract justification from FHIR report: {e}")
+                    
                     # Add the radiologist report to our database
                     db_add_rad_report(
                         uid=exam_uid,
@@ -3488,11 +3502,11 @@ async def process_exams_without_rad_reports(session):
                         summary='',   # Will be determined later
                         report_type='radio',
                         radiologist=radiologist,
-                        justification='',
+                        justification=justification,
                         model='',
                         latency=-1
                     )
-                    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist}")
+                    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with justification: {justification}")
 
 
 async def query_retrieve_loop():
