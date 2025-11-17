@@ -753,8 +753,8 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
     # Get the exams
     exams = []
-    with sqlite3.connect(DB_FILE) as conn:
-        rows = conn.execute(query, params)
+    rows = db_execute_query(query, params, fetch_mode='all')
+    if rows:
         for row in rows:
             dt = datetime.strptime(row[5], "%Y-%m-%d %H:%M:%S")
             exams.append({
@@ -805,19 +805,20 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     }
                 },
             })
-        # Get the total for pagination
-        count_query = """
-            SELECT COUNT(*) 
-            FROM exams e
-            INNER JOIN patients p ON e.cnp = p.cnp
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            LEFT JOIN rad_reports rr ON e.uid = rr.uid
-        """
-        count_params = []
-        if conditions:
-            count_query += ' WHERE ' + " AND ".join(conditions)
-            count_params = params[:-2]  # Exclude limit and offset parameters
-        total = conn.execute(count_query, count_params).fetchone()[0]
+    # Get the total for pagination
+    count_query = """
+        SELECT COUNT(*) 
+        FROM exams e
+        INNER JOIN patients p ON e.cnp = p.cnp
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+    """
+    count_params = []
+    if conditions:
+        count_query += ' WHERE ' + " AND ".join(conditions)
+        count_params = params[:-2]  # Exclude limit and offset parameters
+    total_row = db_execute_query(count_query, count_params, fetch_mode='one')
+    total = total_row[0] if total_row else 0
     return exams, total
 
 
