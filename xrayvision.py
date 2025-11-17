@@ -3465,7 +3465,6 @@ async def process_exams_without_rad_reports(session):
     """
     # Get the oldest exam without a radiologist report
     exam = db_get_exam_without_rad_report()
-    print(exam)
     if not exam:
         return
     
@@ -3517,18 +3516,37 @@ async def process_exams_without_rad_reports(session):
                     except Exception as e:
                         logging.warning(f"Could not extract justification from FHIR report: {e}")
                     
+                    # Use check_report to analyze the diagnostic report and fill positive, severity, and summary fields
+                    analysis_result = await check_report(report['conclusion'])
+                    
+                    # Set default values in case of analysis failure
+                    positive = -1
+                    severity = -1
+                    summary = ''
+                    
+                    # Extract values from analysis result if successful
+                    if 'error' not in analysis_result:
+                        try:
+                            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
+                            severity = analysis_result['severity']
+                            summary = analysis_result['summary']
+                        except Exception as e:
+                            logging.warning(f"Could not extract analysis results from check_report: {e}")
+                    else:
+                        logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
+                    
                     # Add the radiologist report to our database
                     db_add_rad_report(
                         uid=exam_uid,
                         report_id=study['id'],
                         report_text=report['conclusion'],
-                        positive=-1,  # Will be determined later
-                        severity=-1,  # Will be determined later
-                        summary='',   # Will be determined later
+                        positive=positive,
+                        severity=severity,
+                        summary=summary,
                         report_type='radio',
                         radiologist=radiologist,
                         justification=justification,
-                        model='',
+                        model=MODEL_NAME,
                         latency=-1
                     )
                     logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with justification: {justification}")
