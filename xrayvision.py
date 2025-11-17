@@ -2739,8 +2739,9 @@ async def auth_middleware(request, handler):
         if not user_info or user_info['password'] != password:
             logging.warning(f"Invalid authentication for user: {username}")
             raise ValueError("Invalid authentication")
-        # Store user role in request for later use
+        # Store user role and username in request for later use
         request.user_role = user_info['role']
+        request.username = username
     except (ValueError, UnicodeDecodeError) as e:
         raise web.HTTPUnauthorized(
             text = "401: Invalid authentication",
