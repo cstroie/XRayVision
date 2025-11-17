@@ -254,7 +254,7 @@
                         showToast("WebSocket connected");
                         // Load page 1
                         loadPage(1);
-                    } else if (data.event.name === "validate") {
+                    } else if (data.event.name === "radreview") {
                         showToast(`Exam is ${data.event.payload.is_correct ? 'correct' : 'incorrect'}`);
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
@@ -283,7 +283,7 @@
             };
         }
 
-        function validate(uid, normal) {
+        function radreview(uid, normal) {
             fetch('/api/radreview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -295,7 +295,7 @@
                 console.log('Status update:', data.status);
             })
             .catch(error => {
-                console.error('Error sending validate:', error);
+                console.error('Error sending radiologist review:', error);
             });
         }
 
@@ -484,8 +484,8 @@
                         <figure class="xray">
                             <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(text)}', ${isCorrect}, ${isPositive})">
                             <div role="group">
-                                <button class="abnormal" onclick="validate('${item.uid}', false)">⚠️ Abnormal</button>
-                                <button class="normal" onclick="validate('${item.uid}', true)">✓ Normal</button>
+                                <button class="abnormal" onclick="radreview('${item.uid}', false)">⚠️ Abnormal</button>
+                                <button class="normal" onclick="radreview('${item.uid}', true)">✓ Normal</button>
                             </div>
                             <div role="group">
                                 <button class="secondary " onclick="lookagain('${item.uid}')">Incorrect, look again</button>
