@@ -2358,8 +2358,12 @@ async def rad_review(request):
         
         # Update the radiologist report
         db_rad_review(uid, normal, radiologist)
+        
+        # Get the updated exam data
+        exam_data = db_get_exam_by_uid(uid)
+        
         logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}.")
-        payload = {'uid': uid, 'normal': normal, 'radiologist': radiologist}
+        payload = {'uid': uid, 'normal': normal, 'radiologist': radiologist, 'exam': exam_data}
         await broadcast_dashboard_update(event = "rad_review", payload = payload)
         response = {'status': 'success'}
         response.update(payload)
