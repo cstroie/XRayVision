@@ -275,20 +275,6 @@
           }
         }
       },
-      "ValidateRequest": {
-        "type": "object",
-        "properties": {
-          "uid": {
-            "type": "string",
-            "description": "Unique identifier of the exam"
-          },
-          "normal": {
-            "type": "boolean",
-            "description": "Whether the human reviewer marked the case as normal"
-          }
-        },
-        "required": ["uid"]
-      },
       "CNPValidationResponse": {
         "type": "object",
         "properties": {
@@ -315,20 +301,6 @@
             "description": "County code"
           }
         }
-      },
-      "LookAgainRequest": {
-        "type": "object",
-        "properties": {
-          "uid": {
-            "type": "string",
-            "description": "Unique identifier of the exam"
-          },
-          "prompt": {
-            "type": "string",
-            "description": "Optional custom prompt"
-          }
-        },
-        "required": ["uid"]
       },
       "QueryRequest": {
         "type": "object",
@@ -880,10 +852,10 @@
         }
       }
     },
-    "/api/validate": {
+    "/api/radreview": {
       "post": {
-        "summary": "Validate exam",
-        "description": "Mark a study as valid or invalid based on human review",
+        "summary": "Radiologist review",
+        "description": "Record radiologist's review of an exam as normal or abnormal",
         "security": [
           {
             "basicAuth": []
@@ -894,14 +866,30 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ValidateRequest"
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "string",
+                    "description": "Unique identifier of the exam"
+                  },
+                  "normal": {
+                    "type": "boolean",
+                    "description": "Whether the radiologist marked the case as normal"
+                  },
+                  "radiologist": {
+                    "type": "string",
+                    "description": "Name/identifier of the radiologist",
+                    "default": "rad"
+                  }
+                },
+                "required": ["uid", "normal"]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Validation result",
+            "description": "Review status",
             "content": {
               "application/json": {
                 "schema": {
@@ -913,8 +901,11 @@
                     "uid": {
                       "type": "string"
                     },
-                    "valid": {
+                    "normal": {
                       "type": "boolean"
+                    },
+                    "radiologist": {
+                      "type": "string"
                     }
                   }
                 }
@@ -924,10 +915,10 @@
         }
       }
     },
-    "/api/lookagain": {
+    "/api/requeue": {
       "post": {
         "summary": "Re-queue exam",
-        "description": "Send an exam back to the processing queue for re-analysis",
+        "description": "Re-queue an exam for processing",
         "security": [
           {
             "basicAuth": []
@@ -938,7 +929,14 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LookAgainRequest"
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "string",
+                    "description": "Unique identifier of the exam"
+                  }
+                },
+                "required": ["uid"]
               }
             }
           }
@@ -954,11 +952,8 @@
                     "status": {
                       "type": "string"
                     },
-                    "uid": {
+                    "message": {
                       "type": "string"
-                    },
-                    "valid": {
-                      "type": "boolean"
                     }
                   }
                 }
@@ -968,7 +963,7 @@
         }
       }
     },
-    "/api/trigger_query": {
+    "/api/dicomquery": {
       "post": {
         "summary": "Trigger DICOM query",
         "description": "Trigger a manual DICOM query/retrieve operation",
