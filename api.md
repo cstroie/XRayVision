@@ -62,6 +62,7 @@ Provide paginated exam data with optional filters.
       "patient": {
         "name": "string",
         "cnp": "string",
+        "id": "string",
         "age": "integer",
         "sex": "string"
       },
@@ -70,17 +71,41 @@ Provide paginated exam data with optional filters.
         "date": "string",
         "time": "string",
         "protocol": "string",
-        "region": "string"
+        "region": "string",
+        "status": "string",
+        "type": "string",
+        "study": "string",
+        "series": "string",
+        "id": "string"
       },
       "report": {
-        "text": "string",
-        "short": "string",
-        "datetime": "string",
-        "positive": "boolean",
-        "valid": "boolean",
-        "reviewed": "boolean"
-      },
-      "status": "string"
+        "ai": {
+          "text": "string",
+          "short": "string",
+          "created": "string",
+          "updated": "string",
+          "positive": "boolean",
+          "confidence": "integer",
+          "model": "string",
+          "latency": "integer"
+        },
+        "rad": {
+          "text": "string",
+          "positive": "boolean",
+          "severity": "integer",
+          "summary": "string",
+          "created": "string",
+          "updated": "string",
+          "id": "string",
+          "type": "string",
+          "radiologist": "string",
+          "justification": "string",
+          "model": "string",
+          "latency": "integer"
+        },
+        "correct": "integer",
+        "reviewed": "integer"
+      }
     }
   ],
   "total": "integer",
@@ -197,6 +222,7 @@ Provide a single exam's data by UID.
   "patient": {
     "name": "string",
     "cnp": "string",
+    "id": "string",
     "age": "integer",
     "sex": "string"
   },
@@ -205,17 +231,41 @@ Provide a single exam's data by UID.
     "date": "string",
     "time": "string",
     "protocol": "string",
-    "region": "string"
+    "region": "string",
+    "status": "string",
+    "type": "string",
+    "study": "string",
+    "series": "string",
+    "id": "string"
   },
   "report": {
-    "text": "string",
-    "short": "string",
-    "datetime": "string",
-    "positive": "boolean",
-    "valid": "boolean",
-    "reviewed": "boolean"
-  },
-  "status": "string"
+    "ai": {
+      "text": "string",
+      "short": "string",
+      "created": "string",
+      "updated": "string",
+      "positive": "boolean",
+      "confidence": "integer",
+      "model": "string",
+      "latency": "integer"
+    },
+    "rad": {
+      "text": "string",
+      "positive": "boolean",
+      "severity": "integer",
+      "summary": "string",
+      "created": "string",
+      "updated": "string",
+      "id": "string",
+      "type": "string",
+      "radiologist": "string",
+      "justification": "string",
+      "model": "string",
+      "latency": "integer"
+    },
+    "correct": "integer",
+    "reviewed": "integer"
+  }
 }
 ```
 
@@ -226,8 +276,8 @@ Provide a single exam's data by UID.
 }
 ```
 
-#### POST /api/validate
-Mark a study as valid or invalid based on human review.
+#### POST /api/radreview
+Record radiologist's review of an exam as normal or abnormal.
 
 **Request Body:**
 ```json
@@ -240,20 +290,17 @@ Mark a study as valid or invalid based on human review.
 **Response:**
 ```json
 {
-  "status": "string",
-  "uid": "string",
-  "valid": "boolean"
+  "status": "string"
 }
 ```
 
-#### POST /api/lookagain
-Send an exam back to the processing queue for re-analysis.
+#### POST /api/requeue
+Re-queue an exam for processing.
 
 **Request Body:**
 ```json
 {
-  "uid": "string",
-  "prompt": "string"
+  "uid": "string"
 }
 ```
 
@@ -261,8 +308,7 @@ Send an exam back to the processing queue for re-analysis.
 ```json
 {
   "status": "string",
-  "uid": "string",
-  "valid": "boolean"
+  "message": "string"
 }
 ```
 
