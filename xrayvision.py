@@ -568,7 +568,7 @@ def db_add_patient(cnp, id, name, age, sex):
     return db_execute_query_retry(query, params)
 
 
-def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
+def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
     """
     Add or update an AI report entry in the database.
 
@@ -579,18 +579,16 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_
         confidence: AI confidence score (0-100)
         model: Name of the model used
         latency: Processing time in seconds
-        is_correct: Correctness status (-1=not assessed, 0=incorrect, 1=correct)
     """
     values = (
         uid,
         report_text,
         int(positive),
         confidence,
-        is_correct if is_correct is not None else -1,
         model,
         latency
     )
-    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'is_correct', 'model', 'latency')
+    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'model', 'latency')
     db_execute_query_retry(query, values)
 
 
@@ -717,7 +715,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("ar.positive = ?")
         params.append(filters['positive'])
     if 'correct' in filters:
-        conditions.append("ar.is_correct = ?")
+        conditions.append("correct = ?")
         params.append(filters['correct'])
     if 'region' in filters:
         conditions.append("LOWER(e.region) LIKE ?")
@@ -741,7 +739,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
             p.name, p.cnp, p.id, p.age, p.sex,
             ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.model, ar.latency,
-            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency
+            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
+            (ar.positive == rr.positive AND rr.positive > -1) AS correct,
+            (rr.positive > -1) AS reviewed
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
@@ -761,7 +761,8 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
              patient_name, patient_cnp, patient_id, patient_age, patient_sex,
              ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_model, ai_latency,
-             rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency) = row
+             rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
+             correct, reviewed) = row
                 
             dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
             exams.append({
@@ -795,8 +796,6 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'confidence': ai_confidence,
                         'model': ai_model,
                         'latency': ai_latency,
-                        'correct': (ai_positive == rad_positive and ai_positive is not None and ai_positive > -1 and rad_positive is not None and rad_positive > -1) if (ai_positive is not None and rad_positive is not None) else None,
-                        'reviewed': bool(rad_positive is not None and rad_positive > -1) if rad_positive is not None else False,
                     },
                     'rad': {
                         'text': rad_text,
@@ -811,7 +810,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'justification': rad_justification,
                         'model': rad_model,
                         'latency': rad_latency,
-                    }
+                    },
+                    'correct': correct,
+                    'reviewed': reviewed,
                 },
             })
     # Get the total for pagination
@@ -912,7 +913,6 @@ async def db_get_stats():
     }
     
     # Get count total and reviewed statistics in a single query
-    # FIXME: there is no is_correct field in ai_reports table. do not add it. 
     query = """
         SELECT
             COUNT(*) AS total,
