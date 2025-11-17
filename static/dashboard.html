@@ -158,6 +158,19 @@
         let ws;
         let currentPage = 1;
         let totalPages = 1;
+        
+        // Function to apply severity coloring
+        function applySeverityColoring() {
+            document.querySelectorAll('[class^="severity-"]').forEach(element => {
+                const severity = parseInt(element.className.replace('severity-', ''));
+                if (!isNaN(severity)) {
+                    // Calculate color from green (0) to red (10)
+                    const red = Math.min(255, Math.floor(severity * 25.5));
+                    const green = Math.min(255, Math.floor((10 - severity) * 25.5));
+                    element.style.color = `rgb(${red}, ${green}, 0)`;
+                }
+            });
+        }
 
         function sanitize(text) {
             return text;
@@ -513,7 +526,7 @@
                             <div class="rad-report">
                                 <h6>Radiologist Report (${item.report.rad.radiologist}):</h6>
                                 <p class="report">${item.report.rad.text}</p>
-                                <small><strong>Summary:</strong> ${item.report.rad.summary} | <strong>Severity:</strong> ${item.report.rad.severity}/10</small>
+                                <small><strong>Summary:</strong> ${item.report.rad.summary} | <strong>Severity:</strong> <span class="severity-${item.report.rad.severity}">${item.report.rad.severity}</span>/10</small>
                             </div>
                             ` : ''}
                         </aside>
@@ -521,6 +534,9 @@
                 `;
             });
             examsElement.innerHTML = examsHtml;
+            
+            // Apply severity coloring after rendering
+            applySeverityColoring();
         }
 
         // Populate regions dropdown
