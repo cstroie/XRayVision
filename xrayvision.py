@@ -308,6 +308,67 @@ dashboard = {
     'ignore_count': 0       # Number of exams that were ignored (wrong region)
 }
 
+
+
+def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
+    """Execute a database query and return results.
+
+    Executes a parameterized SQL query and returns results based on the
+    specified fetch mode.
+
+    Args:
+        query (str): SQL query to execute
+        params (tuple): Query parameters
+        fetch_mode (str): 'all', 'one', or 'none' for fetchall(), fetchone(), or no fetch
+
+    Returns:
+        Query results based on fetch_mode, or None on error
+    """
+    if not conn:
+        raise Exception("Database connection not available")
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+
+        if fetch_mode == 'all':
+            return cursor.fetchall()
+        elif fetch_mode == 'one':
+            return cursor.fetchone()
+        elif fetch_mode == 'none':
+            conn.commit()
+            return cursor.rowcount
+    except Exception as e:
+        return handle_error(e, "database query execution", None, raise_on_error=True)
+
+
+def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
+    """Execute a database query with retry logic.
+
+    Executes a database query with exponential backoff retry logic in case
+    of failures.
+
+    Args:
+        query (str): SQL query to execute
+        params (tuple): Query parameters
+        max_retries (int): Maximum number of retry attempts
+
+    Returns:
+        Number of affected rows or None on error
+    """
+    for attempt in range(max_retries):
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(query, params)
+            self.conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            if attempt < max_retries - 1:
+                time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                continue
+            return self.handle_error(e, "database query with retry", None, raise_on_error=True)
+    return None
+
 # Database operations
 def db_init():
     """
@@ -344,7 +405,6 @@ def db_init():
         - text (TEXT): AI-generated report content
         - positive (INTEGER): Binary indicator (-1=not assessed, 0=no findings, 1=findings)
         - confidence (INTEGER): AI self-confidence score (0-100, -1 if not assessed)
-        - is_correct (INTEGER): Validation status (-1=not assessed, 0=incorrect, 1=correct)
         - model (TEXT): Name of the model used to analyze the image
         - latency (INTEGER): Time in seconds needed to analyze the image by the AI (-1 if not assessed)
     
@@ -410,8 +470,6 @@ def db_init():
                 text TEXT,
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
-                is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
-                reviewed BOOLEAN DEFAULT FALSE,
                 model TEXT,
                 latency INTEGER DEFAULT -1,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
@@ -472,6 +530,148 @@ def db_init():
             ON patients(name)
         ''')
         logging.info("Initialized SQLite database with normalized schema.")
+
+
+def db_add_patient(cnp, id, name, age, sex):
+    """
+    Add a new patient to the database or update existing patient information.
+
+    Args:
+        cnp: Romanian personal identification number (primary key)
+        id: Patient ID from hospital system
+        name: Patient full name
+        age: Patient age in years
+        sex: Patient sex ('M', 'F', or 'O')
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute('''
+            INSERT OR REPLACE INTO patients (cnp, id, name, age, sex)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (cnp, id, name, age, sex))
+
+
+def db_add_exam(info, report=None, positive=None, confidence=None):
+    """
+    Add or update an exam entry in the database.
+
+    This function handles queuing new exams for processing. It sets status to 'queued'
+    and stores exam metadata. Patient information is stored in the patients table.
+
+    Args:
+        info: Dictionary containing exam metadata (uid, patient info, exam details)
+        report: Optional AI report text
+        positive: Optional AI positive finding indicator
+        confidence: Optional AI confidence score (0-100)
+    """
+    # Add or update patient information
+    patient = info["patient"]
+    db_add_patient(
+        patient["cnp"],
+        "",
+        patient["name"],
+        patient["age"],
+        patient["sex"]
+    )
+    
+    # Set status to queued for new exams
+    status = 'queued'
+    
+    # Insert into database
+    exam = info["exam"]
+    with sqlite3.connect(DB_FILE) as conn:
+        values = (
+            info['uid'],
+            patient["cnp"],
+            exam.get("id",""),
+            exam['created'],
+            exam["protocol"],
+            exam['region'],
+            exam.get("type", ""),
+            status,
+            exam.get("study"),
+            exam.get("series")
+        )
+        conn.execute('''
+            INSERT OR REPLACE INTO exams
+                (uid, cnp, id, created, protocol, region, type, status, study, series)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', values)
+        
+        # If report is provided, add it to ai_reports table
+        if report is not None and positive is not None:
+            conn.execute('''
+                INSERT OR REPLACE INTO ai_reports
+                    (uid, text, positive, confidence, is_correct, reviewed, model)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME))
+
+
+def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
+    """
+    Add or update an AI report entry in the database.
+
+    Args:
+        uid: Exam unique identifier
+        report_text: AI-generated report content
+        positive: AI prediction result (True/False)
+        confidence: AI confidence score (0-100)
+        model: Name of the model used
+        latency: Processing time in seconds
+        is_correct: Correctness status (-1=not assessed, 0=incorrect, 1=correct)
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        values = (
+            uid,
+            report_text,
+            int(positive),
+            confidence,
+            is_correct if is_correct is not None else -1,
+            model,
+            latency
+        )
+        conn.execute('''
+            INSERT OR REPLACE INTO ai_reports
+                (uid, text, positive, confidence, is_correct, model, latency)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', values)
+
+
+def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
+    """
+    Add or update a radiologist report entry in the database.
+
+    Args:
+        uid: Exam unique identifier
+        report_id: HIS report ID
+        report_text: Radiologist report content
+        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
+        severity: Severity score (0-10, -1 if not assessed)
+        summary: Brief summary of findings
+        report_type: Exam type
+        radiologist: Identifier for the radiologist
+        justification: Clinical diagnostic text
+        model: Name of the model used
+        latency: Processing time in seconds
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        values = (
+            uid,
+            report_id,
+            report_text,
+            positive,
+            severity,
+            summary,
+            report_type,
+            radiologist,
+            justification,
+            model,
+            latency
+        )
+        conn.execute('''
+            INSERT OR REPLACE INTO rad_reports
+                (uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', values)
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
@@ -611,128 +811,6 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             count_params = params[:-2]  # Exclude limit and offset parameters
         total = conn.execute(count_query, count_params).fetchone()[0]
     return exams, total
-
-
-def db_add_exam(info, report=None, positive=None, confidence=None):
-    """
-    Add or update an exam entry in the database.
-
-    This function handles queuing new exams for processing. It sets status to 'queued'
-    and stores exam metadata. Patient information is stored in the patients table.
-
-    Args:
-        info: Dictionary containing exam metadata (uid, patient info, exam details)
-        report: Optional AI report text
-        positive: Optional AI positive finding indicator
-        confidence: Optional AI confidence score (0-100)
-    """
-    # Add or update patient information
-    db_add_patient(
-        info["patient"]["cnp"],  # Using patient CNP
-        info["patient"]["cnp"],  # Using patient CNP as ID
-        info["patient"]["name"],
-        info["patient"]["age"],
-        info["patient"]["sex"]
-    )
-    
-    # Set status to queued for new exams
-    status = 'queued'
-    
-    # Insert into database
-    with sqlite3.connect(DB_FILE) as conn:
-        values = (
-            info['uid'],
-            info["patient"]["cnp"],  # cnp (foreign key to patients)
-            info["exam"].get("id"),  # HIS study ID
-            info["exam"]['created'],
-            info["exam"]["protocol"],
-            info['exam']['region'],
-            info["exam"].get("type", ""),  # Use .get() for safer access
-            status,
-            info["exam"].get("study"),  # Use .get() for safer access
-            info["exam"].get("series")  # Use .get() for safer access
-        )
-        conn.execute('''
-            INSERT OR REPLACE INTO exams
-                (uid, cnp, id, created, protocol, region, type, status, study, series)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', values)
-        
-        # If report is provided, add it to ai_reports table
-        if report is not None and positive is not None:
-            conn.execute('''
-                INSERT OR REPLACE INTO ai_reports
-                    (uid, text, positive, confidence, is_correct, reviewed, model)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (info['uid'], report, int(positive), confidence if confidence is not None else -1, -1, False, MODEL_NAME))
-
-
-def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
-    """
-    Add or update an AI report entry in the database.
-
-    Args:
-        uid: Exam unique identifier
-        report_text: AI-generated report content
-        positive: AI prediction result (True/False)
-        confidence: AI confidence score (0-100)
-        model: Name of the model used
-        latency: Processing time in seconds
-        is_correct: Correctness status (-1=not assessed, 0=incorrect, 1=correct)
-    """
-    with sqlite3.connect(DB_FILE) as conn:
-        values = (
-            uid,
-            report_text,
-            int(positive),
-            confidence,
-            is_correct if is_correct is not None else -1,
-            model,
-            latency
-        )
-        conn.execute('''
-            INSERT OR REPLACE INTO ai_reports
-                (uid, text, positive, confidence, is_correct, model, latency)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', values)
-
-
-def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
-    """
-    Add or update a radiologist report entry in the database.
-
-    Args:
-        uid: Exam unique identifier
-        report_id: HIS report ID
-        report_text: Radiologist report content
-        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
-        severity: Severity score (0-10, -1 if not assessed)
-        summary: Brief summary of findings
-        report_type: Exam type
-        radiologist: Identifier for the radiologist
-        justification: Clinical diagnostic text
-        model: Name of the model used
-        latency: Processing time in seconds
-    """
-    with sqlite3.connect(DB_FILE) as conn:
-        values = (
-            uid,
-            report_id,
-            report_text,
-            positive,
-            severity,
-            summary,
-            report_type,
-            radiologist,
-            justification,
-            model,
-            latency
-        )
-        conn.execute('''
-            INSERT OR REPLACE INTO rad_reports
-                (uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', values)
 
 
 def db_check_already_processed(uid):
@@ -998,24 +1076,6 @@ def db_get_error_stats():
         for row in cursor.fetchall():
             stats[row[0]] = row[1]
     return stats
-
-
-def db_add_patient(cnp, id, name, age, sex):
-    """
-    Add a new patient to the database or update existing patient information.
-
-    Args:
-        cnp: Romanian personal identification number (primary key)
-        id: Patient ID from hospital system
-        name: Patient full name
-        age: Patient age in years
-        sex: Patient sex ('M', 'F', or 'O')
-    """
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute('''
-            INSERT OR REPLACE INTO patients (cnp, id, name, age, sex)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (cnp, id, name, age, sex))
 
 
 def db_get_weekly_processed_count():
@@ -1424,6 +1484,41 @@ def db_set_status(uid, status):
         conn.execute("UPDATE exams SET status = ? WHERE uid = ?", (status, uid))
     # Return the status
     return status
+
+def db_get_previous_reports(patient_cnp, region, months=3):
+    """
+    Get previous reports for the same patient and region from the last few months.
+
+    Args:
+        patient_cnp: Patient identifier
+        region: Anatomic region to match
+        months: Number of months to look back (default: 3)
+
+    Returns:
+        list: List of tuples containing (report_text, created_timestamp)
+    """
+    from datetime import datetime, timedelta
+
+    cutoff_date = datetime.now() - timedelta(days=months*30)
+    cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
+
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        query = """
+            SELECT ar.text, ar.created
+            FROM exams e
+            INNER JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.cnp = ?
+            AND e.region = ?
+            AND ar.created >= ?
+            AND ar.text IS NOT NULL
+            AND ar.positive IS NOT NULL
+            ORDER BY ar.created DESC
+        """
+        cursor.execute(query, (patient_cnp, region, cutoff_date_str))
+        results = cursor.fetchall()
+
+    return results
 
 
 # DICOM network operations
@@ -2635,41 +2730,6 @@ def identify_anatomic_region(info):
     return region, question
 
 
-def db_get_previous_reports(patient_cnp, region, months=3):
-    """
-    Get previous reports for the same patient and region from the last few months.
-
-    Args:
-        patient_cnp: Patient identifier
-        region: Anatomic region to match
-        months: Number of months to look back (default: 3)
-
-    Returns:
-        list: List of tuples containing (report_text, created_timestamp)
-    """
-    from datetime import datetime, timedelta
-
-    cutoff_date = datetime.now() - timedelta(days=months*30)
-    cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
-
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        query = """
-            SELECT ar.text, ar.created
-            FROM exams e
-            INNER JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.cnp = ?
-            AND e.region = ?
-            AND ar.created >= ?
-            AND ar.text IS NOT NULL
-            AND ar.positive IS NOT NULL
-            ORDER BY ar.created DESC
-        """
-        cursor.execute(query, (patient_cnp, region, cutoff_date_str))
-        results = cursor.fetchall()
-
-    return results
-
 
 def identify_imaging_projection(info):
     """
@@ -3184,6 +3244,30 @@ def process_dicom_file(dicom_file, uid):
     except Exception as e:
         logging.error(f"Error processing DICOM file {dicom_file}: {e}")
         db_set_status(uid, "error")
+
+def handle_error(e, context="", default_return=None, raise_on_error=False):
+    """Unified error handling wrapper.
+
+    Provides consistent error handling across the application with optional
+    verbose logging and exception re-raising capabilities.
+
+    Args:
+        e (Exception): The exception that occurred
+        context (str): Context information about where the error occurred
+        default_return: Default value to return on error
+        raise_on_error (bool): Whether to re-raise the exception
+
+    Returns:
+        The default_return value or re-raises the exception
+    """
+    if VERBOSE:
+        error_msg = f"Error{f' in {context}' if context else ''}: {e}"
+        print(error_msg)
+
+    if raise_on_error:
+        raise e
+
+    return default_return
 
 
 async def main():
