@@ -473,8 +473,6 @@ def db_init():
                 text TEXT,
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
-                is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
-                reviewed BOOLEAN DEFAULT FALSE,
                 model TEXT,
                 latency INTEGER DEFAULT -1,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
