@@ -473,6 +473,8 @@ def db_init():
                 text TEXT,
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
+                is_correct INTEGER DEFAULT -1 CHECK(is_correct IN (-1, 0, 1)),
+                reviewed INTEGER DEFAULT 0 CHECK(reviewed IN (0, 1)),
                 model TEXT,
                 latency INTEGER DEFAULT -1,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
@@ -585,10 +587,11 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_
         report_text,
         int(positive),
         confidence,
+        is_correct if is_correct is not None else -1,
         model,
         latency
     )
-    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'model', 'latency')
+    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'is_correct', 'model', 'latency')
     db_execute_query_retry(query, values)
 
 
