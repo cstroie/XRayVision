@@ -579,7 +579,7 @@ def db_add_patient(cnp, id, name, age, sex):
     return db_upsert(query, params)
 
 
-def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
+def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
     """
     Add or update an AI report entry in the database.
 
@@ -597,7 +597,6 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_
         report_text,
         int(positive),
         confidence,
-        is_correct if is_correct is not None else -1,
         model,
         latency
     )
