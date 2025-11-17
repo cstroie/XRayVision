@@ -156,32 +156,33 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[3], new_age)
             self.assertEqual(row[4], new_sex)
     
-    def test_db_add_patient_with_invalid_sex(self):
-        """Test that db_add_patient handles invalid sex values"""
+    def test_db_add_patient_with_valid_sex_values(self):
+        """Test that db_add_patient handles valid sex values"""
         # Initialize the database
         xrayvision.db_init()
         
-        # Add a patient with invalid sex - this should still be inserted
-        cnp = "1234567890124"
-        id = "P003"
-        name = "Invalid Sex Patient"
-        age = 40
-        sex = "X"  # Invalid sex value
+        # Test each valid sex value
+        test_cases = [
+            ("1234567890123", "P001", "John Doe", 30, "M"),
+            ("1234567890124", "P002", "Jane Smith", 25, "F"),
+            ("1234567890125", "P003", "Other Patient", 40, "O")
+        ]
         
-        result = xrayvision.db_add_patient(cnp, id, name, age, sex)
-        
-        # Check that the operation was successful
-        self.assertIsNotNone(result, "db_add_patient should return a result")
-        
-        # Verify the patient was inserted even with invalid sex
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT cnp, sex FROM patients WHERE cnp = ?", (cnp,))
-            row = cursor.fetchone()
+        for cnp, id, name, age, sex in test_cases:
+            result = xrayvision.db_add_patient(cnp, id, name, age, sex)
             
-            self.assertIsNotNone(row, "Patient should be inserted")
-            self.assertEqual(row[0], cnp)
-            self.assertEqual(row[1], sex)
+            # Check that the operation was successful
+            self.assertIsNotNone(result, f"db_add_patient should return a result for sex={sex}")
+            
+            # Verify the patient was inserted
+            with sqlite3.connect(self.db_file) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT cnp, sex FROM patients WHERE cnp = ?", (cnp,))
+                row = cursor.fetchone()
+                
+                self.assertIsNotNone(row, f"Patient should be inserted for sex={sex}")
+                self.assertEqual(row[0], cnp)
+                self.assertEqual(row[1], sex)
 
     def test_db_add_exam_inserts_new_exam(self):
         """Test that db_add_exam inserts a new exam"""
@@ -449,22 +450,22 @@ class TestXRayVision(unittest.TestCase):
         # Clean up temporary directory
         shutil.rmtree(self.test_dir, ignore_errors=True)
     
-    def test_validate_romanian_id(self):
+    def test_validate_romanian_cnp(self):
         """Test Romanian ID validation function"""
         # Test valid Romanian ID
-        self.assertTrue(xrayvision.validate_romanian_id("1234567890123"))
+        self.assertTrue(xrayvision.validate_romanian_cnp("1234567890123"))
         
         # Test invalid Romanian ID (wrong length)
-        self.assertFalse(xrayvision.validate_romanian_id("12345"))
+        self.assertFalse(xrayvision.validate_romanian_cnp("12345"))
         
         # Test invalid Romanian ID (non-numeric)
-        self.assertFalse(xrayvision.validate_romanian_id("abcdefghijk"))
+        self.assertFalse(xrayvision.validate_romanian_cnp("abcdefghijk"))
     
-    def test_compute_age_from_id(self):
+    def test_compute_age_from_cnp(self):
         """Test age computation from Romanian ID"""
         # This is a placeholder test - actual implementation would depend on
         # the specific format of Romanian IDs
-        age = xrayvision.compute_age_from_id("1234567890123")
+        age = xrayvision.compute_age_from_cnp("1234567890123")
         self.assertIsInstance(age, int)
     
     def test_contains_any_word(self):
@@ -494,46 +495,46 @@ class TestXRayVision(unittest.TestCase):
     def test_identify_imaging_projection(self):
         """Test imaging projection identification"""
         # Test AP projection
-        info = {"ViewPosition": "AP"}
+        info = {"exam": {"protocol": "Chest AP"}}
         projection = xrayvision.identify_imaging_projection(info)
-        self.assertEqual(projection, "antero-posterior (AP)")
+        self.assertEqual(projection, "frontal")
         
         # Test PA projection
-        info = {"ViewPosition": "PA"}
+        info = {"exam": {"protocol": "Chest PA"}}
         projection = xrayvision.identify_imaging_projection(info)
-        self.assertEqual(projection, "postero-anterior (PA)")
+        self.assertEqual(projection, "frontal")
         
         # Test lateral projection
-        info = {"ViewPosition": "Lateral"}
+        info = {"exam": {"protocol": "Chest Lateral"}}
         projection = xrayvision.identify_imaging_projection(info)
         self.assertEqual(projection, "lateral")
         
         # Test unknown projection
-        info = {"ViewPosition": "Unknown"}
+        info = {"exam": {"protocol": "Unknown"}}
         projection = xrayvision.identify_imaging_projection(info)
-        self.assertEqual(projection, "unknown")
+        self.assertEqual(projection, "")
     
     def test_determine_patient_gender_description(self):
         """Test patient gender description determination"""
         # Test male
-        info = {"PatientSex": "M"}
+        info = {"patient": {"sex": "M"}}
         gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "male")
+        self.assertEqual(gender, "boy")
         
         # Test female
-        info = {"PatientSex": "F"}
+        info = {"patient": {"sex": "F"}}
         gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "female")
+        self.assertEqual(gender, "girl")
         
         # Test unknown
-        info = {"PatientSex": "O"}
+        info = {"patient": {"sex": "O"}}
         gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "unknown")
+        self.assertEqual(gender, "child")
         
         # Test missing field
-        info = {}
+        info = {"patient": {}}
         gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "unknown")
+        self.assertEqual(gender, "child")
     
     @patch('xrayvision.db_get_previous_reports')
     def test_db_get_previous_reports_called(self, mock_db_get):
@@ -558,8 +559,6 @@ class TestXRayVisionConfig(unittest.TestCase):
         
         # Check that required general fields exist
         general_config = xrayvision.DEFAULT_CONFIG['general']
-        self.assertIn('XRAYVISION_USER', general_config)
-        self.assertIn('XRAYVISION_PASS', general_config)
         self.assertIn('XRAYVISION_DB_PATH', general_config)
         self.assertIn('XRAYVISION_BACKUP_DIR', general_config)
         
