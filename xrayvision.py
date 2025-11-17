@@ -2383,6 +2383,41 @@ async def validate(request):
     return web.json_response(response)
 
 
+async def rad_review(request):
+    """Record radiologist's review of an exam as normal or abnormal.
+
+    Updates the radiologist report with the normal/abnormal status based on
+    the radiologist's assessment.
+
+    Args:
+        request: aiohttp request object with JSON body containing uid, normal status, and optional radiologist name
+
+    Returns:
+        web.json_response: JSON response with review status
+    """
+    try:
+        data = await request.json()
+        # Get 'uid', 'normal', and optional 'radiologist' from request
+        uid = data.get('uid')
+        normal = data.get('normal', None)
+        radiologist = data.get('radiologist', 'rad')
+        
+        if uid is None or normal is None:
+            return web.json_response({'status': 'error', 'message': 'UID and normal status are required'}, status=400)
+        
+        # Update the radiologist report
+        db_rad_review(uid, normal, radiologist)
+        logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}.")
+        payload = {'uid': uid, 'normal': normal, 'radiologist': radiologist}
+        await broadcast_dashboard_update(event = "rad_review", payload = payload)
+        response = {'status': 'success'}
+        response.update(payload)
+        return web.json_response(response)
+    except Exception as e:
+        logging.error(f"Error processing radiologist review: {e}")
+        return web.json_response({'status': 'error', 'message': str(e)}, status=500)
+
+
 
 
 async def requeue_exam(request):
@@ -3102,6 +3137,7 @@ async def start_dashboard():
     app.router.add_get('/api/patients', patients_handler)
     app.router.add_get('/api/patients/{cnp}', patient_handler)
     app.router.add_post('/api/validate', validate)
+    app.router.add_post('/api/rad-review', rad_review)
     app.router.add_post('/api/requeue', requeue_exam)
     app.router.add_post('/api/trigger_query', manual_query)
     app.router.add_post('/api/check', check_report_handler)
