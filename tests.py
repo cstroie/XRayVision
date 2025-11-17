@@ -438,6 +438,73 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[9], model)
             self.assertEqual(row[10], latency)
 
+    def test_db_set_status_updates_exam_status(self):
+        """Test that db_set_status updates the status of an exam"""
+        # Initialize the database
+        xrayvision.db_init()
+        
+        # Add a patient and exam first
+        cnp = "1234567890123"
+        patient_id = "P001"
+        patient_name = "John Doe"
+        patient_age = 30
+        patient_sex = "M"
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        
+        exam_info = {
+            'uid': '1.2.3.4.5',
+            'patient': {
+                'cnp': cnp,
+                'id': patient_id,
+                'name': patient_name,
+                'age': patient_age,
+                'sex': patient_sex
+            },
+            'exam': {
+                'id': 'E001',
+                'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray',
+                'region': 'chest',
+                'type': 'CR',
+                'study': '1.2.3.4.5.6',
+                'series': '1.2.3.4.5.6.7'
+            }
+        }
+        xrayvision.db_add_exam(exam_info)
+        
+        # Set the status to 'processing'
+        uid = '1.2.3.4.5'
+        new_status = 'processing'
+        result = xrayvision.db_set_status(uid, new_status)
+        
+        # Check that the function returns the correct status
+        self.assertEqual(result, new_status)
+        
+        # Verify the status was updated in the database
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT status FROM exams WHERE uid = ?", (uid,))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "Exam should exist")
+            self.assertEqual(row[0], new_status)
+        
+        # Change the status to 'done'
+        final_status = 'done'
+        result = xrayvision.db_set_status(uid, final_status)
+        
+        # Check that the function returns the correct status
+        self.assertEqual(result, final_status)
+        
+        # Verify the status was updated in the database
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT status FROM exams WHERE uid = ?", (uid,))
+            row = cursor.fetchone()
+            
+            self.assertIsNotNone(row, "Exam should exist")
+            self.assertEqual(row[0], final_status)
+
 class TestXRayVision(unittest.TestCase):
     """Test cases for the xrayvision module"""
     
