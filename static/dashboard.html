@@ -508,6 +508,13 @@
                             </p>
                             </details>
                             <p class="report">${text}</p>
+                            ${item.report.rad.text ? `
+                            <div class="rad-report">
+                                <h6>Radiologist Report (${item.report.rad.radiologist}):</h6>
+                                <p class="report">${item.report.rad.text}</p>
+                                <small><strong>Summary:</strong> ${item.report.rad.summary} | <strong>Severity:</strong> ${item.report.rad.severity}/10</small>
+                            </div>
+                            ` : ''}
                         </aside>
                     </section>
                 `;
