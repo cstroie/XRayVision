@@ -788,15 +788,15 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 'report': {
                     'ai': {
                         'text': ai_text,
-                        'short': ai_positive and 'yes' or 'no' if (ai_positive > -1) is not None else 'no',
+                        'short': ai_positive and 'yes' or 'no' if ai_positive is not None and ai_positive > -1 else 'no',
                         'created': ai_created,
                         'updated': ai_updated,
-                        'positive': bool(ai_positive) if (ai_positive > -1) else False,
+                        'positive': bool(ai_positive) if ai_positive is not None and ai_positive > -1 else False,
                         'confidence': ai_confidence,
                         'model': ai_model,
                         'latency': ai_latency,
-                        'correct': (ai_positive == rad_positive and ai_positive > -1 and rad_positive > -1) if (ai_positive is not None and rad_positive is not None) else None,
-                        'reviewed': bool(rad_positive > -1) if rad_positive is not None else False,
+                        'correct': (ai_positive == rad_positive and ai_positive is not None and ai_positive > -1 and rad_positive is not None and rad_positive > -1) if (ai_positive is not None and rad_positive is not None) else None,
+                        'reviewed': bool(rad_positive is not None and rad_positive > -1) if rad_positive is not None else False,
                     },
                     'rad': {
                         'text': rad_text,
