@@ -2377,22 +2377,28 @@ async def regions_handler(request):
 
 
 async def diagnostics_handler(request):
-    """Provide distinct diagnostic summaries from radiologist reports.
+    """Provide distinct diagnostic summaries from radiologist reports along with their report counts.
 
-    Returns the list of unique diagnostic summaries (from rad_reports.summary)
+    Returns the list of unique diagnostic summaries (from rad_reports.summary) and their report counts
     for use in filtering or display in the frontend.
 
     Args:
         request: aiohttp request object
 
     Returns:
-        web.json_response: JSON response with diagnostic summaries list
+        web.json_response: JSON response with diagnostic summaries and report counts
     """
     try:
-        # Get distinct diagnostic summaries from the database
-        query = "SELECT DISTINCT summary FROM rad_reports WHERE summary IS NOT NULL AND summary != '' ORDER BY summary"
+        # Get distinct diagnostic summaries and their report counts from the database
+        query = """
+            SELECT summary, COUNT(*) as report_count 
+            FROM rad_reports 
+            WHERE summary IS NOT NULL AND summary != '' 
+            GROUP BY summary 
+            ORDER BY summary
+        """
         rows = db_execute_query(query, fetch_mode='all')
-        diagnostics = [row[0] for row in rows] if rows else []
+        diagnostics = [{'name': row[0], 'report_count': row[1]} for row in rows] if rows else []
         return web.json_response(diagnostics)
     except Exception as e:
         logging.error(f"Diagnostics endpoint error: {e}")
