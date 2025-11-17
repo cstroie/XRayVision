@@ -740,7 +740,11 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             p.name, p.cnp, p.id, p.age, p.sex,
             ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.model, ar.latency,
             rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
-            (ar.positive == rr.positive AND rr.positive > -1) AS correct,
+            CASE 
+                WHEN rr.positive = -1 THEN -1
+                WHEN ar.positive = rr.positive THEN 1
+                ELSE 0
+            END AS correct,
             (rr.positive > -1) AS reviewed
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
