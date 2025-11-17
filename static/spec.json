@@ -852,7 +852,7 @@
         }
       }
     },
-    "/api/radreview": {
+    "/api/rad-review": {
       "post": {
         "summary": "Radiologist review",
         "description": "Record radiologist's review of an exam as normal or abnormal",
@@ -963,7 +963,7 @@
         }
       }
     },
-    "/api/dicomquery": {
+    "/api/trigger-query": {
       "post": {
         "summary": "Trigger DICOM query",
         "description": "Trigger a manual DICOM query/retrieve operation",
