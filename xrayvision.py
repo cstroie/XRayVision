@@ -2976,10 +2976,8 @@ async def get_fhir_patient(session, cnp):
                 if data.get('resourceType') == 'Patient':
                     # Single patient returned
                     return data
-                elif data.get('resourceType') == 'Bundle' and 'entry' in data:
-                    # Bundle of patients returned
-                    if len(data['entry']) > 0:
-                        return data['entry'][0]['resource']
+                # Multiple patients returned
+                logging.error(f"FHIR patient search error: multiple patients found for CNP {cnp}")
             else:
                 logging.warning(f"FHIR patient search failed with status {resp.status}")
     except Exception as e:
