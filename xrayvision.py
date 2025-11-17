@@ -3064,17 +3064,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
                     # Save to exams database
                     is_positive = short == "yes"
-                    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
-                    # Update the AI report with the processing time
-                    query = "UPDATE ai_reports SET latency = ? WHERE uid = ?"
-                    params = (processing_time, exam['uid'])
-                    db_execute_query_retry(query, params)
-                    # Send notification for positive cases
-                    if is_positive:
-                        try:
-                            await send_ntfy_notification(exam['uid'], report, exam)
-                        except Exception as e:
-                            logging.error(f"Failed to send ntfy notification: {e}")
                     # Calculate timing statistics
                     global timings
                     end_time = asyncio.get_event_loop().time()
@@ -3084,6 +3073,18 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
                     else:
                         timings['average'] = timings['total']
+                    # Update the AI report with the processing time
+                    query = "UPDATE ai_reports SET latency = ? WHERE uid = ?"
+                    params = (processing_time, exam['uid'])
+                    db_execute_query_retry(query, params)
+                    # Save to exams database
+                    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
+                    # Send notification for positive cases
+                    if is_positive:
+                        try:
+                            await send_ntfy_notification(exam['uid'], report, exam)
+                        except Exception as e:
+                            logging.error(f"Failed to send ntfy notification: {e}")
                     # Notify the dashboard frontend to reload first page
                     await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
                     # Success
