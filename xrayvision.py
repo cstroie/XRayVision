@@ -830,6 +830,37 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     return exams, total
 
 
+def db_get_previous_reports(patient_cnp, region, months=3):
+    """
+    Get previous reports for the same patient and region from the last few months.
+
+    Args:
+        patient_cnp: Patient identifier
+        region: Anatomic region to match
+        months: Number of months to look back (default: 3)
+
+    Returns:
+        list: List of tuples containing (report_text, updated_timestamp)
+    """
+    cutoff_date = datetime.now() - timedelta(days=months*30)
+    cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
+
+    query = """
+        SELECT ar.text, ar.updated
+        FROM exams e
+        INNER JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.cnp = ?
+        AND e.region = ?
+        AND ar.updated >= ?
+        AND ar.text IS NOT NULL
+        AND ar.positive IS NOT NULL
+        ORDER BY ar.updated DESC
+    """
+    params = (patient_cnp, region, cutoff_date_str)
+    results = db_execute_query(query, params, fetch_mode='all')
+    return results if results else []
+
+
 def db_check_already_processed(uid):
     """
     Check if an exam has already been processed, is queued, or is being processed.
@@ -1513,38 +1544,6 @@ def db_set_status(uid, status):
     db_execute_query_retry(query, params)
     # Return the status
     return status
-
-def db_get_previous_reports(patient_cnp, region, months=3):
-    """
-    Get previous reports for the same patient and region from the last few months.
-
-    Args:
-        patient_cnp: Patient identifier
-        region: Anatomic region to match
-        months: Number of months to look back (default: 3)
-
-    Returns:
-        list: List of tuples containing (report_text, created_timestamp)
-    """
-    from datetime import datetime, timedelta
-
-    cutoff_date = datetime.now() - timedelta(days=months*30)
-    cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
-
-    query = """
-        SELECT ar.text, ar.created
-        FROM exams e
-        INNER JOIN ai_reports ar ON e.uid = ar.uid
-        WHERE e.cnp = ?
-        AND e.region = ?
-        AND ar.created >= ?
-        AND ar.text IS NOT NULL
-        AND ar.positive IS NOT NULL
-        ORDER BY ar.created DESC
-    """
-    params = (patient_cnp, region, cutoff_date_str)
-    results = db_execute_query(query, params, fetch_mode='all')
-    return results if results else []
 
 
 # DICOM network operations
