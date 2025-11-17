@@ -2433,7 +2433,7 @@ async def radiologists_handler(request):
             ORDER BY radiologist
         """
         rows = db_execute_query(query, fetch_mode='all')
-        radiologists = {row[0]: row[1] for row in rows} if rows else {}
+        radiologists = {radiologist: count for radiologist, count in rows} if rows else {}
         return web.json_response(radiologists)
     except Exception as e:
         logging.error(f"Radiologists endpoint error: {e}")
