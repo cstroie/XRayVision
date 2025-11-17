@@ -3059,7 +3059,7 @@ async def relay_to_openai_loop():
             await QUEUE_EVENT.wait()
             continue
         # Get only one exam, if any
-        exam = exams[0]
+        (exam,) = exams
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{exam['uid']}.dcm")
         try:
