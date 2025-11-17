@@ -694,6 +694,7 @@ def db_get_exam_without_rad_report():
         row = db_execute_query(query, (cutoff_date_str,), fetch_mode='one')
         
         if row:
+            # Unpack row into named variables for better readability
             (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
              patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
             
@@ -738,6 +739,7 @@ def db_get_exam_without_rad_report():
     row = db_execute_query(query, fetch_mode='one')
     
     if row:
+        # Unpack row into named variables for better readability
         (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
          patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
         
@@ -1452,6 +1454,7 @@ def db_get_exam_ai_report(uid):
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
+        # Unpack row into named variables for better readability
         (text, positive, confidence, model, latency, created, updated) = result
         return {
             'text': text,
@@ -1482,6 +1485,7 @@ def db_get_exam_rad_report(uid):
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
+        # Unpack row into named variables for better readability
         (id, text, positive, severity, summary, type, radiologist, justification, model, latency, created, updated) = result
         return {
             'id': id,
@@ -1516,9 +1520,10 @@ def db_get_patient_by_cnp(cnp):
     params = (cnp,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
-        (cnp, id, name, age, sex) = result
+        # Unpack row into named variables for better readability
+        (patient_cnp, id, name, age, sex) = result
         return {
-            'cnp': cnp,
+            'cnp': patient_cnp,
             'id': id,
             'name': name,
             'age': age,
@@ -1599,6 +1604,7 @@ def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
     rows = db_execute_query(query, params, fetch_mode='all')
     if rows:
         for row in rows:
+            # Unpack row into named variables for better readability
             (cnp, id, name, age, sex) = row
             patients.append({
                 'cnp': cnp,
