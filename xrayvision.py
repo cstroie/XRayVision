@@ -736,11 +736,10 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     # Apply the limits (pagination)
     query = f"""
         SELECT 
-            e.uid, p.name, p.cnp, p.age, p.sex,
-            e.created, e.protocol, e.region, 
+            e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
+            p.name, p.cnp, p.age, p.sex,
             ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.model, ar.latency,
-            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
-            e.status, e.type, e.study, e.series, e.id
+            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
@@ -757,11 +756,10 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if rows:
         for row in rows:
             # Unpack row into named variables for better readability
-            (uid, patient_name, patient_cnp, patient_age, patient_sex,
-             exam_created, exam_protocol, exam_region,
+            (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
+             patient_name, patient_cnp, patient_age, patient_sex,
              ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_model, ai_latency,
-             rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
-             exam_status, exam_type, exam_study, exam_series, exam_id) = row
+             rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency) = row
                 
             dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
             exams.append({
