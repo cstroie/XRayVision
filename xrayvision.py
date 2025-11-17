@@ -3600,8 +3600,8 @@ async def process_fhir_report_with_llm(exam_uid):
         logging.warning(f"No radiologist report found for exam {exam_uid}")
         return
     
-    # If the report has already been assessed (positive > -1), skip processing
-    if rad_report.get('positive', -1) > -1:
+    # If the report has already been assessed (severity > -1), skip processing
+    if rad_report.get('severity', -1) > -1:
         logging.debug(f"Radiologist report for exam {exam_uid} already assessed, skipping LLM processing")
         return
     
