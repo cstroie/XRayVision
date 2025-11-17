@@ -685,7 +685,7 @@ def db_get_exam_without_rad_report():
             FROM exams e
             INNER JOIN patients p ON e.cnp = p.cnp
             LEFT JOIN rad_reports rr ON e.uid = rr.uid
-            WHERE (rr.id IS NULL OR rr.id = '')
+            WHERE (rr.severity IS NULL OR rr.severity = -1)
             AND e.status = 'done'
             AND e.created >= ?
             ORDER BY RANDOM()
