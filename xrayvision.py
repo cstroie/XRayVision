@@ -3521,8 +3521,17 @@ async def process_fhir_report_with_llm(exam_uid):
     # Get the radiologist report from the database
     rad_report = db_get_exam_rad_report(exam_uid)
     
-    if not rad_report or not rad_report.get('text'):
+    if not rad_report:
         logging.warning(f"No radiologist report found for exam {exam_uid}")
+        return
+    
+    # If the report has already been assessed (positive > -1), skip processing
+    if rad_report.get('positive', -1) > -1:
+        logging.info(f"Radiologist report for exam {exam_uid} already assessed, skipping LLM processing")
+        return
+    
+    if not rad_report.get('text'):
+        logging.warning(f"No text in radiologist report for exam {exam_uid}")
         return
     
     report_text = rad_report['text']
