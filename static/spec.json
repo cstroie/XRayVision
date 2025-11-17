@@ -81,31 +81,108 @@
           "report": {
             "type": "object",
             "properties": {
-              "text": {
-                "type": "string",
-                "description": "AI-generated report content"
+              "ai": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "AI-generated report content"
+                  },
+                  "short": {
+                    "type": "string",
+                    "enum": ["yes", "no"],
+                    "description": "Whether pathological findings are present"
+                  },
+                  "created": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report creation timestamp"
+                  },
+                  "updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report last update timestamp"
+                  },
+                  "positive": {
+                    "type": "boolean",
+                    "description": "Binary indicator of findings"
+                  },
+                  "confidence": {
+                    "type": "integer",
+                    "description": "AI self-confidence score (0-100, -1 if not assessed)"
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "Name of the model used to analyze the image"
+                  },
+                  "latency": {
+                    "type": "integer",
+                    "description": "Time in seconds needed to analyze the image by the AI (-1 if not assessed)"
+                  }
+                }
               },
-              "short": {
-                "type": "string",
-                "enum": ["yes", "no"],
-                "description": "Whether pathological findings are present"
+              "rad": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Radiologist report content"
+                  },
+                  "positive": {
+                    "type": "boolean",
+                    "description": "Binary indicator of findings"
+                  },
+                  "severity": {
+                    "type": "integer",
+                    "description": "Severity score (0-10, -1 if not assessed)"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "Brief summary of findings"
+                  },
+                  "created": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report creation timestamp"
+                  },
+                  "updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report last update timestamp"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Diagnostic report ID from HIS"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "Exam type"
+                  },
+                  "radiologist": {
+                    "type": "string",
+                    "description": "Identifier for the radiologist"
+                  },
+                  "justification": {
+                    "type": "string",
+                    "description": "Clinical diagnostic text"
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "Name of the model used to summarize the radiologist report"
+                  },
+                  "latency": {
+                    "type": "integer",
+                    "description": "Time in seconds needed by the radiologist to fill in the report (-1 if not assessed)"
+                  }
+                }
               },
-              "datetime": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Report creation timestamp"
-              },
-              "positive": {
-                "type": "boolean",
-                "description": "Binary indicator of findings"
-              },
-              "valid": {
-                "type": "boolean",
-                "description": "Validation status"
+              "correct": {
+                "type": "integer",
+                "description": "Validation status (-1=not assessed, 0=incorrect, 1=correct)"
               },
               "reviewed": {
-                "type": "boolean",
-                "description": "Whether the report has been reviewed"
+                "type": "integer",
+                "description": "Review status (0=not reviewed, 1=reviewed)"
               }
             }
           },
@@ -852,7 +929,7 @@
         }
       }
     },
-    "/api/rad-review": {
+    "/api/radreview": {
       "post": {
         "summary": "Radiologist review",
         "description": "Record radiologist's review of an exam as normal or abnormal",
@@ -875,11 +952,6 @@
                   "normal": {
                     "type": "boolean",
                     "description": "Whether the radiologist marked the case as normal"
-                  },
-                  "radiologist": {
-                    "type": "string",
-                    "description": "Name/identifier of the radiologist",
-                    "default": "rad"
                   }
                 },
                 "required": ["uid", "normal"]
@@ -896,15 +968,6 @@
                   "type": "object",
                   "properties": {
                     "status": {
-                      "type": "string"
-                    },
-                    "uid": {
-                      "type": "string"
-                    },
-                    "normal": {
-                      "type": "boolean"
-                    },
-                    "radiologist": {
                       "type": "string"
                     }
                   }
@@ -963,7 +1026,7 @@
         }
       }
     },
-    "/api/trigger-query": {
+    "/api/dicomquery": {
       "post": {
         "summary": "Trigger DICOM query",
         "description": "Trigger a manual DICOM query/retrieve operation",
