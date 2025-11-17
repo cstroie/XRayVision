@@ -1780,7 +1780,7 @@ def db_requeue_exam(uid):
     """
     Re-queue an exam for processing.
 
-    This function sets the exam status to 'queued' so it will be processed again.
+    This function sets the exam status to 'requeue' so it will be processed again.
     It clears most existing AI report data but preserves the text for reference.
 
     Args:
@@ -1790,8 +1790,8 @@ def db_requeue_exam(uid):
         bool: True if successfully re-queued, False otherwise
     """
     try:
-        # Set the status to queued
-        db_set_status(uid, 'queued')
+        # Set the status to requeue
+        db_set_status(uid, 'requeue')
         
         # Clear existing AI report data but preserve the text
         query = """
