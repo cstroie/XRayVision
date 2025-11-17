@@ -264,8 +264,8 @@
                                 card.classList.add('incorrect');
                             }
                         }
-                    } else if (data.event.name === "lookagain") {
-                        showToast(`Look again`);
+                    } else if (data.event.name === "requeue") {
+                        showToast(`Exam re-queued`);
                     }
                 }
             };
@@ -307,10 +307,15 @@
             })
             .then(response => response.json())
             .then(data => {
-                loadPage(currentPage);
+                if (data.status === 'success') {
+                    showToast("Exam re-queued for processing");
+                } else {
+                    showToast("Error: " + data.message);
+                }
             })
             .catch(error => {
                 console.error('Error sending requeue request:', error);
+                showToast("Error sending requeue request");
             });
         }
 
