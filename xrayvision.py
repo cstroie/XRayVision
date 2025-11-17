@@ -1285,11 +1285,10 @@ def db_get_patient_exam_uids(cnp):
     Returns:
         list: List of exam UIDs for this patient
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.execute("""
-            SELECT uid FROM exams WHERE cnp = ? ORDER BY created DESC
-        """, (cnp,))
-        return [row[0] for row in cursor.fetchall()]
+    query = "SELECT uid FROM exams WHERE cnp = ? ORDER BY created DESC"
+    params = (cnp,)
+    rows = db_execute_query(query, params, fetch_mode='all')
+    return [row[0] for row in rows] if rows else []
 
 
 def db_get_regions():
@@ -1299,10 +1298,9 @@ def db_get_regions():
     Returns:
         list: List of distinct regions that have been processed with status 'done'
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.execute("SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' AND status = 'done' ORDER BY region")
-        regions = [row[0] for row in cursor.fetchall()]
-    return regions
+    query = "SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' AND status = 'done' ORDER BY region"
+    rows = db_execute_query(query, fetch_mode='all')
+    return [row[0] for row in rows] if rows else []
 
 
 def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
@@ -1346,8 +1344,8 @@ def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
 
     # Get the patients
     patients = []
-    with sqlite3.connect(DB_FILE) as conn:
-        rows = conn.execute(query, params)
+    rows = db_execute_query(query, params, fetch_mode='all')
+    if rows:
         for row in rows:
             (cnp, id, name, age, sex) = row
             patients.append({
@@ -1357,14 +1355,14 @@ def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
                 'age': age,
                 'sex': sex,
             })
-        # Get the total for pagination
-        count_query = "SELECT COUNT(*) FROM patients"
-        count_params = []
-        if conditions:
-            count_query += ' WHERE ' + " AND ".join(conditions)
-            count_params = params[:-2]  # Exclude limit and offset parameters
-        total_row = conn.execute(count_query, count_params).fetchone()
-        (total,) = total_row
+    # Get the total for pagination
+    count_query = "SELECT COUNT(*) FROM patients"
+    count_params = []
+    if conditions:
+        count_query += ' WHERE ' + " AND ".join(conditions)
+        count_params = params[:-2]  # Exclude limit and offset parameters
+    total_row = db_execute_query(count_query, count_params, fetch_mode='one')
+    total = total_row[0] if total_row else 0
     return patients, total
 
 
