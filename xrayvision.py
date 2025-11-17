@@ -1529,27 +1529,23 @@ def db_rad_review(uid, normal, radiologist='rad'):
         None
     """
     positive = 0 if normal else 1
-    # Use INSERT OR REPLACE to ensure a row exists before updating specific fields
-    # Default values are used for non-critical fields if the row is new
-    query = """
-        INSERT OR REPLACE INTO rad_reports 
-        (uid, id, created, updated, text, positive, severity, summary, type, radiologist, justification, model, latency)
-        VALUES 
-        (?, '', 
-         COALESCE((SELECT created FROM rad_reports WHERE uid = ?), CURRENT_TIMESTAMP),
-         CURRENT_TIMESTAMP, 
-         COALESCE((SELECT text FROM rad_reports WHERE uid = ?), ''),
-         ?, 
-         COALESCE((SELECT severity FROM rad_reports WHERE uid = ?), -1),
-         COALESCE((SELECT summary FROM rad_reports WHERE uid = ?), ''),
-         COALESCE((SELECT type FROM rad_reports WHERE uid = ?), ''),
-         ?, 
-         COALESCE((SELECT justification FROM rad_reports WHERE uid = ?), ''),
-         COALESCE((SELECT model FROM rad_reports WHERE uid = ?), ''),
-         COALESCE((SELECT latency FROM rad_reports WHERE uid = ?), -1)
-        )
-    """
-    params = (uid, uid, uid, positive, uid, uid, uid, radiologist, uid, uid, uid)
+    
+    # Check if a row already exists for this UID
+    check_query = "SELECT 1 FROM rad_reports WHERE uid = ?"
+    check_params = (uid,)
+    result = db_execute_query(check_query, check_params, fetch_mode='one')
+    
+    if result:
+        # Row exists, update it
+        query = "UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?"
+        params = (positive, radiologist, uid)
+    else:
+        # Row doesn't exist, insert a new one
+        query = """INSERT INTO rad_reports 
+                  (uid, id, created, updated, text, positive, severity, summary, type, radiologist, justification, model, latency)
+                  VALUES (?, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '', ?, -1, '', '', ?, '', '', -1)"""
+        params = (uid, positive, radiologist)
+    
     db_execute_query_retry(query, params)
 
 
