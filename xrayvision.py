@@ -551,20 +551,6 @@ def db_create_insert_query(table_name, *columns):
     return f'INSERT OR REPLACE INTO {table_name} ({columns_str}) VALUES ({placeholders})'
 
 
-def db_upsert(query, params):
-    """
-    Convenience function to perform INSERT OR REPLACE operations.
-
-    Args:
-        query: SQL query string with placeholders
-        params: Tuple of parameters for the query
-
-    Returns:
-        Number of affected rows or None on error
-    """
-    return db_execute_query_retry(query, params)
-
-
 def db_add_patient(cnp, id, name, age, sex):
     """
     Add a new patient to the database or update existing patient information.
@@ -578,7 +564,7 @@ def db_add_patient(cnp, id, name, age, sex):
     """
     query = db_create_insert_query('patients', 'cnp', 'id', 'name', 'age', 'sex')
     params = (cnp, id, name, age, sex)
-    return db_upsert(query, params)
+    return db_execute_query_retry(query, params)
 
 
 def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct=None):
@@ -599,12 +585,11 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_
         report_text,
         int(positive),
         confidence,
-        is_correct if is_correct is not None else -1,
         model,
         latency
     )
-    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'is_correct', 'model', 'latency')
-    db_upsert(query, values)
+    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'model', 'latency')
+    db_execute_query_retry(query, values)
 
 
 def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
@@ -638,7 +623,7 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
         latency
     )
     query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
-    db_upsert(query, values)
+    db_execute_query_retry(query, values)
 
 
 def db_add_exam(info, report=None, positive=None, confidence=None):
@@ -682,7 +667,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
         exam.get("series")
     )
     query = db_create_insert_query('exams', 'uid', 'cnp', 'id', 'created', 'protocol', 'region', 'type', 'status', 'study', 'series')
-    db_upsert(query, params)
+    db_execute_query_retry(query, params)
 
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
