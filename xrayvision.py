@@ -632,6 +632,26 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
     query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
     db_execute_query_retry(query, values)
 
+def db_update_rad_report(uid, positive, severity, summary, model, latency):
+    """
+    Update a radiologist report with LLM analysis results.
+
+    Args:
+        uid: Exam unique identifier
+        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
+        severity: Severity score (0-10, -1 if not assessed)
+        summary: Brief summary of findings
+        model: Name of the model used
+        latency: Processing time in seconds
+    """
+    query = """
+        UPDATE rad_reports 
+        SET positive = ?, severity = ?, summary = ?, model = ?, latency = ?
+        WHERE uid = ?
+    """
+    params = (positive, severity, summary, model, latency, uid)
+    db_execute_query_retry(query, params)
+
 def db_get_exam_without_rad_report():
     """
     Get a random exam that doesn't have a radiologist report yet or has a report with null ID.
@@ -3456,17 +3476,23 @@ async def fhir_loop():
         delay = random.randint(60, 120)
         await asyncio.sleep(delay)
 
-async def process_fhir_report_with_llm(exam_uid, study_id, report_text, radiologist='rad', justification=''):
+async def process_fhir_report_with_llm(exam_uid):
     """
     Process a FHIR diagnostic report with the LLM and update the database.
 
     Args:
-        exam_uid: The exam UID to update
-        study_id: The FHIR study ID
-        report_text: The diagnostic report text
-        radiologist: The radiologist name
-        justification: The clinical justification
+        exam_uid: The exam UID to process
     """
+    # Get the radiologist report from the database
+    query = "SELECT text FROM rad_reports WHERE uid = ?"
+    result = db_execute_query(query, (exam_uid,), fetch_mode='one')
+    
+    if not result or not result[0]:
+        logging.warning(f"No radiologist report found for exam {exam_uid}")
+        return
+    
+    report_text = result[0]
+    
     # Log the current status before sending to LLM
     logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
     
@@ -3493,21 +3519,16 @@ async def process_fhir_report_with_llm(exam_uid, study_id, report_text, radiolog
         logging.warning(f"check_report failed for exam {exam_uid}: {analysis_result['error']}")
         processing_time = -1  # Set to -1 if failed
     
-    # Add the radiologist report to our database
-    db_add_rad_report(
+    # Update the radiologist report in our database
+    db_update_rad_report(
         uid=exam_uid,
-        report_id=study_id,
-        report_text=report_text,
         positive=positive,
         severity=severity,
         summary=summary,
-        report_type='radio',
-        radiologist=radiologist,
-        justification=justification,
         model=MODEL_NAME,
         latency=processing_time
     )
-    logging.info(f"Added FHIR report for exam {exam_uid} by radiologist {radiologist} with summary: {summary}")
+    logging.info(f"Updated FHIR report for exam {exam_uid} with LLM analysis results")
 
 async def process_exams_without_rad_reports(session):
     """
@@ -3598,15 +3619,8 @@ async def process_exams_without_rad_reports(session):
             latency=-1
         )
 
-
         # Process the report with LLM and update database
-        await process_fhir_report_with_llm(
-            exam_uid, 
-            study['id'], 
-            report['conclusion'], 
-            radiologist, 
-            justification
-        )
+        await process_fhir_report_with_llm(exam_uid)
     else:
         logging.debug(f"No conclusion found in diagnostic report for exam {exam_uid}")
 
