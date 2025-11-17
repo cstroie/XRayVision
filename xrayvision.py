@@ -936,7 +936,7 @@ async def db_get_stats():
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE e.status LIKE 'done'
+        WHERE e.status LIKE 'done';
     """
     metrics_row = db_execute_query(query, fetch_mode='one')
     if metrics_row:
