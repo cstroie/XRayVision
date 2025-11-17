@@ -302,7 +302,7 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[2], int(positive))
             self.assertEqual(row[3], confidence)
             self.assertEqual(row[4], -1)  # is_correct defaults to -1
-            self.assertEqual(row[5], 0)   # reviewed defaults to False
+            self.assertEqual(row[5], 0)   # reviewed defaults to 0 (False as integer)
             self.assertEqual(row[6], xrayvision.MODEL_NAME)  # model from config
 
     def test_db_add_ai_report_inserts_new_report(self):
@@ -342,18 +342,19 @@ class TestXRayVisionDatabase(unittest.TestCase):
         # Add an AI report
         uid = '1.2.3.4.5'
         report_text = "Findings suggest possible pneumonia."
-        positive = True
+        positive = 1  # Using integer instead of boolean
         confidence = 85
         model = "test-model"
         latency = 2.5
+        is_correct = 1  # Using integer for three-state value
         
-        xrayvision.db_add_ai_report(uid, report_text, positive, confidence, model, latency)
+        xrayvision.db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct)
         
         # Verify the AI report was inserted
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT uid, text, positive, confidence, is_correct, model, latency
+                SELECT uid, text, positive, confidence, is_correct, reviewed, model, latency
                 FROM ai_reports WHERE uid = ?
             """, (uid,))
             row = cursor.fetchone()
@@ -361,11 +362,12 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertIsNotNone(row, "AI report should be inserted")
             self.assertEqual(row[0], uid)
             self.assertEqual(row[1], report_text)
-            self.assertEqual(row[2], int(positive))
+            self.assertEqual(row[2], positive)
             self.assertEqual(row[3], confidence)
-            self.assertEqual(row[4], -1)  # is_correct defaults to -1
-            self.assertEqual(row[5], model)
-            self.assertEqual(row[6], latency)
+            self.assertEqual(row[4], is_correct)
+            self.assertEqual(row[5], 0)  # reviewed defaults to 0
+            self.assertEqual(row[6], model)
+            self.assertEqual(row[7], latency)
 
     def test_db_add_rad_report_inserts_new_report(self):
         """Test that db_add_rad_report inserts a new radiologist report"""
@@ -405,7 +407,7 @@ class TestXRayVisionDatabase(unittest.TestCase):
         uid = '1.2.3.4.5'
         report_id = "R001"
         report_text = "Confirmed pneumonia with consolidation in right lower lobe."
-        positive = 1
+        positive = 1  # Using integer instead of boolean
         severity = 7
         summary = "pneumonia"
         report_type = "CR"
