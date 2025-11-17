@@ -20,6 +20,7 @@ import os
 import re
 import sqlite3
 from datetime import datetime, timedelta
+from typing import Optional
 
 # Third-party imports
 import aiohttp
