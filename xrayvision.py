@@ -1497,41 +1497,6 @@ def db_backup():
         return None
 
 
-def db_validate(uid, normal=True, correct=None):
-    """
-    Mark the entry as correct or incorrect based on human review.
-
-    When a radiologist reviews a case, they indicate if the finding is normal (negative)
-    or abnormal (positive). This function compares that human assessment with the AI's
-    prediction to determine if the AI was correct (correct=True) or incorrect (correct=False).
-    
-    Args:
-        uid: The unique identifier of the exam
-        normal: Whether the human reviewer marked the case as normal (True) or abnormal (False)
-        correct: Optional override for correctness. If None, will be calculated based on comparison
-
-    Returns:
-        bool: The correctness status (True if AI prediction matched human review)
-    """
-    with sqlite3.connect(DB_FILE) as conn:
-        abnormal = not normal
-        if correct is None:
-            # Check if the report is positive from ai_reports table
-            result = conn.execute("SELECT positive FROM ai_reports WHERE uid = ?", (uid,)).fetchone()
-            # Correct when review matches prediction
-            if result and result[0] is not None:
-                # When human says normal (True) and AI says negative (0), they match -> correct
-                # When human says abnormal (False) and AI says positive (1), they match -> correct
-                correct = bool(abnormal) == bool(result[0])
-            else:
-                correct = True
-        # Update the ai_reports table with correctness info and mark as reviewed
-        #conn.execute("UPDATE ai_reports SET is_correct = ?, reviewed = TRUE, updated = CURRENT_TIMESTAMP WHERE uid = ?", (int(correct), uid))
-        # Update the rad_reports table to mark as reviewed
-        conn.execute("UPDATE rad_reports SET positive = ?, updated = CURRENT_TIMESTAMP, radiologist = ? WHERE uid = ?", (int(abnormal), 'radiologie', uid))
-    return correct
-
-
 def db_rad_review(uid, normal=True, radiologist='rad'):
     """
     Update radiologist report with normal/abnormal status.
@@ -2356,33 +2321,6 @@ async def manual_query(request):
                                   'message': str(e)})
 
 
-async def validate(request):
-    """Mark a study as correct or incorrect based on human review.
-
-    Updates the correctness status of an exam in the database based on
-    radiologist review. Compares human assessment with AI prediction
-    to determine correctness.
-
-    Args:
-        request: aiohttp request object with JSON body containing uid and normal status
-
-    Returns:
-        web.json_response: JSON response with correctness result
-    """
-    data = await request.json()
-    # Get 'uid' and 'normal' from request
-    uid = data.get('uid')
-    normal = data.get('normal', None)
-    # Correct/Incorrect a study, send only the 'normal' attribute
-    is_correct = db_validate(uid, normal)
-    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {is_correct and 'validates' or 'invalidates'} the report.")
-    payload = {'uid': uid, 'is_correct': is_correct}
-    await broadcast_dashboard_update(event = "validate", payload = payload)
-    response = {'status': 'success'}
-    response.update(payload)
-    return web.json_response(response)
-
-
 async def rad_review(request):
     """Record radiologist's review of an exam as normal or abnormal.
 
@@ -3136,7 +3074,6 @@ async def start_dashboard():
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/patients', patients_handler)
     app.router.add_get('/api/patients/{cnp}', patient_handler)
-    app.router.add_post('/api/validate', validate)
     app.router.add_post('/api/rad-review', rad_review)
     app.router.add_post('/api/requeue', requeue_exam)
     app.router.add_post('/api/trigger_query', manual_query)
