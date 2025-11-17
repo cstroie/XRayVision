@@ -284,7 +284,7 @@
         }
 
         function validate(uid, normal) {
-            fetch('/api/validate', {
+            fetch('/api/rad-review', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid, normal: normal })
@@ -292,7 +292,7 @@
             .then(response => response.json())
             .then(data => {
                 loadPage(currentPage);
-                console.log('Status update:', data.is_correct ? 'correct' : 'incorrect');
+                console.log('Status update:', data.status);
             })
             .catch(error => {
                 console.error('Error sending validate:', error);
@@ -300,18 +300,17 @@
         }
 
         function lookagain(uid) {
-            const prompt = "Look again"; /*document.getElementById(`prompt-${uid}`).value.trim();*/
-            fetch('/api/lookagain', {
+            fetch('/api/requeue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: uid, prompt: prompt })
+                body: JSON.stringify({ uid: uid })
             })
             .then(response => response.json())
             .then(data => {
                 loadPage(currentPage);
             })
             .catch(error => {
-                console.error('Error sending look again request:', error);
+                console.error('Error sending requeue request:', error);
             });
         }
 
@@ -321,7 +320,7 @@
                 showToast("Please select hours");
                 return;
             }
-            fetch('/api/trigger_query', {
+            fetch('/api/dicomquery', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ hours: parseInt(hours) })
