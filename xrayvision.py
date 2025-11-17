@@ -3409,7 +3409,7 @@ async def relay_to_openai_loop():
     """
     while True:
         # Get one file from queue
-        exams, total = db_get_exams(limit = 1, status = 'queued')
+        exams, total = db_get_exams(limit = 1, status = ['queued', 'requeue', 'check'])
         # Wait here if there are no items in queue or there is no OpenAI server
         if not exams or active_openai_url is None:
             QUEUE_EVENT.clear()
