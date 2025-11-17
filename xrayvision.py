@@ -2499,27 +2499,24 @@ async def requeue_exam(request):
         return web.json_response({'status': 'error', 'message': str(e)}, status=500)
 
 
-async def check_report_handler(request):
+async def check_report(report_text):
     """Analyze a free-text radiology report for pathological findings.
 
     Takes a radiology report text and sends it to the LLM for analysis
     using a specialized prompt to extract key information.
 
     Args:
-        request: aiohttp request object with JSON body containing report text
+        report_text: Radiology report text to analyze
 
     Returns:
-        web.json_response: JSON response with analysis results
+        dict: Analysis results with pathologic, severity, and summary
     """
     try:
-        data = await request.json()
-        report_text = data.get('report', '').strip()
-        
         logging.info(f"Report check request received with report length: {len(report_text)} characters")
         
         if not report_text:
             logging.warning("Report check request failed: No report text provided")
-            return web.json_response({'error': 'No report text provided'}, status=400)
+            return {'error': 'No report text provided'}
         
         # Prepare the request headers
         headers = {
@@ -2552,7 +2549,7 @@ async def check_report_handler(request):
             result = await send_to_openai(session, headers, payload)
             if not result:
                 logging.error("Failed to get response from AI service")
-                return web.json_response({'error': 'Failed to get response from AI service'}, status=500)
+                return {'error': 'Failed to get response from AI service'}
             
             response_text = result["choices"][0]["message"]["content"].strip()
             logging.debug(f"Raw AI response: {response_text}")
@@ -2582,13 +2579,41 @@ async def check_report_handler(request):
                     raise ValueError("Invalid summary value")
                 
                 logging.info(f"Report check completed successfully. Pathologic: {parsed_response['pathologic']}, Severity: {parsed_response['severity']}")
-                return web.json_response(parsed_response)
+                return parsed_response
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
-                return web.json_response({'error': 'Failed to parse AI response', 'response': response_text}, status=500)
+                return {'error': 'Failed to parse AI response', 'response': response_text}
             except ValueError as e:
                 logging.error(f"Invalid AI response format: {e}")
-                return web.json_response({'error': f'Invalid AI response format: {str(e)}', 'response': response_text}, status=500)
+                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
+    except Exception as e:
+        logging.error(f"Error processing report check request: {e}")
+        return {'error': 'Internal server error'}
+
+async def check_report_handler(request):
+    """Analyze a free-text radiology report for pathological findings.
+
+    Takes a radiology report text and sends it to the LLM for analysis
+    using a specialized prompt to extract key information.
+
+    Args:
+        request: aiohttp request object with JSON body containing report text
+
+    Returns:
+        web.json_response: JSON response with analysis results
+    """
+    try:
+        data = await request.json()
+        report_text = data.get('report', '').strip()
+        
+        result = await check_report(report_text)
+        
+        # Check if there was an error
+        if 'error' in result:
+            status = 500 if result['error'] != 'No report text provided' else 400
+            return web.json_response(result, status=status)
+        
+        return web.json_response(result)
     except Exception as e:
         logging.error(f"Error processing report check request: {e}")
         return web.json_response({'error': 'Internal server error'}, status=500)
