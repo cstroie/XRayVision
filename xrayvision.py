@@ -278,7 +278,7 @@ next_query = None  # Timestamp for the next scheduled DICOM query operation
 dicom_server = None  # DICOM server instance for receiving studies
 web_server = None  # Web server instance for dashboard and API
 
-# OpenAI health
+# External API health
 active_openai_url = None  # Currently active OpenAI API endpoint
 health_status = {
     OPENAI_URL_PRIMARY: False,  # Health status of primary OpenAI endpoint
@@ -600,7 +600,7 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
         uid,
         report_text,
         int(positive),
-        confidence,
+        confidence if confidence is not None else -1
         model,
         latency
     )
@@ -792,19 +792,12 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
 
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
-        db_add_ai_report(
-            info['uid'],
-            report,
-            positive,
-            confidence if confidence is not None else -1,
-            MODEL_NAME,
-            -1
-        )
+        db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, -1)
     
     # If justification is provided, add it to rad_reports table
     if justification is not None:
         # Check if a rad report already exists for this UID
-        if not db_check_rad_reports(info['uid']):
+        if not db_have_rad_reports(info['uid']):
             # No existing report, insert a new one with justification
             rad_params = (
                 info['uid'],
@@ -814,7 +807,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
                 -1,  # severity - not assessed yet
                 '',  # summary - not assessed yet
                 exam.get("type", ""),  # type
-                'rad',  # radiologist - default
+                '',  # radiologist - default
                 justification,  # justification
                 '',  # model - not assessed yet
                 -1   # latency - not assessed yet
@@ -1424,7 +1417,7 @@ def db_count_exams_by_status(status):
     return result[0] if result else 0
 
 
-def db_get_exam_ai_report(uid):
+def db_get_ai_report(uid):
     """
     Get AI report for a specific exam.
 
@@ -1455,7 +1448,7 @@ def db_get_exam_ai_report(uid):
     return None
 
 
-def db_get_exam_rad_report(uid):
+def db_get_rad_report(uid):
     """
     Get radiologist report for a specific exam.
 
@@ -1491,7 +1484,7 @@ def db_get_exam_rad_report(uid):
     return None
 
 
-def db_check_rad_reports(uid):
+def db_have_rad_reports(uid):
     """
     Check if a radiologist report already exists for a given exam UID.
 
@@ -3692,7 +3685,7 @@ async def process_fhir_report_with_llm(exam_uid):
         exam_uid: The exam UID to process
     """
     # Get the radiologist report from the database
-    rad_report = db_get_exam_rad_report(exam_uid)
+    rad_report = db_get_rad_report(exam_uid)
     
     if not rad_report:
         logging.warning(f"No radiologist report found for exam {exam_uid}")
@@ -4046,24 +4039,8 @@ def process_dicom_file(dicom_file, uid):
             return
         # Check the result
         if png_file:
-            # Try to get justification from FHIR
-            justification = None
-            try:
-                # Schedule the coroutine to run in the main event loop
-                if MAIN_LOOP and health_status.get(FHIR_URL, False):
-                    future = asyncio.run_coroutine_threadsafe(
-                        get_fhir_justification_from_loop(info), 
-                        MAIN_LOOP
-                    )
-                    # Wait for completion with a timeout
-                    justification = future.result(timeout=30)
-                else:
-                    logging.debug("FHIR not available or main loop not ready, skipping justification fetch")
-            except Exception as e:
-                logging.warning(f"Could not fetch justification from FHIR for {uid}: {e}")
-            
             # Add to processing queue
-            db_add_exam(info, justification=justification)
+            db_add_exam(info)
             # Notify the queue
             QUEUE_EVENT.set()
         else:
