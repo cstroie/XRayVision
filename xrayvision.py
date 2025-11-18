@@ -648,6 +648,34 @@ def db_create_select_query(table_name, *columns, where=None):
     return query
 
 
+def db_update(table_name, where_clause, where_params, **kwargs):
+    """
+    Convenience function to update records in a table.
+
+    Args:
+        table_name: Name of the table to update
+        where_clause: WHERE clause (without the WHERE keyword)
+        where_params: Parameters for the WHERE clause
+        **kwargs: Column-value pairs to update
+
+    Returns:
+        int: Number of rows affected
+    """
+    if not kwargs:
+        return 0
+    
+    # Build SET clause
+    set_columns = list(kwargs.keys())
+    set_values = list(kwargs.values())
+    set_clause = ', '.join([f'{col} = ?' for col in set_columns])
+    
+    # Build query
+    query = f'UPDATE {table_name} SET {set_clause} WHERE {where_clause}'
+    params = set_values + list(where_params)
+    
+    return db_execute_query_retry(query, params)
+
+
 def db_get_one_record(table_name, pk_value):
     """
     Convenience function to get a single record from a table using its primary key.
