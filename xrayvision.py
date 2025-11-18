@@ -625,7 +625,7 @@ def db_create_insert_query(table_name, *columns):
     return f'INSERT OR REPLACE INTO {table_name} ({columns_str}) VALUES ({placeholders})'
 
 
-def db_create_select_query(table_name, *columns, where=None):
+def db_create_select_query(table_name, *columns, where=None, order_by=None, asc=True, limit=None):
     """
     Convenience function to build SELECT query strings.
 
@@ -633,6 +633,9 @@ def db_create_select_query(table_name, *columns, where=None):
         table_name: Name of the table to select from
         *columns: Variable number of column names (use '*' for all columns)
         where: Optional WHERE clause (without the WHERE keyword)
+        order_by: Optional column to order by
+        asc: Boolean indicating ascending (True) or descending (False) order
+        limit: Optional limit on number of rows returned
 
     Returns:
         str: Formatted SQL query string
@@ -645,7 +648,48 @@ def db_create_select_query(table_name, *columns, where=None):
     query = f'SELECT {columns_str} FROM {table_name}'
     if where:
         query += f' WHERE {where}'
+    if order_by:
+        query += f' ORDER BY {order_by}'
+        if not asc:
+            query += ' DESC'
+    if limit:
+        query += f' LIMIT {limit}'
     return query
+
+
+def db_select(table_name, columns=None, where_clause=None, where_params=None, limit=None, order_by=None, asc=True):
+    """
+    Convenience function to select records from a table and return as list of dictionaries.
+
+    Args:
+        table_name: Name of the table to select from
+        columns: List of column names to select (None for all columns)
+        where_clause: Optional WHERE clause (without the WHERE keyword)
+        where_params: Parameters for the WHERE clause
+        limit: Optional limit on number of rows returned
+        order_by: Optional column to order by
+        asc: Boolean indicating ascending (True) or descending (False) order
+
+    Returns:
+        list: List of dictionaries representing the selected rows
+    """
+    # Use all columns if none specified
+    if columns is None:
+        # Get all columns from table schema
+        _, all_columns = db_analyze(table_name)
+        columns = all_columns
+    
+    # Build query
+    query = db_create_select_query(table_name, *columns, where=where_clause, order_by=order_by, asc=asc, limit=limit)
+    
+    # Execute query
+    params = where_params if where_params else ()
+    rows = db_execute_query(query, params, fetch_mode='all')
+    
+    # Convert to list of dictionaries
+    if rows:
+        return [db_unpack_result(row, columns) for row in rows]
+    return []
 
 
 def db_update(table_name, where_clause, where_params, **kwargs):
