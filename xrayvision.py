@@ -1811,9 +1811,7 @@ def db_rad_review(uid, normal, radiologist='rad'):
     positive = 0 if normal else 1
     
     # Check if a row already exists for this UID
-    check_query = "SELECT 1 FROM rad_reports WHERE uid = ?"
-    check_params = (uid,)
-    result = db_execute_query(check_query, check_params, fetch_mode='one')
+    result = db_get_one_record('rad_reports', uid)
     
     if result:
         # Row exists, update it
