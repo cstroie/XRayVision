@@ -798,16 +798,13 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
         model: Name of the model used
         latency: Processing time in seconds
     """
-    values = (
-        uid,
-        report_text,
-        int(positive),
-        confidence if confidence is not None else -1,
-        model,
-        latency
-    )
-    query = db_create_insert_query('ai_reports', 'uid', 'text', 'positive', 'confidence', 'model', 'latency')
-    db_execute_query_retry(query, values)
+    db_insert('ai_reports',
+              uid=uid,
+              text=report_text,
+              positive=int(positive),
+              confidence=confidence if confidence is not None else -1,
+              model=model,
+              latency=latency)
 
 
 def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
