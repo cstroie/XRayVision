@@ -1466,10 +1466,7 @@ def db_get_ai_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    query = """
-        SELECT text, positive, confidence, model, latency, created, updated
-        FROM ai_reports WHERE uid = ?
-    """
+    query = db_create_select_query('ai_reports', 'text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated', where_clause='uid = ?')
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
