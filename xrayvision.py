@@ -968,20 +968,17 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
     
     # Insert into database
     exam = info["exam"]
-    params = (
-        info['uid'],
-        patient["cnp"],
-        exam.get("id",""),
-        exam['created'],
-        exam["protocol"],
-        exam['region'],
-        exam.get("type", ""),
-        status,
-        exam.get("study"),
-        exam.get("series")
-    )
-    query = db_create_insert_query('exams', 'uid', 'cnp', 'id', 'created', 'protocol', 'region', 'type', 'status', 'study', 'series')
-    db_execute_query_retry(query, params)
+    db_insert('exams',
+              uid=info['uid'],
+              cnp=patient["cnp"],
+              id=exam.get("id",""),
+              created=exam['created'],
+              protocol=exam["protocol"],
+              region=exam['region'],
+              type=exam.get("type", ""),
+              status=status,
+              study=exam.get("study"),
+              series=exam.get("series"))
 
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
@@ -992,21 +989,18 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
         # Check if a rad report already exists for this UID
         if not db_have_rad_reports(info['uid']):
             # No existing report, insert a new one with justification
-            rad_params = (
-                info['uid'],
-                '',  # id - will be filled when we get FHIR report
-                '',  # text - will be filled when we get FHIR report
-                -1,  # positive - not assessed yet
-                -1,  # severity - not assessed yet
-                '',  # summary - not assessed yet
-                exam.get("type", ""),  # type
-                '',  # radiologist - default
-                justification,  # justification
-                '',  # model - not assessed yet
-                -1   # latency - not assessed yet
-            )
-            rad_query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
-            db_execute_query_retry(rad_query, rad_params)
+            db_insert('rad_reports',
+                      uid=info['uid'],
+                      id='',  # id - will be filled when we get FHIR report
+                      text='',  # text - will be filled when we get FHIR report
+                      positive=-1,  # positive - not assessed yet
+                      severity=-1,  # severity - not assessed yet
+                      summary='',  # summary - not assessed yet
+                      type=exam.get("type", ""),  # type
+                      radiologist='',  # radiologist - default
+                      justification=justification,  # justification
+                      model='',  # model - not assessed yet
+                      latency=-1)  # latency - not assessed yet
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
