@@ -648,23 +648,31 @@ def db_create_select_query(table_name, *columns, where=None):
     return query
 
 
-def db_get_one_record(table_name, keys, where_clause, params):
+def db_get_one_record(table_name, primary_key_value):
     """
-    Convenience function to get a single record from a table.
+    Convenience function to get a single record from a table using its primary key.
 
     Args:
         table_name: Name of the table to select from
-        keys: List of column names to select and use as dictionary keys
-        where_clause: WHERE clause (without the WHERE keyword)
-        params: Query parameters
+        primary_key_value: Value of the primary key to search for
 
     Returns:
         dict: Record data or None if not found
     """
-    query = db_create_select_query(table_name, *keys, where=where_clause)
+    # Get primary key and all columns for the table
+    primary_key, columns = db_analyze(table_name)
+    
+    if not primary_key or not columns:
+        return None
+    
+    # Create query using the primary key
+    where_clause = f"{primary_key} = ?"
+    query = db_create_select_query(table_name, *columns, where=where_clause)
+    params = (primary_key_value,)
+    
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
-        return db_unpack_result(result, keys)
+        return db_unpack_result(result, columns)
     return None
 
 
