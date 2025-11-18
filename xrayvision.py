@@ -1841,11 +1841,18 @@ def db_rad_review(uid, normal, radiologist='rad'):
         db_update('rad_reports', 'uid = ?', (uid,), positive=positive, radiologist=radiologist)
     else:
         # Row doesn't exist, insert a new one
-        query = """INSERT INTO rad_reports 
-                  (uid, id, created, updated, text, positive, severity, summary, type, radiologist, justification, model, latency)
-                  VALUES (?, '', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '', ?, -1, '', '', ?, '', '', -1)"""
-        params = (uid, positive, radiologist)
-        db_execute_query_retry(query, params)
+        db_insert('rad_reports', 
+                  uid=uid, 
+                  id='', 
+                  text='', 
+                  positive=positive, 
+                  severity=-1, 
+                  summary='', 
+                  type='', 
+                  radiologist=radiologist, 
+                  justification='', 
+                  model='', 
+                  latency=-1)
 
 
 def db_set_status(uid, status):
