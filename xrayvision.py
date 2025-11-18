@@ -824,21 +824,18 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
         model: Name of the model used
         latency: Processing time in seconds
     """
-    values = (
-        uid,
-        report_id,
-        report_text,
-        positive,
-        severity,
-        summary,
-        report_type,
-        radiologist,
-        justification,
-        model,
-        latency
-    )
-    query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
-    db_execute_query_retry(query, values)
+    db_insert('rad_reports',
+              uid=uid,
+              id=report_id,
+              text=report_text,
+              positive=positive,
+              severity=severity,
+              summary=summary,
+              type=report_type,
+              radiologist=radiologist,
+              justification=justification,
+              model=model,
+              latency=latency)
 
 def db_update_rad_report(uid, positive, severity, summary, model, latency):
     """
