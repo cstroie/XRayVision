@@ -592,7 +592,6 @@ def db_analyze(table_name):
     _db_analyze_cache[table_name] = result
     return result
 
-
 def db_unpack_result(result: list, keys: list) -> dict:
     """
     Unpack a database result list into a dictionary using provided keys.
@@ -717,7 +716,7 @@ def db_update(table_name, where_clause, where_params, **kwargs):
     query = f'UPDATE {table_name} SET {set_clause} WHERE {where_clause}'
     params = set_values + list(where_params)
     
-    return db_execute_query_retry(query, params)
+    return db_execute_query_retry(query, tuple(params))
 
 
 def db_insert(table_name, **kwargs):
