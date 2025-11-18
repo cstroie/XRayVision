@@ -584,14 +584,14 @@ def db_create_insert_query(table_name, *columns):
     return f'INSERT OR REPLACE INTO {table_name} ({columns_str}) VALUES ({placeholders})'
 
 
-def db_create_select_query(table_name, *columns, where_clause=None):
+def db_create_select_query(table_name, *columns, where=None):
     """
     Convenience function to build SELECT query strings.
 
     Args:
         table_name: Name of the table to select from
         *columns: Variable number of column names (use '*' for all columns)
-        where_clause: Optional WHERE clause (without the WHERE keyword)
+        where: Optional WHERE clause (without the WHERE keyword)
 
     Returns:
         str: Formatted SQL query string
@@ -602,8 +602,8 @@ def db_create_select_query(table_name, *columns, where_clause=None):
         columns_str = ', '.join(columns)
     
     query = f'SELECT {columns_str} FROM {table_name}'
-    if where_clause:
-        query += f' WHERE {where_clause}'
+    if where:
+        query += f' WHERE {where}'
     return query
 
 
@@ -1466,7 +1466,7 @@ def db_get_ai_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    query = db_create_select_query('ai_reports', 'text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated', where_clause='uid = ?')
+    query = db_create_select_query('ai_reports', 'text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated', where='uid = ?')
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
