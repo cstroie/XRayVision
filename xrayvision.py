@@ -1472,22 +1472,8 @@ def db_get_rad_report(uid):
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
-        # Unpack row into named variables for better readability
-        (id, text, positive, severity, summary, type, radiologist, justification, model, latency, created, updated) = result
-        return {
-            'id': id,
-            'text': text,
-            'positive': positive,
-            'severity': severity,
-            'summary': summary,
-            'type': type,
-            'radiologist': radiologist,
-            'justification': justification,
-            'model': model,
-            'latency': latency,
-            'created': created,
-            'updated': updated
-        }
+        keys = ['id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency', 'created', 'updated']
+        return db_unpack_result(result, keys)
     return None
 
 
