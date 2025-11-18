@@ -550,7 +550,9 @@
                 regions.forEach(region => {
                     const option = document.createElement('option');
                     option.value = region;
-                    option.textContent = region.charAt(0).toUpperCase() + region.slice(1);
+                    // Replace underscores with spaces and make each word title case
+                    const formattedRegion = region.replace(/_/g, ' ').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+                    option.textContent = formattedRegion;
                     regionSelect.appendChild(option);
                 });
             })
