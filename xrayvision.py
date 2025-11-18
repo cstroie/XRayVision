@@ -804,11 +804,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
     # If justification is provided, add it to rad_reports table
     if justification is not None:
         # Check if a rad report already exists for this UID
-        check_query = "SELECT 1 FROM rad_reports WHERE uid = ?"
-        check_params = (info['uid'],)
-        result = db_execute_query(check_query, check_params, fetch_mode='one')
-        
-        if not result:
+        if not db_check_rad_reports(info['uid']):
             # No existing report, insert a new one with justification
             rad_params = (
                 info['uid'],
