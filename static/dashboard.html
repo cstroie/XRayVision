@@ -73,6 +73,9 @@
                 <option value="any">Result: all</option>
                 <option value="yes">Positive</option>
                 <option value="no">Negative</option>
+                <optgroup label="Diagnostics" id="diagnostics-list">
+                    <!-- Diagnostic options will be populated dynamically -->
+                </optgroup>
             </select>
             <select id="filter-correct" onchange="loadPage(1)" aria-label="Select correct studies">
                 <option value="any">Correct: all</option>
@@ -385,7 +388,13 @@
             const params = new URLSearchParams();
             params.append('page', page);
             if (reviewed && reviewed !== 'any') params.append('reviewed', reviewed);
-            if (positive && positive !== 'any') params.append('positive', positive);
+            if (positive && positive !== 'any') {
+                if (positive.startsWith('diag:')) {
+                    params.append('diagnostic', positive.substring(5)); // Remove 'diag:' prefix
+                } else {
+                    params.append('positive', positive);
+                }
+            }
             if (correct && correct !== 'any') params.append('correct', correct);
             if (region && region !== 'any') params.append('region', region);
             if (status && status !== 'any') params.append('status', status);
@@ -558,6 +567,22 @@
             })
             .catch(err => {
                 console.error('Failed to load regions:', err);
+            });
+
+        // Populate diagnostics dropdown
+        fetch('/api/diagnostics')
+            .then(res => res.json())
+            .then(diagnostics => {
+                const diagnosticsList = document.getElementById('diagnostics-list');
+                Object.keys(diagnostics).forEach(diag => {
+                    const option = document.createElement('option');
+                    option.value = `diag:${diag}`;
+                    option.textContent = `${diag} (${diagnostics[diag]})`;
+                    diagnosticsList.appendChild(option);
+                });
+            })
+            .catch(err => {
+                console.error('Failed to load diagnostics:', err);
             });
 
         connectWebSocket();

@@ -1036,6 +1036,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
               match or list of statuses)
             - search: Filter by patient name, CNP, or UID (case-insensitive
               partial match for name/CNP, exact for UID)
+            - diagnostic: Filter by radiologist diagnostic summary
 
     Returns:
         tuple: (exams_list, total_count) where exams_list is a list of
@@ -1073,6 +1074,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.cnp) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
         params.extend([search_term, search_term, filters['search']])
+    if 'diagnostic' in filters:
+        conditions.append("LOWER(rr.summary) = LOWER(?)")
+        params.append(filters['diagnostic'])
 
     # Build WHERE clause
     where = ""
