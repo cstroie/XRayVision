@@ -1485,14 +1485,11 @@ def db_get_rad_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    query = """
-        SELECT id, text, positive, severity, summary, type, radiologist, justification, model, latency, created, updated
-        FROM rad_reports WHERE uid = ?
-    """
+    keys = ['id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency', 'created', 'updated']
+    query = db_create_select_query('rad_reports', *keys, where='uid = ?')
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
-        keys = ['id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency', 'created', 'updated']
         return db_unpack_result(result, keys)
     return None
 
