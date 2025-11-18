@@ -166,19 +166,6 @@
         let ws;
         let currentPage = 1;
         let totalPages = 1;
-        
-        // Function to apply severity coloring
-        function applySeverityColoring() {
-            document.querySelectorAll('[class^="severity-"]').forEach(element => {
-                const severity = parseInt(element.className.replace('severity-', ''));
-                if (!isNaN(severity)) {
-                    // Calculate color from green (0) to red (10)
-                    const red = Math.min(255, Math.floor(severity * 25.5));
-                    const green = Math.min(255, Math.floor((10 - severity) * 25.5));
-                    element.style.color = `rgb(${red}, ${green}, 0)`;
-                }
-            });
-        }
 
         function sanitize(text) {
             return text;
@@ -530,7 +517,7 @@
                             </div>
                         </figure>
                         <aside class="details">
-                            <details open>
+                            <details close>
                             <summary><strong>${formattedPatientName}, ${item.patient.sex}, ${item.patient.age} years</strong></summary>
                             <p>
                             <small><strong>CNP:</strong> ${item.patient.cnp}</small><br>
@@ -538,26 +525,16 @@
                             <small><strong>Time:</strong> ${formattedDate} ${formattedTime}</small><br>
                             <small><strong>Protocol:</strong> ${item.exam.protocol}</small><br>
                             <small><strong>Region:</strong> ${item.exam.region}</small><br>
-                            <small><strong>Result:</strong> ${isCorrect ? '' : 'False'} ${isPositive ? 'Positive' : 'Negative'}</small><br>
+                            ${item.report.rad.justification ? `<small><strong>Justification:</strong> ${item.report.rad.justification}</small><br>` : ''}
                             </p>
                             </details>
-                            <p class="report">${text}</p>
-                            ${item.report.rad.text ? `
-                            <div class="rad-report">
-                                <h6>Radiologist Report (${item.report.rad.radiologist}):</h6>
-                                <p class="report">${item.report.rad.text}</p>
-                                ${item.report.rad.justification ? `<p class="justification"><strong>Justification:</strong> ${item.report.rad.justification}</p>` : ''}
-                                <small><strong>Summary:</strong> ${item.report.rad.summary} | <strong>Severity:</strong> <span class="severity-${item.report.rad.severity}">${item.report.rad.severity}</span>/10</small>
-                            </div>
-                            ` : ''}
+                            ${text ? `<details open class="report ai-report"><summary>AI Report: ${isPositive ? 'Positive' : 'Negative'}</summary>${text}</details>` : ''}
+                            ${item.report.rad.text ? `<details open class="report rad-report severity-${item.report.rad.severity}"><summary>${item.report.rad.radiologist}: ${item.report.rad.summary}</summary>${item.report.rad.text}</details>` : ''}
                         </aside>
                     </section>
                 `;
             });
             examsElement.innerHTML = examsHtml;
-            
-            // Apply severity coloring after rendering
-            applySeverityColoring();
         }
 
         // Populate regions dropdown
