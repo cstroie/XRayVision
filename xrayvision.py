@@ -1518,112 +1518,6 @@ def db_get_weekly_processed_count():
     return result[0] if result else 0
 
 
-# Convenience functions for database access
-def db_get_exam_by_uid(uid):
-    """
-    Get a single exam by its UID.
-
-    Args:
-        uid: Unique identifier of the exam
-
-    Returns:
-        dict: Exam data or None if not found
-    """
-    exams, _ = db_get_exams(limit=1, search=uid)
-    return exams[0] if exams else None
-
-
-def db_get_recent_exams(limit=10):
-    """
-    Get the most recent exams.
-
-    Args:
-        limit: Maximum number of exams to return
-
-    Returns:
-        list: List of recent exams
-    """
-    exams, _ = db_get_exams(limit=limit)
-    return exams
-
-
-def db_get_exams_by_region(region, limit=PAGE_SIZE, offset=0):
-    """
-    Get exams filtered by region.
-
-    Args:
-        region: Anatomic region to filter by
-        limit: Maximum number of exams to return
-        offset: Number of exams to skip
-
-    Returns:
-        tuple: (exams_list, total_count)
-    """
-    return db_get_exams(limit=limit, offset=offset, region=region)
-
-
-def db_get_positive_exams(limit=PAGE_SIZE, offset=0):
-    """
-    Get exams with positive AI findings.
-
-    Args:
-        limit: Maximum number of exams to return
-        offset: Number of exams to skip
-
-    Returns:
-        tuple: (exams_list, total_count)
-    """
-    return db_get_exams(limit=limit, offset=offset, positive=1)
-
-
-def db_get_unreviewed_exams(limit=PAGE_SIZE, offset=0):
-    """
-    Get exams that haven't been reviewed yet.
-
-    Args:
-        limit: Maximum number of exams to return
-        offset: Number of exams to skip
-
-    Returns:
-        tuple: (exams_list, total_count)
-    """
-    return db_get_exams(limit=limit, offset=offset, reviewed=0)
-
-
-def db_get_patient_exams(patient_cnp, limit=PAGE_SIZE, offset=0):
-    """
-    Get all exams for a specific patient.
-
-    Args:
-        patient_cnp: Patient identifier
-        limit: Maximum number of exams to return
-        offset: Number of exams to skip
-
-    Returns:
-        tuple: (exams_list, total_count)
-    """
-    exams, total = db_get_exams(limit=limit, offset=offset, search=patient_cnp)
-    # Filter to ensure we only get exams for this specific patient
-    patient_exams = [exam for exam in exams if exam['patient']['cnp'] == patient_cnp]
-    return patient_exams, total
-
-
-def db_count_exams_by_status(status):
-    """
-    Count exams by status.
-
-    Args:
-        status: Status to count ('queued', 'processing', 'done', 'error', 'ignore')
-
-    Returns:
-        int: Count of exams with the specified status
-    """
-    query = "SELECT COUNT(*) FROM exams WHERE status = ?"
-    params = (status,)
-    result = db_execute_query(query, params, fetch_mode='one')
-    return result[0] if result else 0
-
-
 def db_get_ai_report(uid):
     """
     Get AI report for a specific exam.
@@ -2783,7 +2677,7 @@ async def rad_review(request):
         db_rad_review(uid, normal, radiologist)
         
         # Get the updated exam data
-        exam_data = db_get_exam_by_uid(uid)        
+        exam_data = db_get_exams(limit=1, search=uid)
         logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}, which {exam_data['report']['correct'] and 'validates' or 'invalidates'} the AI report.")
         await broadcast_dashboard_update(event = "radreview", payload = exam_data)
         response = {'status': 'success'}
