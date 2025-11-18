@@ -552,6 +552,22 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3)
     return None
 
 
+def db_unpack_result(result: list, keys: list) -> dict:
+    """
+    Unpack a database result list into a dictionary using provided keys.
+
+    Args:
+        result: List of values from a database query result
+        keys: List of keys to map to the values
+
+    Returns:
+        dict: Dictionary with keys mapped to corresponding values
+    """
+    if not result or not keys:
+        return {}
+    return dict(zip(keys, result))
+
+
 def db_create_insert_query(table_name, *columns):
     """
     Convenience function to build INSERT OR REPLACE query strings.
