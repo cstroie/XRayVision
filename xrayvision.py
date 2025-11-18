@@ -3269,7 +3269,14 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
             if resp.status == 200:
                 data = await resp.json()
                 if data.get('resourceType') == 'Bundle' and 'entry' in data:
-                    studies = [entry['resource'] for entry in data['entry'] if entry['resource'].get('resourceType') == 'Observation']
+                    studies = []
+                    for entry in data['entry']:
+                        if 'resource' in entry and entry['resource'].get('resourceType') == 'Observation':
+                            # Only add resources that have an 'id' field
+                            if 'id' in entry['resource']:
+                                studies.append(entry['resource'])
+                            else:
+                                logging.warning("FHIR imaging study resource missing 'id' field")
                     # We need exactly one study
                     if len(studies) == 1:
                         return studies
@@ -3847,7 +3854,7 @@ async def process_exams_without_rad_reports(session):
         # Add the radiologist report to our database
         db_add_rad_report(
             uid=exam_uid,
-            report_id=study['id'],
+            report_id=study.get('id', ''),
             report_text=report['conclusion'],
             positive=-1,
             severity=-1,
