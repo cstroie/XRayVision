@@ -2307,7 +2307,7 @@ async def exams_handler(request):
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value[0].lower() == 'y' and 1 or 0
-        for filter in ['region', 'status', 'search']:
+        for filter in ['region', 'status', 'search', 'diagnostic']:
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value
