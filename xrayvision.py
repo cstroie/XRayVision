@@ -4035,8 +4035,7 @@ async def main():
     logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
     
     # Reset any exams stuck in 'processing' status back to 'queued'
-    reset_query = "UPDATE exams SET status = 'queued' WHERE status = 'processing'"
-    reset_count = db_execute_query_retry(reset_query)
+    reset_count = db_update('exams', "status = ?", ('processing',), status='queued')
     if reset_count and reset_count > 0:
         logging.info(f"Reset {reset_count} exams from 'processing' to 'queued' status")
         # Signal the queue to process these reset exams
