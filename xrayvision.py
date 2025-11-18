@@ -1012,18 +1012,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
         # Check if a rad report already exists for this UID
         if not db_have_rad_reports(info['uid']):
             # No existing report, insert a new one with justification
-            db_insert('rad_reports',
-                      uid=info['uid'],
-                      id='',  # id - will be filled when we get FHIR report
-                      text='',  # text - will be filled when we get FHIR report
-                      positive=-1,  # positive - not assessed yet
-                      severity=-1,  # severity - not assessed yet
-                      summary='',  # summary - not assessed yet
-                      type=exam.get("type", ""),  # type
-                      radiologist='',  # radiologist - default
-                      justification=justification,  # justification
-                      model='',  # model - not assessed yet
-                      latency=-1)  # latency - not assessed yet
+            db_insert('rad_reports', uid=info['uid'], id='', type=exam.get("type", ""),  justification=justification)
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
@@ -3956,95 +3945,12 @@ async def stop_servers():
             logging.error(f"Error stopping web server: {e}")
 
 
-async def get_fhir_justification(session, exam_info):
-    """
-    Retrieve clinical justification from FHIR for a given exam.
-
-    This coroutine fetches the clinical justification/reason for the imaging study
-    from the FHIR system by:
-    1. Finding the patient in FHIR using their CNP
-    2. Searching for imaging studies for that patient around the exam time
-    3. Extracting the clinical justification from the diagnostic report
-
-    Args:
-        session: aiohttp ClientSession for making HTTP requests
-        exam_info: Dictionary containing exam information including patient CNP and exam datetime
-
-    Returns:
-        str or None: Clinical justification text if found, None otherwise
-    """
-    try:
-        patient_cnp = exam_info['patient']['cnp']
-        exam_datetime = exam_info['exam']['created']
-        
-        # Get patient from database to see if we already have their FHIR ID
-        patient_id = exam_info['patient']['id']
-        
-        # If patient ID is not known, search for it in FHIR
-        if not patient_id:
-            fhir_patient = await get_fhir_patient(session, patient_cnp)
-            if fhir_patient and 'id' in fhir_patient:
-                patient_id = fhir_patient['id']
-                # Update patient ID in database
-                db_update_patient_id(patient_cnp, patient_id)
-        
-        # If still no patient ID, we can't proceed
-        if not patient_id:
-            logging.debug(f"Could not find FHIR patient for CNP {patient_cnp}")
-            return None
-        
-        # Search for imaging studies
-        studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
-        
-        # We need exactly one study
-        if len(studies) != 1:
-            logging.debug(f"Found {len(studies)} imaging studies for patient {patient_cnp}, expected exactly one")
-            return None
-        
-        # Get the single study
-        study = studies[0]
-        if 'id' not in study:
-            logging.debug(f"Imaging study has no ID")
-            return None
-        
-        # Get the diagnostic report
-        report = await get_fhir_diagnosticreport(session, study['id'])
-        if not report:
-            logging.debug(f"No diagnostic report found for study {study['id']}")
-            return None
-        
-        # Extract justification from extensions if available
-        justification = ''
-        try:
-            if 'extension' in report:
-                for ext in report['extension']:
-                    if 'diagnostic-report-reason' in ext.get('url', ''):
-                        if 'extension' in ext:
-                            for nested_ext in ext['extension']:
-                                if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
-                                    justification = nested_ext['valueString']
-                                    break
-        except Exception as e:
-            logging.warning(f"Could not extract justification from FHIR report: {e}")
-        
-        if justification:
-            logging.info(f"Retrieved clinical justification for exam: {justification[:50]}...")
-            return justification
-        else:
-            logging.debug(f"No clinical justification found in diagnostic report")
-            return None
-            
-    except Exception as e:
-        logging.warning(f"Error fetching FHIR justification: {e}")
-        return None
-
 def process_dicom_file(dicom_file, uid):
     """
     Process a DICOM file by extracting metadata, converting to PNG, and adding to queue.
 
     This helper function handles the common logic between dicom_store() and
     load_existing_dicom_files() to avoid code duplication.
-    It also attempts to fetch justification from FHIR for new exams.
 
     Args:
         dicom_file: Path to the DICOM file
