@@ -607,6 +607,26 @@ def db_create_select_query(table_name, *columns, where=None):
     return query
 
 
+def db_get_one_record(table_name, keys, where_clause, params):
+    """
+    Convenience function to get a single record from a table.
+
+    Args:
+        table_name: Name of the table to select from
+        keys: List of column names to select and use as dictionary keys
+        where_clause: WHERE clause (without the WHERE keyword)
+        params: Query parameters
+
+    Returns:
+        dict: Record data or None if not found
+    """
+    query = db_create_select_query(table_name, *keys, where=where_clause)
+    result = db_execute_query(query, params, fetch_mode='one')
+    if result:
+        return db_unpack_result(result, keys)
+    return None
+
+
 def db_add_patient(cnp, id, name, age, sex):
     """
     Add a new patient to the database or update existing patient information.
@@ -1467,12 +1487,7 @@ def db_get_ai_report(uid):
         dict: Report data or None if not found
     """
     keys = ['text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated']
-    query = db_create_select_query('ai_reports', *keys, where='uid = ?')
-    params = (uid,)
-    result = db_execute_query(query, params, fetch_mode='one')
-    if result:
-        return db_unpack_result(result, keys)
-    return None
+    return db_get_one_record('ai_reports', keys, 'uid = ?', (uid,))
 
 
 def db_get_rad_report(uid):
@@ -1486,12 +1501,7 @@ def db_get_rad_report(uid):
         dict: Report data or None if not found
     """
     keys = ['id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency', 'created', 'updated']
-    query = db_create_select_query('rad_reports', *keys, where='uid = ?')
-    params = (uid,)
-    result = db_execute_query(query, params, fetch_mode='one')
-    if result:
-        return db_unpack_result(result, keys)
-    return None
+    return db_get_one_record('rad_reports', keys, 'uid = ?', (uid,))
 
 
 def db_have_rad_reports(uid):
