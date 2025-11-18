@@ -1466,11 +1466,11 @@ def db_get_ai_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    query = db_create_select_query('ai_reports', 'text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated', where='uid = ?')
+    keys = ['text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated']
+    query = db_create_select_query('ai_reports', *keys, where='uid = ?')
     params = (uid,)
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
-        keys = ['text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated']
         return db_unpack_result(result, keys)
     return None
 
