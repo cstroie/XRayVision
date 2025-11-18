@@ -1475,9 +1475,7 @@ def db_get_queue_size():
     Returns:
         int: Number of exams with status 'queued'
     """
-    query = "SELECT COUNT(*) FROM exams WHERE status IN ('queued', 'requeue', 'check')"
-    result = db_execute_query(query, fetch_mode='one')
-    return result[0] if result else 0
+    return db_count('exams', where_clause="status IN (?, ?, ?)", where_params=('queued', 'requeue', 'check'))
 
 
 def db_get_error_stats():
