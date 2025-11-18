@@ -676,6 +676,29 @@ def db_update(table_name, where_clause, where_params, **kwargs):
     return db_execute_query_retry(query, params)
 
 
+def db_insert(table_name, **kwargs):
+    """
+    Convenience function to insert records into a table.
+
+    Args:
+        table_name: Name of the table to insert into
+        **kwargs: Column-value pairs to insert
+
+    Returns:
+        int: Number of rows affected
+    """
+    if not kwargs:
+        return 0
+    
+    # Build query using db_create_insert_query
+    columns = list(kwargs.keys())
+    values = list(kwargs.values())
+    query = db_create_insert_query(table_name, *columns)
+    params = tuple(values)
+    
+    return db_execute_query_retry(query, params)
+
+
 def db_get_one_record(table_name, pk_value):
     """
     Convenience function to get a single record from a table using its primary key.
