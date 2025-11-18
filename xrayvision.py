@@ -3517,6 +3517,12 @@ async def send_exam_to_openai(exam, max_retries = 3):
         return False
 
 
+# Helper coroutine to run in the main event loop
+async def get_fhir_justification_from_loop(exam_info):
+    """Helper coroutine to fetch FHIR justification within the main event loop."""
+    async with aiohttp.ClientSession() as session:
+        return await get_fhir_justification(session, exam_info)
+
 # Threads
 async def start_dashboard():
     """
@@ -3948,6 +3954,88 @@ async def stop_servers():
             logging.error(f"Error stopping web server: {e}")
 
 
+async def get_fhir_justification(session, exam_info):
+    """
+    Retrieve clinical justification from FHIR for a given exam.
+
+    This coroutine fetches the clinical justification/reason for the imaging study
+    from the FHIR system by:
+    1. Finding the patient in FHIR using their CNP
+    2. Searching for imaging studies for that patient around the exam time
+    3. Extracting the clinical justification from the diagnostic report
+
+    Args:
+        session: aiohttp ClientSession for making HTTP requests
+        exam_info: Dictionary containing exam information including patient CNP and exam datetime
+
+    Returns:
+        str or None: Clinical justification text if found, None otherwise
+    """
+    try:
+        patient_cnp = exam_info['patient']['cnp']
+        exam_datetime = exam_info['exam']['created']
+        
+        # Get patient from database to see if we already have their FHIR ID
+        patient_id = exam_info['patient']['id']
+        
+        # If patient ID is not known, search for it in FHIR
+        if not patient_id:
+            fhir_patient = await get_fhir_patient(session, patient_cnp)
+            if fhir_patient and 'id' in fhir_patient:
+                patient_id = fhir_patient['id']
+                # Update patient ID in database
+                db_update_patient_id(patient_cnp, patient_id)
+        
+        # If still no patient ID, we can't proceed
+        if not patient_id:
+            logging.debug(f"Could not find FHIR patient for CNP {patient_cnp}")
+            return None
+        
+        # Search for imaging studies
+        studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
+        
+        # We need exactly one study
+        if len(studies) != 1:
+            logging.debug(f"Found {len(studies)} imaging studies for patient {patient_cnp}, expected exactly one")
+            return None
+        
+        # Get the single study
+        study = studies[0]
+        if 'id' not in study:
+            logging.debug(f"Imaging study has no ID")
+            return None
+        
+        # Get the diagnostic report
+        report = await get_fhir_diagnosticreport(session, study['id'])
+        if not report:
+            logging.debug(f"No diagnostic report found for study {study['id']}")
+            return None
+        
+        # Extract justification from extensions if available
+        justification = ''
+        try:
+            if 'extension' in report:
+                for ext in report['extension']:
+                    if 'diagnostic-report-reason' in ext.get('url', ''):
+                        if 'extension' in ext:
+                            for nested_ext in ext['extension']:
+                                if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
+                                    justification = nested_ext['valueString']
+                                    break
+        except Exception as e:
+            logging.warning(f"Could not extract justification from FHIR report: {e}")
+        
+        if justification:
+            logging.info(f"Retrieved clinical justification for exam: {justification[:50]}...")
+            return justification
+        else:
+            logging.debug(f"No clinical justification found in diagnostic report")
+            return None
+            
+    except Exception as e:
+        logging.warning(f"Error fetching FHIR justification: {e}")
+        return None
+
 def process_dicom_file(dicom_file, uid):
     """
     Process a DICOM file by extracting metadata, converting to PNG, and adding to queue.
@@ -3983,9 +4071,16 @@ def process_dicom_file(dicom_file, uid):
             # Try to get justification from FHIR
             justification = None
             try:
-                # This would be implemented as a synchronous wrapper around the async FHIR functions
-                # For now, we'll leave it as None and implement proper FHIR fetching in a future update
-                justification = None
+                # Schedule the coroutine to run in the main event loop
+                if MAIN_LOOP and health_status.get(FHIR_URL, False):
+                    future = asyncio.run_coroutine_threadsafe(
+                        get_fhir_justification_from_loop(info), 
+                        MAIN_LOOP
+                    )
+                    # Wait for completion with a timeout
+                    justification = future.result(timeout=30)
+                else:
+                    logging.debug("FHIR not available or main loop not ready, skipping justification fetch")
             except Exception as e:
                 logging.warning(f"Could not fetch justification from FHIR for {uid}: {e}")
             
