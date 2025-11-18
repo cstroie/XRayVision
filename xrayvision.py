@@ -648,13 +648,13 @@ def db_create_select_query(table_name, *columns, where=None):
     return query
 
 
-def db_get_one_record(table_name, primary_key_value):
+def db_get_one_record(table_name, pk_value):
     """
     Convenience function to get a single record from a table using its primary key.
 
     Args:
         table_name: Name of the table to select from
-        primary_key_value: Value of the primary key to search for
+        pk_value: Value of the primary key to search for
 
     Returns:
         dict: Record data or None if not found
@@ -668,7 +668,7 @@ def db_get_one_record(table_name, primary_key_value):
     # Create query using the primary key
     where_clause = f"{primary_key} = ?"
     query = db_create_select_query(table_name, *columns, where=where_clause)
-    params = (primary_key_value,)
+    params = (pk_value,)
     
     result = db_execute_query(query, params, fetch_mode='one')
     if result:
@@ -1535,8 +1535,7 @@ def db_get_ai_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    keys = ['text', 'positive', 'confidence', 'model', 'latency', 'created', 'updated']
-    return db_get_one_record('ai_reports', keys, 'uid = ?', (uid,))
+    return db_get_one_record('ai_reports', uid)
 
 
 def db_get_rad_report(uid):
@@ -1549,8 +1548,7 @@ def db_get_rad_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    keys = ['id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency', 'created', 'updated']
-    return db_get_one_record('rad_reports', keys, 'uid = ?', (uid,))
+    return db_get_one_record('rad_reports', uid)
 
 
 def db_have_rad_reports(uid):
