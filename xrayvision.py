@@ -934,9 +934,7 @@ def db_update_patient_id(cnp, patient_id):
         cnp: Patient CNP
         patient_id: Patient ID from HIS
     """
-    query = "UPDATE patients SET id = ? WHERE cnp = ?"
-    params = (patient_id, cnp)
-    db_execute_query_retry(query, params)
+    db_update('patients', 'cnp = ?', (cnp,), id=patient_id)
 
 
 def db_add_exam(info, report=None, positive=None, confidence=None, justification=None):
