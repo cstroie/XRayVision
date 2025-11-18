@@ -1214,10 +1214,9 @@ def db_check_already_processed(uid):
     Returns:
         bool: True if exam exists with status 'done', 'queued', or 'processing'
     """
-    query = "SELECT status FROM exams WHERE uid = ? AND status IN ('done', 'queued', 'processing')"
-    params = (uid,)
-    result = db_execute_query(query, params, fetch_mode='one')
-    return result is not None
+    results = db_select('exams', ['status'], where_clause='uid = ? AND status IN (?, ?, ?)', 
+                       where_params=(uid, 'done', 'queued', 'processing'))
+    return len(results) > 0
 
 
 async def db_get_stats():
