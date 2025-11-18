@@ -1577,22 +1577,7 @@ def db_get_patient_by_cnp(cnp):
     Returns:
         dict: Patient data or None if not found
     """
-    query = """
-        SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?
-    """
-    params = (cnp,)
-    result = db_execute_query(query, params, fetch_mode='one')
-    if result:
-        # Unpack row into named variables for better readability
-        (patient_cnp, id, name, age, sex) = result
-        return {
-            'cnp': patient_cnp,
-            'id': id,
-            'name': name,
-            'age': age,
-            'sex': sex
-        }
-    return None
+    return db_get_one_record('patients', cnp)
 
 
 def db_get_patient_exam_uids(cnp):
