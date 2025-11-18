@@ -552,6 +552,47 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3)
     return None
 
 
+# Cache for db_analyze results
+_db_analyze_cache = {}
+
+
+def db_analyze(table_name):
+    """
+    Analyze a table to get its primary key and columns using PRAGMA table_info.
+    
+    Args:
+        table_name: Name of the table to analyze
+        
+    Returns:
+        tuple: (primary_key, columns) where primary_key is the name of the 
+               primary key column and columns is a list of all column names
+    """
+    # Check cache first
+    if table_name in _db_analyze_cache:
+        return _db_analyze_cache[table_name]
+    
+    query = f"PRAGMA table_info({table_name})"
+    rows = db_execute_query(query, fetch_mode='all')
+    
+    if not rows:
+        return None, []
+    
+    primary_key = None
+    columns = []
+    
+    for row in rows:
+        # row format: (cid, name, type, notnull, dflt_value, pk)
+        cid, name, type, notnull, dflt_value, pk = row
+        columns.append(name)
+        if pk:  # pk is 1 if this column is part of the primary key
+            primary_key = name
+    
+    # Cache the result
+    result = (primary_key, columns)
+    _db_analyze_cache[table_name] = result
+    return result
+
+
 def db_unpack_result(result: list, keys: list) -> dict:
     """
     Unpack a database result list into a dictionary using provided keys.
