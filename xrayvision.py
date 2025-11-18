@@ -849,13 +849,12 @@ def db_update_rad_report(uid, positive, severity, summary, model, latency):
         model: Name of the model used
         latency: Processing time in seconds
     """
-    query = """
-        UPDATE rad_reports 
-        SET positive = ?, severity = ?, summary = ?, model = ?, latency = ?
-        WHERE uid = ?
-    """
-    params = (positive, severity, summary, model, latency, uid)
-    db_execute_query_retry(query, params)
+    db_update('rad_reports', 'uid = ?', (uid,), 
+              positive=positive, 
+              severity=severity, 
+              summary=summary, 
+              model=model, 
+              latency=latency)
 
 def db_get_exam_without_rad_report():
     """
