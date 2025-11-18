@@ -528,6 +528,7 @@
                             <div class="rad-report">
                                 <h6>Radiologist Report (${item.report.rad.radiologist}):</h6>
                                 <p class="report">${item.report.rad.text}</p>
+                                ${item.report.rad.justification ? `<p class="justification"><strong>Justification:</strong> ${item.report.rad.justification}</p>` : ''}
                                 <small><strong>Summary:</strong> ${item.report.rad.summary} | <strong>Severity:</strong> <span class="severity-${item.report.rad.severity}">${item.report.rad.severity}</span>/10</small>
                             </div>
                             ` : ''}
