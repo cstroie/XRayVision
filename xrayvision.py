@@ -691,6 +691,29 @@ def db_select(table_name, columns=None, where_clause=None, where_params=None, li
     return []
 
 
+def db_count(table_name, where_clause=None, where_params=None):
+    """
+    Convenience function to count records in a table.
+
+    Args:
+        table_name: Name of the table to count records in
+        where_clause: Optional WHERE clause (without the WHERE keyword)
+        where_params: Parameters for the WHERE clause
+
+    Returns:
+        int: Number of records matching the criteria
+    """
+    query = f"SELECT COUNT(*) FROM {table_name}"
+    params = ()
+    
+    if where_clause:
+        query += f" WHERE {where_clause}"
+        params = where_params if where_params else ()
+    
+    result = db_execute_query(query, params, fetch_mode='one')
+    return result[0] if result else 0
+
+
 def db_update(table_name, where_clause, where_params, **kwargs):
     """
     Convenience function to update records in a table.
