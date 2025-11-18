@@ -68,6 +68,9 @@
                 <option value="any">Review: all</option>
                 <option value="yes">Reviewed</option>
                 <option value="no">Not reviewed</option>
+                <optgroup label="Radiologists" id="radiologists-list">
+                    <!-- Radiologist options will be populated dynamically -->
+                </optgroup>
             </select>
             <select id="filter-positive" onchange="loadPage(1)" aria-label="Select positive or negative studies">
                 <option value="any">Result: all</option>
@@ -387,7 +390,13 @@
             const status = document.getElementById("filter-status").value;
             const params = new URLSearchParams();
             params.append('page', page);
-            if (reviewed && reviewed !== 'any') params.append('reviewed', reviewed);
+            if (reviewed && reviewed !== 'any') {
+                if (reviewed.startsWith('rad:')) {
+                    params.append('radiologist', reviewed.substring(4)); // Remove 'rad:' prefix
+                } else {
+                    params.append('reviewed', reviewed);
+                }
+            }
             if (positive && positive !== 'any') {
                 if (positive.startsWith('diag:')) {
                     params.append('diagnostic', positive.substring(5)); // Remove 'diag:' prefix
@@ -583,6 +592,22 @@
             })
             .catch(err => {
                 console.error('Failed to load diagnostics:', err);
+            });
+
+        // Populate radiologists dropdown
+        fetch('/api/radiologists')
+            .then(res => res.json())
+            .then(radiologists => {
+                const radiologistsList = document.getElementById('radiologists-list');
+                Object.keys(radiologists).forEach(rad => {
+                    const option = document.createElement('option');
+                    option.value = `rad:${rad}`;
+                    option.textContent = `${rad} (${radiologists[rad]})`;
+                    radiologistsList.appendChild(option);
+                });
+            })
+            .catch(err => {
+                console.error('Failed to load radiologists:', err);
             });
 
         connectWebSocket();

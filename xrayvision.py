@@ -1077,6 +1077,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if 'diagnostic' in filters:
         conditions.append("LOWER(rr.summary) = LOWER(?)")
         params.append(filters['diagnostic'])
+    if 'radiologist' in filters:
+        conditions.append("LOWER(rr.radiologist) = LOWER(?)")
+        params.append(filters['radiologist'])
 
     # Build WHERE clause
     where = ""
@@ -2303,14 +2306,22 @@ async def exams_handler(request):
         
         page = int(request.query.get("page", "1"))
         filters = {}
-        for filter in ['reviewed', 'positive', 'correct']:
+        for filter in ['positive', 'correct']:
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value[0].lower() == 'y' and 1 or 0
-        for filter in ['region', 'status', 'search', 'diagnostic']:
+        for filter in ['region', 'status', 'search', 'diagnostic', 'radiologist']:
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value
+        # Handle reviewed filter separately to support radiologist filtering
+        reviewed_value = request.query.get('reviewed', 'any')
+        if reviewed_value != 'any':
+            if reviewed_value.startswith('rad:'):
+                # Extract radiologist name and add to filters
+                filters['radiologist'] = reviewed_value[4:]  # Remove 'rad:' prefix
+            else:
+                filters['reviewed'] = reviewed_value[0].lower() == 'y' and 1 or 0
         offset = (page - 1) * PAGE_SIZE
         data, total = db_get_exams(limit = PAGE_SIZE, offset = offset, **filters)
         
