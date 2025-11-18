@@ -1495,6 +1495,22 @@ def db_get_exam_rad_report(uid):
     return None
 
 
+def db_check_rad_reports(uid):
+    """
+    Check if a radiologist report already exists for a given exam UID.
+
+    Args:
+        uid: Unique identifier of the exam
+
+    Returns:
+        bool: True if a radiologist report exists for this UID, False otherwise
+    """
+    check_query = "SELECT 1 FROM rad_reports WHERE uid = ?"
+    check_params = (uid,)
+    result = db_execute_query(check_query, check_params, fetch_mode='one')
+    return result is not None
+
+
 def db_get_patient_by_cnp(cnp):
     """
     Get patient information by CNP.
