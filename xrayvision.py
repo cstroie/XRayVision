@@ -584,6 +584,29 @@ def db_create_insert_query(table_name, *columns):
     return f'INSERT OR REPLACE INTO {table_name} ({columns_str}) VALUES ({placeholders})'
 
 
+def db_create_select_query(table_name, *columns, where_clause=None):
+    """
+    Convenience function to build SELECT query strings.
+
+    Args:
+        table_name: Name of the table to select from
+        *columns: Variable number of column names (use '*' for all columns)
+        where_clause: Optional WHERE clause (without the WHERE keyword)
+
+    Returns:
+        str: Formatted SQL query string
+    """
+    if not columns:
+        columns_str = '*'
+    else:
+        columns_str = ', '.join(columns)
+    
+    query = f'SELECT {columns_str} FROM {table_name}'
+    if where_clause:
+        query += f' WHERE {where_clause}'
+    return query
+
+
 def db_add_patient(cnp, id, name, age, sex):
     """
     Add a new patient to the database or update existing patient information.
