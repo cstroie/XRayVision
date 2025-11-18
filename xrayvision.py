@@ -699,7 +699,7 @@ def db_insert(table_name, **kwargs):
     return db_execute_query_retry(query, params)
 
 
-def db_get_one_record(table_name, pk_value):
+def db_select_one(table_name, pk_value):
     """
     Convenience function to get a single record from a table using its primary key.
 
@@ -1586,7 +1586,7 @@ def db_get_ai_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    return db_get_one_record('ai_reports', uid)
+    return db_select_one('ai_reports', uid)
 
 
 def db_get_rad_report(uid):
@@ -1599,7 +1599,7 @@ def db_get_rad_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    return db_get_one_record('rad_reports', uid)
+    return db_select_one('rad_reports', uid)
 
 
 def db_have_rad_reports(uid):
@@ -1628,7 +1628,7 @@ def db_get_patient_by_cnp(cnp):
     Returns:
         dict: Patient data or None if not found
     """
-    return db_get_one_record('patients', cnp)
+    return db_select_one('patients', cnp)
 
 
 def db_get_patient_exam_uids(cnp):
@@ -1834,25 +1834,14 @@ def db_rad_review(uid, normal, radiologist='rad'):
     positive = 0 if normal else 1
     
     # Check if a row already exists for this UID
-    result = db_get_one_record('rad_reports', uid)
+    result = db_select_one('rad_reports', uid)
     
     if result:
         # Row exists, update it
         db_update('rad_reports', 'uid = ?', (uid,), positive=positive, radiologist=radiologist)
     else:
         # Row doesn't exist, insert a new one
-        db_insert('rad_reports', 
-                  uid=uid, 
-                  id='', 
-                  text='', 
-                  positive=positive, 
-                  severity=-1, 
-                  summary='', 
-                  type='', 
-                  radiologist=radiologist, 
-                  justification='', 
-                  model='', 
-                  latency=-1)
+        db_insert('rad_reports', uid=uid, positive=positive, radiologist=radiologist)
 
 
 def db_set_status(uid, status):
@@ -3593,12 +3582,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
         await broadcast_dashboard_update()
         return False
 
-
-# Helper coroutine to run in the main event loop
-async def get_fhir_justification_from_loop(exam_info):
-    """Helper coroutine to fetch FHIR justification within the main event loop."""
-    async with aiohttp.ClientSession() as session:
-        return await get_fhir_justification(session, exam_info)
 
 # Threads
 async def start_dashboard():
