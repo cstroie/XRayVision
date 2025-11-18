@@ -3670,7 +3670,7 @@ async def fhir_loop():
         await broadcast_dashboard_update()
         
         # Random delay between 1 and 5 minutes
-        delay = random.randint(60, 300)
+        delay = random.randint(30, 120)
         await asyncio.sleep(delay)
 
 async def process_fhir_report_with_llm(exam_uid):
