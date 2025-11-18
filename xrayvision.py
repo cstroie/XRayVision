@@ -616,7 +616,7 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
         uid,
         report_text,
         int(positive),
-        confidence if confidence is not None else -1
+        confidence if confidence is not None else -1,
         model,
         latency
     )
