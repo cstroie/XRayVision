@@ -785,19 +785,21 @@ def db_update_patient_id(cnp, patient_id):
     db_execute_query_retry(query, params)
 
 
-def db_add_exam(info, report=None, positive=None, confidence=None):
+def db_add_exam(info, report=None, positive=None, confidence=None, justification=None):
     """
     Add or update an exam entry in the database.
 
     This function handles queuing new exams for processing. It sets status to 'queued'
     and stores exam metadata. Patient information is stored in the patients table.
     If report data is provided, it also creates an entry in the ai_reports table.
+    If justification is provided, it creates an entry in the rad_reports table.
 
     Args:
         info: Dictionary containing exam metadata (uid, patient info, exam details)
         report: Optional AI report text
         positive: Optional AI positive finding indicator (True/False)
         confidence: Optional AI confidence score (0-100)
+        justification: Optional clinical justification text
     """
     # Add or update patient information
     patient = info["patient"]
@@ -839,6 +841,31 @@ def db_add_exam(info, report=None, positive=None, confidence=None):
             MODEL_NAME,
             -1
         )
+    
+    # If justification is provided, add it to rad_reports table
+    if justification is not None:
+        # Check if a rad report already exists for this UID
+        check_query = "SELECT 1 FROM rad_reports WHERE uid = ?"
+        check_params = (info['uid'],)
+        result = db_execute_query(check_query, check_params, fetch_mode='one')
+        
+        if not result:
+            # No existing report, insert a new one with justification
+            rad_params = (
+                info['uid'],
+                '',  # id - will be filled when we get FHIR report
+                '',  # text - will be filled when we get FHIR report
+                -1,  # positive - not assessed yet
+                -1,  # severity - not assessed yet
+                '',  # summary - not assessed yet
+                exam.get("type", ""),  # type
+                'rad',  # radiologist - default
+                justification,  # justification
+                '',  # model - not assessed yet
+                -1   # latency - not assessed yet
+            )
+            rad_query = db_create_insert_query('rad_reports', 'uid', 'id', 'text', 'positive', 'severity', 'summary', 'type', 'radiologist', 'justification', 'model', 'latency')
+            db_execute_query_retry(rad_query, rad_params)
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
@@ -3927,6 +3954,7 @@ def process_dicom_file(dicom_file, uid):
 
     This helper function handles the common logic between dicom_store() and
     load_existing_dicom_files() to avoid code duplication.
+    It also attempts to fetch justification from FHIR for new exams.
 
     Args:
         dicom_file: Path to the DICOM file
@@ -3952,8 +3980,17 @@ def process_dicom_file(dicom_file, uid):
             return
         # Check the result
         if png_file:
+            # Try to get justification from FHIR
+            justification = None
+            try:
+                # This would be implemented as a synchronous wrapper around the async FHIR functions
+                # For now, we'll leave it as None and implement proper FHIR fetching in a future update
+                justification = None
+            except Exception as e:
+                logging.warning(f"Could not fetch justification from FHIR for {uid}: {e}")
+            
             # Add to processing queue
-            db_add_exam(info)
+            db_add_exam(info, justification=justification)
             # Notify the queue
             QUEUE_EVENT.set()
         else:
