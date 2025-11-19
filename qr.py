@@ -215,5 +215,7 @@ if __name__ == "__main__":
         )
     except KeyboardInterrupt:
         logging.info("QR utility stopped by user.")
+    except Exception as e:
+        logging.error(f"QR utility error: {e}")
     finally:
         logging.info("QR utility shutdown complete.")
