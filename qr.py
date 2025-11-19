@@ -29,6 +29,11 @@ logging.basicConfig(
     ]
 )
 
+# DICOM network operations
+logging.getLogger('pynetdicom').setLevel(logging.WARNING)
+# DICOM file operations
+logging.getLogger('pydicom').setLevel(logging.WARNING)
+
 # Default configuration values
 DEFAULT_CONFIG = {
     'dicom': {
@@ -45,13 +50,13 @@ config = configparser.ConfigParser()
 config.read_dict(DEFAULT_CONFIG)
 try:
     config.read('xrayvision.cfg')
-    logging.info("Configuration loaded from xrayvision.cfg")
+    logging.debug("Configuration loaded from xrayvision.cfg")
     # Check for local configuration file to override settings
     local_config_files = config.read('local.cfg')
     if local_config_files:
-        logging.info("Local configuration loaded from local.cfg")
+        logging.debug("Local configuration loaded from local.cfg")
 except Exception as e:
-    logging.info("Using default configuration values")
+    logging.debug("Using default configuration values")
 
 # Extract configuration values
 AE_TITLE = config.get('dicom', 'AE_TITLE')
@@ -122,7 +127,7 @@ def send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid):
     else:
         logging.error("Could not establish C-MOVE association.")
 
-def query_retrieve_monthly_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month, day = None):
+def query_retrieve_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month, day = None):
     """
     Query and retrieve CR studies for a specified date range.
     
@@ -179,9 +184,8 @@ def query_retrieve_monthly_cr_studies(local_ae, peer_ae, peer_ip, peer_port, yea
                     else:
                         logging.info(f"[{date}] Queued Study UID: {study_instance_uid}")
                         send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid)
-                    time.sleep(1)
             # Sleep
-            time.sleep(10)
+            time.sleep(1)
             # Release the association
             assoc.release()
         else:
@@ -199,7 +203,7 @@ if __name__ == "__main__":
     parser.add_argument("--peer-port", type = int, default = REMOTE_AE_PORT, help = "Peer port")
 
     args = parser.parse_args()
-    query_retrieve_monthly_cr_studies(
+    query_retrieve_cr_studies(
         local_ae = args.ae,
         peer_ae = args.peer_ae,
         peer_ip = args.peer_ip,
