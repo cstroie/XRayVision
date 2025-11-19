@@ -193,22 +193,25 @@ def query_retrieve_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description = "Run monthly CR Query/Retrieve")
-    parser.add_argument("--day", type = int, help = "Day number (1-31)")
-    parser.add_argument("--month", type = int, required = True, help = "Month number (1-12)")
-    parser.add_argument("--year", type = int, required = True, help = "Year (e.g. 2025)")
-    parser.add_argument("--ae", default = AE_TITLE, help = "Local AE Title")
-    parser.add_argument("--peer-ae", default = REMOTE_AE_TITLE, help = "Peer AE Title")
-    parser.add_argument("--peer-ip", default = REMOTE_AE_IP, help = "Peer IP address")
-    parser.add_argument("--peer-port", type = int, default = REMOTE_AE_PORT, help = "Peer port")
+    try:
+        parser = argparse.ArgumentParser(description = "Run monthly CR Query/Retrieve")
+        parser.add_argument("--day", type = int, help = "Day number (1-31)")
+        parser.add_argument("--month", type = int, required = True, help = "Month number (1-12)")
+        parser.add_argument("--year", type = int, required = True, help = "Year (e.g. 2025)")
+        parser.add_argument("--ae", default = AE_TITLE, help = "Local AE Title")
+        parser.add_argument("--peer-ae", default = REMOTE_AE_TITLE, help = "Peer AE Title")
+        parser.add_argument("--peer-ip", default = REMOTE_AE_IP, help = "Peer IP address")
+        parser.add_argument("--peer-port", type = int, default = REMOTE_AE_PORT, help = "Peer port")
 
-    args = parser.parse_args()
-    query_retrieve_cr_studies(
-        local_ae = args.ae,
-        peer_ae = args.peer_ae,
-        peer_ip = args.peer_ip,
-        peer_port = args.peer_port,
-        year = args.year,
-        month = args.month,
-        day = args.day
-    )
+        args = parser.parse_args()
+        query_retrieve_cr_studies(
+            local_ae = args.ae,
+            peer_ae = args.peer_ae,
+            peer_ip = args.peer_ip,
+            peer_port = args.peer_port,
+            year = args.year,
+            month = args.month,
+            day = args.day
+        )
+    except KeyboardInterrupt:
+        logging.info("QR utility stopped by user.")
