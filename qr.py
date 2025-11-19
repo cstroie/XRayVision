@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timedelta
 import configparser
 import os
+import sqlite3
 
 from pynetdicom import AE, QueryRetrievePresentationContexts
 from pynetdicom.sop_class import PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
@@ -58,6 +59,29 @@ AE_PORT = config.getint('dicom', 'AE_PORT')
 REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
 REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
 REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
+
+# Get database path from config or use default
+DB_FILE = config.get('general', 'XRAYVISION_DB_PATH', fallback='xrayvision.db')
+
+def db_check_study_exists(study_instance_uid):
+    """
+    Check if a study with the given Study Instance UID exists in the database.
+    
+    Args:
+        study_instance_uid (str): Study Instance UID to check
+        
+    Returns:
+        bool: True if study exists in database, False otherwise
+    """
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM exams WHERE study = ?", (study_instance_uid,))
+            count = cursor.fetchone()[0]
+            return count > 0
+    except Exception as e:
+        logging.error(f"Error checking database for study {study_instance_uid}: {e}")
+        return False
 
 def send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid):
     """
@@ -149,8 +173,12 @@ def query_retrieve_monthly_cr_studies(local_ae, peer_ae, peer_ip, peer_port, yea
             for (status, identifier) in responses:
                 if status and status.Status in (0xFF00, 0xFF01):
                     study_instance_uid = identifier.StudyInstanceUID
-                    logging.info(f"[{date}] Queued Study UID: {study_instance_uid}")
-                    send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid)
+                    # Check if study already exists in database
+                    if db_check_study_exists(study_instance_uid):
+                        logging.info(f"[{date}] Skipping Study UID: {study_instance_uid} (already in database)")
+                    else:
+                        logging.info(f"[{date}] Queued Study UID: {study_instance_uid}")
+                        send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid)
                     time.sleep(1)
             # Sleep
             time.sleep(10)
