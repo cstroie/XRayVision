@@ -1943,6 +1943,24 @@ def dicom_store(event):
     uid = f"{ds.SOPInstanceUID}"
     # Check if already processed
     if db_check_already_processed(uid):
+        # Check if the existing exam record is missing study or series information
+        existing_exam = db_select_one('exams', uid)
+        if existing_exam and (not existing_exam.get('study') or not existing_exam.get('series')):
+            # Extract study and series from the new DICOM
+            study_uid = str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None
+            series_uid = str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None
+            
+            # Update the existing record with study and series if missing
+            update_fields = {}
+            if study_uid and not existing_exam.get('study'):
+                update_fields['study'] = study_uid
+            if series_uid and not existing_exam.get('series'):
+                update_fields['series'] = series_uid
+            
+            if update_fields:
+                db_update('exams', 'uid = ?', (uid,), **update_fields)
+                logging.info(f"Updated study/series info for exam {uid}")
+        
         logging.info(f"Skipping already processed image {uid}")
     elif ds.Modality == "CR":
         # Check the Modality
