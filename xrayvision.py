@@ -3833,7 +3833,18 @@ async def process_exams_without_rad_reports(session):
     
     # If exactly one study found, get its diagnostic report
     report = await get_fhir_diagnosticreport(session, study['id'])
-    if report and 'conclusion' in report and report['conclusion']:
+    if report and 'presentedForm' in report and report['presentedForm']:
+        # Check if there's exactly one item in presentedForm
+        if len(report['presentedForm']) != 1:
+            logging.info(f"Skipping diagnostic report for exam {exam_uid} with {len(report['presentedForm'])} items in presentedForm")
+            return
+            
+        # Extract the report text from the first (and only) item
+        report_text = report['presentedForm'][0].get('data', '').strip()
+        if not report_text:
+            logging.warning(f"No data found in presentedForm[0] for exam {exam_uid}")
+            return
+            
         # Extract radiologist name from resultsInterpreter if available
         radiologist = 'rad'  # Default value
         try:
@@ -3859,12 +3870,12 @@ async def process_exams_without_rad_reports(session):
             logging.warning(f"Could not extract justification from FHIR report: {e}")
 
         # Log the retrieved report
-        logging.info(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report['conclusion'].split()[:10])}...")
+        logging.info(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
         # Add the radiologist report to our database
         db_add_rad_report(
             uid=exam_uid,
             report_id=study.get('id', ''),
-            report_text=report['conclusion'],
+            report_text=report_text,
             positive=-1,
             severity=-1,
             summary="",
@@ -3880,7 +3891,7 @@ async def process_exams_without_rad_reports(session):
         # Notify the queue
         QUEUE_EVENT.set()
     else:
-        logging.debug(f"No conclusion found in diagnostic report for exam {exam_uid}")
+        logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
 
 async def query_retrieve_loop():
     """
