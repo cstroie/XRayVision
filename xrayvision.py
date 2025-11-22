@@ -3263,6 +3263,45 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
     Returns:
         list: List of imaging studies from FHIR (exactly one study) or empty list
     """
+    async def _fetch_fhir_imagingstudies(session, auth, url, params):
+        """
+        Helper function to fetch imaging studies from FHIR.
+        
+        Args:
+            session: aiohttp ClientSession instance
+            auth: BasicAuth object for authentication
+            url: FHIR endpoint URL
+            params: Query parameters
+            
+        Returns:
+            list: List of imaging studies or empty list
+        """
+        try:
+            async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get('resourceType') == 'Bundle' and 'entry' in data:
+                        studies = []
+                        for entry in data['entry']:
+                            if 'resource' in entry and entry['resource'].get('resourceType') == 'Observation':
+                                # Only add resources that have an 'id' field
+                                if 'id' in entry['resource']:
+                                    studies.append(entry['resource'])
+                                else:
+                                    logging.warning("FHIR imaging study resource missing 'id' field")
+                        # We need exactly one study
+                        if len(studies) == 1:
+                            return studies
+                        elif len(studies) > 1:
+                            logging.warning(f"FHIR imaging studies search returned {len(studies)} studies, expected exactly one")
+                        # Return empty list if no studies or more than one
+                        return []
+                else:
+                    logging.warning(f"FHIR imaging studies search failed with status {resp.status}")
+        except Exception as e:
+            logging.error(f"FHIR imaging studies fetch error: {e}")
+        return []
+
     try:
         # Use basic authentication
         auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
@@ -3285,45 +3324,6 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
         return studies
     except Exception as e:
         logging.error(f"FHIR imaging studies search error: {e}")
-    return []
-
-async def _fetch_fhir_imagingstudies(session, auth, url, params):
-    """
-    Helper function to fetch imaging studies from FHIR.
-    
-    Args:
-        session: aiohttp ClientSession instance
-        auth: BasicAuth object for authentication
-        url: FHIR endpoint URL
-        params: Query parameters
-        
-    Returns:
-        list: List of imaging studies or empty list
-    """
-    try:
-        async with session.get(url, auth=auth, params=params, timeout=30) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                if data.get('resourceType') == 'Bundle' and 'entry' in data:
-                    studies = []
-                    for entry in data['entry']:
-                        if 'resource' in entry and entry['resource'].get('resourceType') == 'Observation':
-                            # Only add resources that have an 'id' field
-                            if 'id' in entry['resource']:
-                                studies.append(entry['resource'])
-                            else:
-                                logging.warning("FHIR imaging study resource missing 'id' field")
-                    # We need exactly one study
-                    if len(studies) == 1:
-                        return studies
-                    elif len(studies) > 1:
-                        logging.warning(f"FHIR imaging studies search returned {len(studies)} studies, expected exactly one")
-                    # Return empty list if no studies or more than one
-                    return []
-            else:
-                logging.warning(f"FHIR imaging studies search failed with status {resp.status}")
-    except Exception as e:
-        logging.error(f"FHIR imaging studies fetch error: {e}")
     return []
 
 async def get_fhir_diagnosticreport(session, report_id):
