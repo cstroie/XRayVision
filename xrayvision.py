@@ -2116,6 +2116,35 @@ def extract_patient_initials(name):
     return initials.upper() if initials else "NoName"
 
 
+def extract_radiologist_initials(name):
+    """
+    Extract initials from a radiologist name, keeping "Dr." prefix.
+
+    Args:
+        name: Radiologist name string
+
+    Returns:
+        str: Radiologist name with "Dr." prefix and initials
+    """
+    if not name or not isinstance(name, str):
+        return "Dr."
+    # Check if name starts with "Dr." (case insensitive)
+    if name.lower().startswith("dr."):
+        # Remove "Dr." prefix and extract initials from the rest
+        name_without_dr = name[3:].strip()
+        if not name_without_dr:
+            return "Dr."
+        # Split by spaces, hyphens, and carets and take first letter of each part
+        parts = re.split(r'[-^ ]', name_without_dr)
+        initials = ''.join([part[0] + '.' for part in parts if part])
+        return "Dr. " + initials.upper() if initials else "Dr."
+    else:
+        # No "Dr." prefix, just extract initials
+        parts = re.split(r'[-^ ]', name)
+        initials = ''.join([part[0] + '.' for part in parts if part])
+        return "Dr. " + initials.upper() if initials else "Dr."
+
+
 # Image processing operations
 def apply_gamma_correction(image, gamma = 1.2):
     """
