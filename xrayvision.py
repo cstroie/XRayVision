@@ -879,7 +879,7 @@ def db_update_rad_report(uid, positive, severity, summary, model, latency):
               model=model, 
               latency=latency)
 
-def db_get_exam_without_rad_report():
+def db_get_exams_without_rad_report():
     """
     Get all exams for a patient that don't have radiologist reports yet.
     
@@ -891,9 +891,6 @@ def db_get_exam_without_rad_report():
     Returns:
         dict: Dictionary with patient info and list of exams, or empty dict if none found
     """
-    import random
-    from datetime import datetime, timedelta
-    
     # Randomly choose number of weeks (1-52) for initial search
     weeks = random.randint(1, 52)
     
@@ -3833,7 +3830,7 @@ async def process_exams_without_rad_reports(session):
     corresponding patient in HIS, and retrieves the radiologist report.
     """
     # Get the oldest exam without a radiologist report
-    exam = db_get_exam_without_rad_report()
+    exam = db_get_exams_without_rad_report()
     if not exam:
         return
     
