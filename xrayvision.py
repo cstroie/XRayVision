@@ -2933,7 +2933,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     if not (websocket_clients or client):
         return
     # Update the queue sizes
-    dashboard['queue_size'] = db_count('exams', where_clause="status IN (?, ?)", where_params=('queued', 'requeue'))
+    dashboard['queue_size'] = db_count('exams', where_clause="status IN (?, ?, ?)", where_params=('queued', 'requeue', 'check'))
     dashboard['check_queue_size'] = db_count('exams', where_clause="status = ?", where_params=('check',))
     # Get error statistics
     error_stats = db_get_error_stats()
