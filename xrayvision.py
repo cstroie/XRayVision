@@ -2395,6 +2395,9 @@ async def exams_handler(request):
                     exam['patient']['cnp'] = patient_cnp
                 else:
                     exam['patient']['cnp'] = 'Unknown'
+                # Anonymize the radiologist name
+                if 'radiologist' in exam['report']['rad']:
+                    exam['report']['rad']['radiologist'] = extract_radiologist_initials(exam['report']['rad']['radiologist'])
         # Return the response
         return web.json_response({
             "exams": data,
