@@ -319,7 +319,8 @@ for key in region_config:
 
 # Dashboard state
 dashboard = {
-    'queue_size': 0,        # Number of exams waiting in the processing queue
+    'queue_size': 0,        # Number of exams waiting in the processing queue (queued + requeue)
+    'check_queue_size': 0,  # Number of exams queued for FHIR report checking
     'processing': None,     # Currently processing exam patient name
     'success_count': 0,     # Number of successfully processed exams in the last week
     'error_count': 0,       # Number of exams that failed processing
@@ -2931,8 +2932,9 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     # Check if there are any clients
     if not (websocket_clients or client):
         return
-    # Update the queue size
-    dashboard['queue_size'] = db_get_queue_size()
+    # Update the queue sizes
+    dashboard['queue_size'] = db_count('exams', where_clause="status IN (?, ?)", where_params=('queued', 'requeue'))
+    dashboard['check_queue_size'] = db_count('exams', where_clause="status = ?", where_params=('check',))
     # Get error statistics
     error_stats = db_get_error_stats()
     dashboard['error_count'] = error_stats['error']
