@@ -3274,12 +3274,33 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
             'dt': exam_datetime
         }
         
-        # If the study is older than 5 months, add full=yes parameter
-        exam_date = datetime.strptime(exam_datetime, "%Y-%m-%d %H:%M:%S")
-        five_months_ago = datetime.now() - timedelta(days=150)  # Approximately 5 months
-        if exam_date < five_months_ago:
-            params['full'] = 'yes'
+        # First try without full=yes parameter
+        studies = await _fetch_fhir_imagingstudies(session, auth, url, params)
+        if studies:
+            return studies
+            
+        # If no studies found, try with full=yes parameter
+        params['full'] = 'yes'
+        studies = await _fetch_fhir_imagingstudies(session, auth, url, params)
+        return studies
+    except Exception as e:
+        logging.error(f"FHIR imaging studies search error: {e}")
+    return []
+
+async def _fetch_fhir_imagingstudies(session, auth, url, params):
+    """
+    Helper function to fetch imaging studies from FHIR.
+    
+    Args:
+        session: aiohttp ClientSession instance
+        auth: BasicAuth object for authentication
+        url: FHIR endpoint URL
+        params: Query parameters
         
+    Returns:
+        list: List of imaging studies or empty list
+    """
+    try:
         async with session.get(url, auth=auth, params=params, timeout=30) as resp:
             if resp.status == 200:
                 data = await resp.json()
@@ -3302,7 +3323,7 @@ async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
             else:
                 logging.warning(f"FHIR imaging studies search failed with status {resp.status}")
     except Exception as e:
-        logging.error(f"FHIR imaging studies search error: {e}")
+        logging.error(f"FHIR imaging studies fetch error: {e}")
     return []
 
 async def get_fhir_diagnosticreport(session, report_id):
