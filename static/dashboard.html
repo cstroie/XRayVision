@@ -52,8 +52,8 @@
             <span id="errors">0</span>
         </article>
         <article>
-            <strong>Ignored</strong>
-            <span id="ignored">0</span>
+            <strong>Check Queue</strong>
+            <span id="check_queue">0</span>
         </article>
     </header>
 
@@ -228,7 +228,7 @@
                     document.getElementById('processing').innerHTML = data.dashboard.processing || 'Idle';
                     document.getElementById('success').innerHTML = data.dashboard.success_count || 0;
                     document.getElementById('errors').innerHTML = data.dashboard.error_count || 0;
-                    document.getElementById('ignored').innerHTML = data.dashboard.ignore_count || 0;
+                    document.getElementById('check_queue').innerHTML = data.dashboard.check_queue_size || 0;
                 }
                 if (data.openai !== undefined) {
                     if (data.openai.health.pri)
