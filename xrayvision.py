@@ -3904,7 +3904,13 @@ async def process_exams_without_rad_reports(session):
         db_update('rad_reports', 'uid = ?', (exam_uid,),
                   report_text=report_text,
                   radiologist=radiologist,
-                  justification=justification)
+                  justification=justification,
+                  positive=-1,
+                  severity=-1,
+                  summary='',
+                  type='radio',
+                  model=MODEL_NAME,
+                  latency=-1)
 
         # Set the exam status to 'check' for LLM processing in queue
         db_set_status(exam_uid, "check")
