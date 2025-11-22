@@ -2127,22 +2127,22 @@ def extract_radiologist_initials(name):
         str: Radiologist name with "Dr." prefix and initials
     """
     if not name or not isinstance(name, str):
-        return "Dr."
+        return "Dr. NoName"
     # Check if name starts with "Dr." (case insensitive)
     if name.lower().startswith("dr."):
         # Remove "Dr." prefix and extract initials from the rest
         name_without_dr = name[3:].strip()
         if not name_without_dr:
-            return "Dr."
+            return "Dr. NoName"
         # Split by spaces, hyphens, and carets and take first letter of each part
         parts = re.split(r'[-^ ]', name_without_dr)
         initials = ''.join([part[0] + '.' for part in parts if part])
-        return "Dr. " + initials.upper() if initials else "Dr."
+        return "Dr. " + initials.upper() if initials else "Dr. NoName"
     else:
         # No "Dr." prefix, just extract initials
         parts = re.split(r'[-^ ]', name)
         initials = ''.join([part[0] + '.' for part in parts if part])
-        return "Dr. " + initials.upper() if initials else "Dr."
+        return "Dr. " + initials.upper() if initials else "Dr. NoName"
 
 
 # Image processing operations
