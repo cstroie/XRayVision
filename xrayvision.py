@@ -881,13 +881,15 @@ def db_update_rad_report(uid, positive, severity, summary, model, latency):
 
 def db_get_exam_without_rad_report():
     """
-    Get a random exam that doesn't have a radiologist report yet or has a report with null ID.
+    Get all exams for a patient that don't have radiologist reports yet.
     
+    First identifies a patient with at least one exam without a radiologist report,
+    then retrieves all exams for that patient without radiologist reports.
     Newer exams have a higher chance of being selected. If no exam is found in the initial
     time window, the window is doubled (up to 52 weeks) and tried once more.
 
     Returns:
-        dict: Exam data or None if not found
+        list: List of exam dictionaries or empty list if none found
     """
     import random
     from datetime import datetime, timedelta
@@ -901,10 +903,9 @@ def db_get_exam_without_rad_report():
         cutoff_date = datetime.now() - timedelta(weeks=weeks)
         cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
         
-        query = """
-            SELECT 
-                e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
-                p.name, p.cnp, p.id, p.age, p.sex
+        # First, find a patient with at least one exam without a radiologist report
+        patient_query = """
+            SELECT DISTINCT p.cnp
             FROM exams e
             INNER JOIN patients p ON e.cnp = p.cnp
             LEFT JOIN rad_reports rr ON e.uid = rr.uid
@@ -914,40 +915,61 @@ def db_get_exam_without_rad_report():
             ORDER BY RANDOM()
             LIMIT 1
         """
-        row = db_execute_query(query, (cutoff_date_str,), fetch_mode='one')
+        patient_row = db_execute_query(patient_query, (cutoff_date_str,), fetch_mode='one')
         
-        if row:
-            # Unpack row into named variables for better readability
-            (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
-             patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
+        if patient_row:
+            patient_cnp = patient_row[0]
             
-            return {
-                'uid': uid,
-                'exam': {
-                    'created': exam_created,
-                    'protocol': exam_protocol,
-                    'region': exam_region,
-                    'status': exam_status,
-                    'type': exam_type,
-                    'study': exam_study,
-                    'series': exam_series,
-                    'id': exam_id,
-                },
-                'patient': {
-                    'name': patient_name,
-                    'cnp': patient_cnp,
-                    'id': patient_id,
-                    'age': patient_age,
-                    'sex': patient_sex,
-                }
-            }
+            # Now get all exams for this patient without radiologist reports
+            exams_query = """
+                SELECT 
+                    e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
+                    p.name, p.cnp, p.id, p.age, p.sex
+                FROM exams e
+                INNER JOIN patients p ON e.cnp = p.cnp
+                LEFT JOIN rad_reports rr ON e.uid = rr.uid
+                WHERE e.cnp = ?
+                AND (rr.severity IS NULL OR rr.severity = -1)
+                AND e.status = 'done'
+                ORDER BY e.created DESC
+            """
+            exam_rows = db_execute_query(exams_query, (patient_cnp,), fetch_mode='all')
+            
+            if exam_rows:
+                exams = []
+                for row in exam_rows:
+                    # Unpack row into named variables for better readability
+                    (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
+                     patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
+                    
+                    exams.append({
+                        'uid': uid,
+                        'exam': {
+                            'created': exam_created,
+                            'protocol': exam_protocol,
+                            'region': exam_region,
+                            'status': exam_status,
+                            'type': exam_type,
+                            'study': exam_study,
+                            'series': exam_series,
+                            'id': exam_id,
+                        },
+                        'patient': {
+                            'name': patient_name,
+                            'cnp': patient_cnp,
+                            'id': patient_id,
+                            'age': patient_age,
+                            'sex': patient_sex,
+                        }
+                    })
+                return exams
         
         # If no exam found, double the interval for second attempt (max 52 weeks)
         if attempt == 0:
             weeks = min(weeks * 2, 52)
     
-    # No exam found after several attempts
-    return None
+    # No exams found after several attempts
+    return []
 
 def db_update_patient_id(cnp, patient_id):
     """
