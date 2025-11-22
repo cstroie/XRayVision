@@ -936,15 +936,23 @@ def db_get_exam_without_rad_report():
             exam_rows = db_execute_query(exams_query, (patient_cnp,), fetch_mode='all')
             
             if exam_rows:
-                exams = []
+                result = {
+                        'uid': uid,
+                        'exams': [],
+                        'patient': {
+                            'name': patient_name,
+                            'cnp': patient_cnp,
+                            'id': patient_id,
+                            'age': patient_age,
+                            'sex': patient_sex,
+                        }
+                    }
                 for row in exam_rows:
                     # Unpack row into named variables for better readability
                     (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
                      patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
                     
-                    exams.append({
-                        'uid': uid,
-                        'exam': {
+                    result['exams'].append({
                             'created': exam_created,
                             'protocol': exam_protocol,
                             'region': exam_region,
@@ -953,23 +961,15 @@ def db_get_exam_without_rad_report():
                             'study': exam_study,
                             'series': exam_series,
                             'id': exam_id,
-                        },
-                        'patient': {
-                            'name': patient_name,
-                            'cnp': patient_cnp,
-                            'id': patient_id,
-                            'age': patient_age,
-                            'sex': patient_sex,
-                        }
-                    })
-                return exams
+                        })
+                return results
         
         # If no exam found, double the interval for second attempt (max 52 weeks)
         if attempt == 0:
             weeks = min(weeks * 2, 52)
     
     # No exams found after several attempts
-    return []
+    return {}
 
 def db_update_patient_id(cnp, patient_id):
     """
