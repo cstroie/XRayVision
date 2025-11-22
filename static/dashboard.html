@@ -521,7 +521,7 @@
                             <summary><strong>${formattedPatientName}, ${item.patient.sex}, ${item.patient.age} years</strong></summary>
                             <p>
                             <small><strong>CNP:</strong> ${item.patient.cnp}</small><br>
-                            <small><strong>HIS ID:</strong> ${item.patient.id}</small><br>
+                            <small><strong>HIS ID:</strong> ${item.patient.id} ${item.report.rad.id ? `| <strong>Rad ID:</strong> ${item.report.rad.id}` : ''}</small><br>
                             <small><strong>Time:</strong> ${formattedDate} ${formattedTime}</small><br>
                             <small><strong>Protocol:</strong> ${item.exam.protocol}</small><br>
                             <small><strong>Region:</strong> ${item.exam.region}</small><br>
