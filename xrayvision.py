@@ -3921,7 +3921,7 @@ async def process_exams_without_rad_reports(session):
             logging.info(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
             # Update the radiologist report in our database
             db_update('rad_reports', 'uid = ?', (exam_uid,),
-                      report_text=report_text,
+                      text=report_text,
                       radiologist=radiologist,
                       justification=justification,
                       positive=-1,
