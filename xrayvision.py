@@ -1205,7 +1205,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if conditions:
         count_query += ' WHERE ' + " AND ".join(conditions)
         count_params = params[:-2]  # Exclude limit and offset parameters
-    total_row = db_execute_query(count_query, count_params, fetch_mode='one')
+    total_row = db_execute_query(count_query, tuple(count_params), fetch_mode='one')
     total = total_row[0] if total_row else 0
     return exams, total
 
