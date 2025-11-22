@@ -3852,6 +3852,21 @@ async def process_exams_without_rad_reports(session):
         logging.warning(f"Imaging study for exam {exam_uid} has no ID, skipping.")
         return
     
+    # Save the study ID early to avoid redundant searches later
+    db_add_rad_report(
+        uid=exam_uid,
+        report_id=study.get('id', ''),
+        report_text='',
+        positive=-1,
+        severity=-1,
+        summary='',
+        report_type='radio',
+        radiologist='rad',
+        justification='',
+        model=MODEL_NAME,
+        latency=-1
+    )
+    
     # If exactly one study found, get its diagnostic report
     report = await get_fhir_diagnosticreport(session, study['id'])
     if report and 'presentedForm' in report and report['presentedForm']:
@@ -3892,20 +3907,11 @@ async def process_exams_without_rad_reports(session):
 
         # Log the retrieved report
         logging.info(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
-        # Add the radiologist report to our database
-        db_add_rad_report(
-            uid=exam_uid,
-            report_id=study.get('id', ''),
-            report_text=report_text,
-            positive=-1,
-            severity=-1,
-            summary="",
-            report_type='radio',
-            radiologist=radiologist,
-            justification=justification,
-            model=MODEL_NAME,
-            latency=-1
-        )
+        # Update the radiologist report in our database
+        db_update('rad_reports', 'uid = ?', (exam_uid,),
+                  report_text=report_text,
+                  radiologist=radiologist,
+                  justification=justification)
 
         # Set the exam status to 'check' for LLM processing in queue
         db_set_status(exam_uid, "check")
