@@ -124,7 +124,7 @@ try:
     if local_config_files:
         logging.info("Local configuration loaded from local.cfg")
 except Exception as e:
-    logging.info("Using default configuration values")
+    logging.debug("Using default configuration values")
 
 # User roles configuration
 USERS = {}
@@ -1977,9 +1977,9 @@ def dicom_store(event):
             
             if update_fields:
                 db_update('exams', 'uid = ?', (uid,), **update_fields)
-                logging.info(f"Updated study/series info for exam {uid}")
+                logging.debug(f"Updated study/series info for exam {uid}")
         
-        logging.info(f"Skipping already processed image {uid}")
+        logging.debug(f"Skipping already processed image {uid}")
     elif ds.Modality == "CR":
         # Check the Modality
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
@@ -2007,7 +2007,7 @@ async def load_existing_dicom_files():
         uid, ext = os.path.splitext(os.path.basename(dicom_file.lower()))
         if ext == '.dcm':
             if db_check_already_processed(uid):
-                logging.info(f"Skipping already processed image {uid}")
+                logging.debug(f"Skipping already processed image {uid}")
             else:
                 logging.info(f"Adding {uid} into processing queue...")
                 full_path = os.path.join(IMAGES_DIR, dicom_file)
@@ -3914,7 +3914,7 @@ async def process_exams_without_rad_reports(session):
                   id=study.get('id', ''),
                   type='radio'
         )
-        logging.info(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
+        logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
         
         # If exactly one study found, get its diagnostic report
         report = await get_fhir_diagnosticreport(session, study['id'])
@@ -3990,7 +3990,7 @@ async def query_retrieve_loop():
         current_time = datetime.now()
         global next_query
         next_query = current_time + timedelta(seconds = 900)
-        logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
+        logging.debug(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
         await asyncio.sleep(900)
 
 
