@@ -889,7 +889,7 @@ def db_get_exam_without_rad_report():
     time window, the window is doubled (up to 52 weeks) and tried once more.
 
     Returns:
-        list: List of exam dictionaries or empty list if none found
+        dict: Dictionary with patient info and list of exams, or empty dict if none found
     """
     import random
     from datetime import datetime, timedelta
@@ -905,7 +905,7 @@ def db_get_exam_without_rad_report():
         
         # First, find a patient with at least one exam without a radiologist report
         patient_query = """
-            SELECT DISTINCT p.cnp
+            SELECT DISTINCT p.cnp, p.name, p.id, p.age, p.sex
             FROM exams e
             INNER JOIN patients p ON e.cnp = p.cnp
             LEFT JOIN rad_reports rr ON e.uid = rr.uid
@@ -918,15 +918,13 @@ def db_get_exam_without_rad_report():
         patient_row = db_execute_query(patient_query, (cutoff_date_str,), fetch_mode='one')
         
         if patient_row:
-            patient_cnp = patient_row[0]
+            patient_cnp, patient_name, patient_id, patient_age, patient_sex = patient_row
             
             # Now get all exams for this patient without radiologist reports
             exams_query = """
                 SELECT 
-                    e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
-                    p.name, p.cnp, p.id, p.age, p.sex
+                    e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id
                 FROM exams e
-                INNER JOIN patients p ON e.cnp = p.cnp
                 LEFT JOIN rad_reports rr ON e.uid = rr.uid
                 WHERE e.cnp = ?
                 AND (rr.severity IS NULL OR rr.severity = -1)
@@ -937,32 +935,32 @@ def db_get_exam_without_rad_report():
             
             if exam_rows:
                 result = {
-                        'uid': uid,
-                        'exams': [],
-                        'patient': {
-                            'name': patient_name,
-                            'cnp': patient_cnp,
-                            'id': patient_id,
-                            'age': patient_age,
-                            'sex': patient_sex,
-                        }
-                    }
+                    'patient': {
+                        'name': patient_name,
+                        'cnp': patient_cnp,
+                        'id': patient_id,
+                        'age': patient_age,
+                        'sex': patient_sex,
+                    },
+                    'exams': []
+                }
+                
                 for row in exam_rows:
                     # Unpack row into named variables for better readability
-                    (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
-                     patient_name, patient_cnp, patient_id, patient_age, patient_sex) = row
+                    (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id) = row
                     
                     result['exams'].append({
-                            'created': exam_created,
-                            'protocol': exam_protocol,
-                            'region': exam_region,
-                            'status': exam_status,
-                            'type': exam_type,
-                            'study': exam_study,
-                            'series': exam_series,
-                            'id': exam_id,
-                        })
-                return results
+                        'uid': uid,
+                        'created': exam_created,
+                        'protocol': exam_protocol,
+                        'region': exam_region,
+                        'status': exam_status,
+                        'type': exam_type,
+                        'study': exam_study,
+                        'series': exam_series,
+                        'id': exam_id,
+                    })
+                return result
         
         # If no exam found, double the interval for second attempt (max 52 weeks)
         if attempt == 0:
