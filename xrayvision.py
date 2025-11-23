@@ -4298,6 +4298,8 @@ async def main():
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
+        # Query for studies from the last hour on startup
+        await query_and_retrieve(60)
     try:
         # Wait for all tasks to complete
         await asyncio.gather(*tasks)
