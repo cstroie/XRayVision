@@ -4005,6 +4005,26 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
 
 
+async def get_patient_id_from_fhir(session, patient_cnp):
+    """
+    Get patient ID from FHIR system by CNP.
+
+    Args:
+        session: aiohttp ClientSession instance
+        patient_cnp: Patient CNP
+
+    Returns:
+        str or None: Patient ID from FHIR if successful, None otherwise
+    """
+    fhir_patient = await get_fhir_patient(session, patient_cnp)
+    if fhir_patient and 'id' in fhir_patient:
+        patient_id = fhir_patient['id']
+        # Update patient ID in database
+        db_update_patient_id(patient_cnp, patient_id)
+        return patient_id
+    return None
+
+
 async def process_exams_without_rad_reports(session):
     """
     Process exams that don't have radiologist reports yet.
@@ -4024,11 +4044,7 @@ async def process_exams_without_rad_reports(session):
     
     # If patient ID is not known, search for it in FHIR
     if not patient_id:
-        fhir_patient = await get_fhir_patient(session, patient_cnp)
-        if fhir_patient and 'id' in fhir_patient:
-            patient_id = fhir_patient['id']
-            # Update patient ID in database
-            db_update_patient_id(patient_cnp, patient_id)
+        patient_id = await get_patient_id_from_fhir(session, patient_cnp)
     # If still no patient ID, log and skip
     if not patient_id:
         logging.warning(f"Could not find FHIR patient for CNP {patient_cnp}, skipping exams")
