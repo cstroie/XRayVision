@@ -2819,11 +2819,18 @@ async def check_rad_report(request):
         
         exam = exams[0]
         
-        # If patient ID is not known, we can't process the report
+        # If patient ID is not known, search for it in FHIR
         if not exam['patient']['id']:
-            # Set status to check so it will be processed by fhir_loop
-            db_set_status(uid, 'check')
-            logging.info(f"Exam {uid} queued for radiologist report checking (no patient ID).")
+            async with aiohttp.ClientSession() as session:
+                patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'])
+                if patient_id:
+                    # Process the exam immediately using the newly found patient ID
+                    await process_single_exam_without_rad_report(session, exam['exam'], patient_id)
+                    logging.info(f"Exam {uid} processed for radiologist report checking.")
+                else:
+                    # Set status to check so it will be processed by fhir_loop
+                    db_set_status(uid, 'check')
+                    logging.info(f"Exam {uid} queued for radiologist report checking (no patient ID).")
         else:
             # Process the exam immediately using existing patient ID
             async with aiohttp.ClientSession() as session:
