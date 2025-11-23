@@ -2854,7 +2854,7 @@ async def check_report(report_text):
             
             try:
                 parsed_response = json.loads(response_text)
-                logging.info(f"AI responded: {parsed_response}")
+                logging.debug(f"AI responded: {parsed_response}")
                 
                 # Validate required fields
                 if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
