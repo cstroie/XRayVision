@@ -3510,6 +3510,10 @@ async def send_to_openai(session, headers, payload):
     Returns:
         dict or None: JSON response from API if successful, None otherwise
     """
+    if not active_openai_url:
+        logging.error("No active OpenAI URL configured")
+        return None
+        
     try:
         async with session.post(active_openai_url, headers = headers, json = payload, timeout = 300) as resp:
             if resp.status == 200:
@@ -3943,6 +3947,9 @@ async def process_fhir_report_with_llm(exam_uid):
         latency=processing_time
     )
     logging.info(f"Updated FHIR report for exam {exam_uid} with summary '{summary}'")
+    
+    # Notify dashboard of the update
+    await broadcast_dashboard_update(event="radreport_processed", payload={'uid': exam_uid})
 
 async def process_single_exam_without_rad_report(session, exam, patient_id):
     """
