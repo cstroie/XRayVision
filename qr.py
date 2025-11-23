@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timedelta
 import configparser
 import os
+import sqlite3
 
 from pynetdicom import AE, QueryRetrievePresentationContexts
 from pynetdicom.sop_class import PatientRootQueryRetrieveInformationModelFind, PatientRootQueryRetrieveInformationModelMove
@@ -27,6 +28,11 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+
+# DICOM network operations
+logging.getLogger('pynetdicom').setLevel(logging.WARNING)
+# DICOM file operations
+logging.getLogger('pydicom').setLevel(logging.WARNING)
 
 # Default configuration values
 DEFAULT_CONFIG = {
@@ -44,13 +50,13 @@ config = configparser.ConfigParser()
 config.read_dict(DEFAULT_CONFIG)
 try:
     config.read('xrayvision.cfg')
-    logging.info("Configuration loaded from xrayvision.cfg")
+    logging.debug("Configuration loaded from xrayvision.cfg")
     # Check for local configuration file to override settings
     local_config_files = config.read('local.cfg')
     if local_config_files:
-        logging.info("Local configuration loaded from local.cfg")
+        logging.debug("Local configuration loaded from local.cfg")
 except Exception as e:
-    logging.info("Using default configuration values")
+    logging.debug("Using default configuration values")
 
 # Extract configuration values
 AE_TITLE = config.get('dicom', 'AE_TITLE')
@@ -58,6 +64,29 @@ AE_PORT = config.getint('dicom', 'AE_PORT')
 REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
 REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
 REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
+
+# Get database path from config or use default
+DB_FILE = config.get('general', 'XRAYVISION_DB_PATH', fallback='xrayvision.db')
+
+def db_check_study_exists(study_instance_uid):
+    """
+    Check if a study with the given Study Instance UID exists in the database.
+    
+    Args:
+        study_instance_uid (str): Study Instance UID to check
+        
+    Returns:
+        bool: True if study exists in database, False otherwise
+    """
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM exams WHERE study = ?", (study_instance_uid,))
+            count = cursor.fetchone()[0]
+            return count > 0
+    except Exception as e:
+        logging.error(f"Error checking database for study {study_instance_uid}: {e}")
+        return False
 
 def send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid):
     """
@@ -98,7 +127,7 @@ def send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid):
     else:
         logging.error("Could not establish C-MOVE association.")
 
-def query_retrieve_monthly_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month, day = None):
+def query_retrieve_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month, day = None):
     """
     Query and retrieve CR studies for a specified date range.
     
@@ -149,11 +178,14 @@ def query_retrieve_monthly_cr_studies(local_ae, peer_ae, peer_ip, peer_port, yea
             for (status, identifier) in responses:
                 if status and status.Status in (0xFF00, 0xFF01):
                     study_instance_uid = identifier.StudyInstanceUID
-                    logging.info(f"[{date}] Queued Study UID: {study_instance_uid}")
-                    send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid)
-                    time.sleep(1)
+                    # Check if study already exists in database
+                    if db_check_study_exists(study_instance_uid):
+                        logging.info(f"[{date}] Skipping Study UID: {study_instance_uid} (already in database)")
+                    else:
+                        logging.info(f"[{date}] Queued Study UID: {study_instance_uid}")
+                        send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid)
             # Sleep
-            time.sleep(10)
+            time.sleep(1)
             # Release the association
             assoc.release()
         else:
@@ -161,22 +193,29 @@ def query_retrieve_monthly_cr_studies(local_ae, peer_ae, peer_ip, peer_port, yea
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description = "Run monthly CR Query/Retrieve")
-    parser.add_argument("--day", type = int, help = "Day number (1-31)")
-    parser.add_argument("--month", type = int, required = True, help = "Month number (1-12)")
-    parser.add_argument("--year", type = int, required = True, help = "Year (e.g. 2025)")
-    parser.add_argument("--ae", default = AE_TITLE, help = "Local AE Title")
-    parser.add_argument("--peer-ae", default = REMOTE_AE_TITLE, help = "Peer AE Title")
-    parser.add_argument("--peer-ip", default = REMOTE_AE_IP, help = "Peer IP address")
-    parser.add_argument("--peer-port", type = int, default = REMOTE_AE_PORT, help = "Peer port")
+    try:
+        parser = argparse.ArgumentParser(description = "Run monthly CR Query/Retrieve")
+        parser.add_argument("--day", type = int, help = "Day number (1-31)")
+        parser.add_argument("--month", type = int, required = True, help = "Month number (1-12)")
+        parser.add_argument("--year", type = int, required = True, help = "Year (e.g. 2025)")
+        parser.add_argument("--ae", default = AE_TITLE, help = "Local AE Title")
+        parser.add_argument("--peer-ae", default = REMOTE_AE_TITLE, help = "Peer AE Title")
+        parser.add_argument("--peer-ip", default = REMOTE_AE_IP, help = "Peer IP address")
+        parser.add_argument("--peer-port", type = int, default = REMOTE_AE_PORT, help = "Peer port")
 
-    args = parser.parse_args()
-    query_retrieve_monthly_cr_studies(
-        local_ae = args.ae,
-        peer_ae = args.peer_ae,
-        peer_ip = args.peer_ip,
-        peer_port = args.peer_port,
-        year = args.year,
-        month = args.month,
-        day = args.day
-    )
+        args = parser.parse_args()
+        query_retrieve_cr_studies(
+            local_ae = args.ae,
+            peer_ae = args.peer_ae,
+            peer_ip = args.peer_ip,
+            peer_port = args.peer_port,
+            year = args.year,
+            month = args.month,
+            day = args.day
+        )
+    except KeyboardInterrupt:
+        logging.info("QR utility stopped by user.")
+    except Exception as e:
+        logging.error(f"QR utility error: {e}")
+    finally:
+        logging.info("QR utility shutdown complete.")

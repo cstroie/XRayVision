@@ -36,8 +36,12 @@
 
     <header class="grid stats-grid">
         <article>
-            <strong>Queue Size</strong>
+            <strong>Queue</strong>
             <span id="queue">0</span>
+        </article>
+        <article>
+            <strong>Checks</strong>
+            <span id="check_queue">0</span>
         </article>
         <article>
             <strong>Processing</strong>
@@ -50,10 +54,6 @@
         <article>
             <strong>Errors</strong>
             <span id="errors">0</span>
-        </article>
-        <article>
-            <strong>Ignored</strong>
-            <span id="ignored">0</span>
         </article>
     </header>
 
@@ -68,16 +68,22 @@
                 <option value="any">Review: all</option>
                 <option value="yes">Reviewed</option>
                 <option value="no">Not reviewed</option>
+                <optgroup label="Radiologists" id="radiologists-list">
+                    <!-- Radiologist options will be populated dynamically -->
+                </optgroup>
             </select>
             <select id="filter-positive" onchange="loadPage(1)" aria-label="Select positive or negative studies">
                 <option value="any">Result: all</option>
                 <option value="yes">Positive</option>
                 <option value="no">Negative</option>
+                <optgroup label="Diagnostics" id="diagnostics-list">
+                    <!-- Diagnostic options will be populated dynamically -->
+                </optgroup>
             </select>
-            <select id="filter-valid" onchange="loadPage(1)" aria-label="Select valid studies">
-                <option value="any">Valid: all</option>
-                <option value="yes">Valid</option>
-                <option value="no">Invalid</option>
+            <select id="filter-correct" onchange="loadPage(1)" aria-label="Select correct studies">
+                <option value="any">Correct: all</option>
+                <option value="yes">Correct</option>
+                <option value="no">Incorrect</option>
             </select>
             <select id="filter-region" onchange="loadPage(1)" aria-label="Select the anatomic region">
                 <option value="any">Region: any</option>
@@ -86,6 +92,8 @@
             <select id="filter-status" onchange="loadPage(1)" aria-label="Select the study status">
                 <option value="done">Done</option>
                 <option value="queued">Queued</option>
+                <option value="requeue">Requeue</option>
+                <option value="check">Check</option>
                 <option value="processing">Processing</option>
                 <option value="ignore">Ignored</option>
                 <option value="error">Error</option>
@@ -220,7 +228,7 @@
                     document.getElementById('processing').innerHTML = data.dashboard.processing || 'Idle';
                     document.getElementById('success').innerHTML = data.dashboard.success_count || 0;
                     document.getElementById('errors').innerHTML = data.dashboard.error_count || 0;
-                    document.getElementById('ignored').innerHTML = data.dashboard.ignore_count || 0;
+                    document.getElementById('check_queue').innerHTML = data.dashboard.check_queue_size || 0;
                 }
                 if (data.openai !== undefined) {
                     if (data.openai.health.pri)
@@ -254,18 +262,22 @@
                         showToast("WebSocket connected");
                         // Load page 1
                         loadPage(1);
-                    } else if (data.event.name === "validate") {
-                        showToast(`Exam is ${data.event.payload.valid ? 'valid' : 'invalid'}`);
+                    } else if (data.event.name === "radreview") {
+                        showToast(`Exam is ${data.event.payload.report.correct ? 'correct' : 'incorrect'}`);
                         // Locate and update that card if it's visible
                         const card = document.getElementById(`card-${data.event.payload.uid}`);
                         if (card) {
-                            card.classList.remove('invalid');
-                            if (!(data.event.payload.valid)) {
-                                card.classList.add('invalid');
+                            card.classList.remove('incorrect');
+                            if (!(data.event.payload.report.correct)) {
+                                card.classList.add('incorrect');
                             }
                         }
-                    } else if (data.event.name === "lookagain") {
-                        showToast(`Look again`);
+                    } else if (data.event.name === "requeue") {
+                        showToast(`Exam re-queued`);
+                        // Load page 1
+                        loadPage(1);
+                    } else if (data.event.name === "radreport") {
+                        showToast(`Radiologist report available`);
                     }
                 }
             };
@@ -283,8 +295,8 @@
             };
         }
 
-        function validate(uid, normal) {
-            fetch('/api/validate', {
+        function radreview(uid, normal) {
+            fetch('/api/radreview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid, normal: normal })
@@ -292,35 +304,63 @@
             .then(response => response.json())
             .then(data => {
                 loadPage(currentPage);
-                console.log('Status update:', data.valid ? 'valid' : 'invalid');
+                console.log('Status update:', data.status);
             })
             .catch(error => {
-                console.error('Error sending validate:', error);
+                console.error('Error sending radiologist review:', error);
             });
         }
 
         function lookagain(uid) {
-            const prompt = "Look again"; /*document.getElementById(`prompt-${uid}`).value.trim();*/
-            fetch('/api/lookagain', {
+            fetch('/api/requeue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ uid: uid, prompt: prompt })
+                body: JSON.stringify({ uid: uid })
             })
             .then(response => response.json())
             .then(data => {
-                loadPage(currentPage);
+                if (data.status === 'success') {
+                    showToast("Exam re-queued for processing");
+                } else {
+                    showToast("Error: " + data.message);
+                }
             })
             .catch(error => {
-                console.error('Error sending look again request:', error);
+                console.error('Error sending requeue request:', error);
+                showToast("Error sending requeue request");
+            });
+        }
+
+        function getrad(uid) {
+            fetch('/api/getrad', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: uid })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast("Retrieving radiologist report");
+                } else {
+                    showToast("Error: " + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error sending retrieve report request:', error);
+                showToast("Error sending retrieve report request");
             });
         }
 
         function triggerQuery() {
             const hours = document.getElementById('queryInterval').value;
-            fetch('/api/trigger_query', {
+            if (!hours) {
+                showToast("Please select hours");
+                return;
+            }
+            fetch('/api/dicomquery', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hours: hours })
+                body: JSON.stringify({ hours: parseInt(hours) })
             })
             .then(response => response.json())
             .then(data => {
@@ -329,18 +369,19 @@
             })
             .catch(error => {
                 console.error('Error triggering query:', error);
+                showToast("Error triggering query");
             });
         }
 
-        function openLightbox(imageSrc, patientName, report, isValid, isPositive) {
+        function openLightbox(imageSrc, patientName, report, isCorrect, isPositive) {
             const lightbox = document.getElementById('lightbox');
             const lightboxImg = document.getElementById('lightbox-img');
             document.getElementById('lightbox-text').innerHTML = `<p>${report}</p>`;
             lightboxImg.src = imageSrc;
 
-            lightbox.classList.remove('invalid', 'positive');
-            if (!(isValid)) {
-                lightbox.classList.add('invalid');
+            lightbox.classList.remove('incorrect', 'positive');
+            if (!(isCorrect)) {
+                lightbox.classList.add('incorrect');
             } else if (isPositive) {
                 lightbox.classList.add('positive');
             }
@@ -355,21 +396,33 @@
         function loadPage(page, search = '') {
             const reviewed = document.getElementById("filter-reviewed").value;
             const positive = document.getElementById("filter-positive").value;
-            const valid = document.getElementById("filter-valid").value;
+            const correct = document.getElementById("filter-correct").value;
             const region = document.getElementById("filter-region").value;
             const status = document.getElementById("filter-status").value;
             const params = new URLSearchParams();
             params.append('page', page);
-            if (reviewed) params.append('reviewed', reviewed);
-            if (positive) params.append('positive', positive);
-            if (valid)    params.append('valid', valid);
-            if (region)   params.append('region', region);
-            if (status)   params.append('status', status)
-            else          params.append('status', 'done');
+            if (reviewed && reviewed !== 'any') {
+                if (reviewed.startsWith('rad:')) {
+                    params.append('radiologist', reviewed.substring(4)); // Remove 'rad:' prefix
+                } else {
+                    params.append('reviewed', reviewed);
+                }
+            }
+            if (positive && positive !== 'any') {
+                if (positive.startsWith('diag:')) {
+                    params.append('diagnostic', positive.substring(5)); // Remove 'diag:' prefix
+                } else {
+                    params.append('positive', positive);
+                }
+            }
+            if (correct && correct !== 'any') params.append('correct', correct);
+            if (region && region !== 'any') params.append('region', region);
+            if (status && status !== 'any') params.append('status', status);
+            else params.append('status', 'done');
             if (search === '') {
                 search = document.getElementById("search-input").value.trim();
             };
-            if (search)   params.append('search', search);
+            if (search) params.append('search', search);
             const queryString = params.toString();
             const url = `/api/exams?${queryString}`;
             fetch(url)
@@ -379,7 +432,7 @@
                     const totalCount = data.total || 0;
                     totalPages = data.pages || 1;
 
-	            document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
+                    document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
                     document.getElementById('pageSelect').innerHTML = '';
 
                     const select = document.getElementById("pageSelect");
@@ -456,15 +509,11 @@
 
             let examsHtml = '';
             data.forEach(item => {
-                let isPositive = item.report.positive;
+                let isPositive = item.report.ai.positive;
                 let isReviewed = item.report.reviewed;
-                let isValid = item.report.valid;
-                if (item.report.text) {
-                    //isPositive = item.report.text.trim().toLowerCase().startsWith('yes');
-                    text = item.report.text;
-                } else {
-                    text = "";
-                }
+                let isCorrect = item.report.correct;
+                let text = item.report.ai.text || "";
+                
                 let date = item.exam.date;
                 let time = item.exam.time;
                 let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
@@ -474,35 +523,36 @@
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : item.patient.name;
 
                 let clsReviewed = isReviewed ? 'reviewed' : '';
-                let clsValid = isValid ? '' : 'invalid';
+                let clsCorrect = isCorrect ? '' : 'incorrect';
                 let clsPositive = isPositive ? 'positive' : '';
-                let clsStatus = item.status || '';
+                let clsStatus = item.exam.status || '';
                 let signPozNeg = isPositive ? '&#x2795;' : '&#x2796;'
 
                 examsHtml += `
-                    <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsValid} ${clsStatus}" id="card-${item.uid}">
+                    <section class="grid image-card ${clsReviewed} ${clsPositive} ${clsCorrect} ${clsStatus}" id="card-${item.uid}">
                         <figure class="xray">
-                            <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(item.report.text)}', ${isValid}, ${isPositive})">
+                            <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(text)}', ${isCorrect}, ${isPositive})">
                             <div role="group">
-                                <button class="abnormal" onclick="validate('${item.uid}', false)">⚠️ Abnormal</button>
-                                <button class="normal" onclick="validate('${item.uid}', true)">✓ Normal</button>
-                            </div>
-                            <div role="group">
-                                <button class="secondary " onclick="lookagain('${item.uid}')">Inaccurate, look again</button>
+                                <button class="abnormal" onclick="radreview('${item.uid}', false)" title="Abnormal">&#x26A0;</button>
+                                <button class="normal" onclick="radreview('${item.uid}', true)" title="Normal">&#x2713;</button>
+                                <button class="secondary" onclick="lookagain('${item.uid}')" title="Look again">&#x1F440;</button>
+                                <button class="secondary" onclick="getrad('${item.uid}')" title="Check report">&#x1F4DD;</button>
                             </div>
                         </figure>
                         <aside class="details">
-                            <details open>
+                            <details close>
                             <summary><strong>${formattedPatientName}, ${item.patient.sex}, ${item.patient.age} years</strong></summary>
                             <p>
-                            <small><strong>ID:</strong> ${item.patient.id}</small><br>
+                            <small><strong>CNP:</strong> ${item.patient.cnp}</small><br>
+                            <small><strong>HIS:</strong> ${item.patient.id} ${item.report.rad.id}</small><br>
                             <small><strong>Time:</strong> ${formattedDate} ${formattedTime}</small><br>
                             <small><strong>Protocol:</strong> ${item.exam.protocol}</small><br>
                             <small><strong>Region:</strong> ${item.exam.region}</small><br>
-                            <small><strong>Result:</strong> ${isValid ? '' : 'False'} ${isPositive ? 'Positive' : 'Negative'}</small><br>
+                            ${item.report.rad.justification ? `<small><strong>Justification:</strong> ${item.report.rad.justification}</small><br>` : ''}
                             </p>
                             </details>
-                            <p class="report">${text}</p>
+                            ${text ? `<details open class="report ai-report"><summary>AI Report: ${isPositive ? 'Positive' : 'Negative'}</summary>${text}</details>` : ''}
+                            ${item.report.rad.text ? `<details open class="report rad-report severity-${item.report.rad.severity}"><summary>${item.report.rad.radiologist}: ${item.report.rad.summary}</summary>${item.report.rad.text}</details>` : ''}
                         </aside>
                     </section>
                 `;
@@ -518,12 +568,46 @@
                 regions.forEach(region => {
                     const option = document.createElement('option');
                     option.value = region;
-                    option.textContent = region.charAt(0).toUpperCase() + region.slice(1);
+                    // Replace underscores with spaces and make each word title case
+                    const formattedRegion = region.replace(/_/g, ' ').replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+                    option.textContent = formattedRegion;
                     regionSelect.appendChild(option);
                 });
             })
             .catch(err => {
                 console.error('Failed to load regions:', err);
+            });
+
+        // Populate diagnostics dropdown
+        fetch('/api/diagnostics')
+            .then(res => res.json())
+            .then(diagnostics => {
+                const diagnosticsList = document.getElementById('diagnostics-list');
+                Object.keys(diagnostics).forEach(diag => {
+                    const option = document.createElement('option');
+                    option.value = `diag:${diag}`;
+                    option.textContent = `${diag} (${diagnostics[diag]})`;
+                    diagnosticsList.appendChild(option);
+                });
+            })
+            .catch(err => {
+                console.error('Failed to load diagnostics:', err);
+            });
+
+        // Populate radiologists dropdown
+        fetch('/api/radiologists')
+            .then(res => res.json())
+            .then(radiologists => {
+                const radiologistsList = document.getElementById('radiologists-list');
+                Object.keys(radiologists).forEach(rad => {
+                    const option = document.createElement('option');
+                    option.value = `rad:${rad}`;
+                    option.textContent = `${rad} (${radiologists[rad]})`;
+                    radiologistsList.appendChild(option);
+                });
+            })
+            .catch(err => {
+                console.error('Failed to load radiologists:', err);
             });
 
         connectWebSocket();

@@ -153,7 +153,7 @@
         };
 
         // Chart instances
-        let regionChart, globalChart, trendsChart, monthlyTrendsChart;
+        let regionChart, trendsChart, monthlyTrendsChart;
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
@@ -384,7 +384,6 @@
 
             // Destroy existing charts if they exist
             if (regionChart) regionChart.destroy();
-            if (globalChart) globalChart.destroy();
             if (trendsChart) trendsChart.destroy();
             if (monthlyTrendsChart) monthlyTrendsChart.destroy();
 
@@ -477,38 +476,6 @@
             });
 
             // Chart: Global summary
-            globalChart = new Chart(document.getElementById("globalChart"), {
-                type: 'doughnut',
-                data: {
-                    labels: ['Positive', 'Negative', 'Wrong'],
-                    datasets: [{
-                        data: [data.positive, data.total - data.positive - data.wrong, data.wrong],
-                        backgroundColor: [
-                            chartColors.positive,
-                            chartColors.negative,
-                            chartColors.wrong
-                        ],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 20
-                            }
-                        },
-                        title: {
-                            display: false
-                        }
-                    },
-                    cutout: '60%'
-                }
-            });
 
             // Chart: Temporal trends
             const trendDates = [...new Set(Object.values(data.trends).flatMap(region => region.map(item => item.date)))].sort();

@@ -19,7 +19,9 @@ import math
 import os
 import re
 import sqlite3
+import random
 from datetime import datetime, timedelta
+from typing import Optional
 
 # Third-party imports
 import aiohttp
@@ -55,6 +57,9 @@ logging.getLogger('pynetdicom').setLevel(logging.WARNING)
 # DICOM file operations
 logging.getLogger('pydicom').setLevel(logging.WARNING)
 
+# Set default log level
+logging.getLogger().setLevel(logging.INFO)
+
 # Configuration
 import configparser
 
@@ -89,8 +94,27 @@ DEFAULT_CONFIG = {
         'KEEP_DICOM': 'False',
         'LOAD_DICOM': 'False',
         'NO_QUERY': 'False',
-        'ENABLE_NTFY': 'False'
+        'ENABLE_NTFY': 'False',
+        'QUERY_INTERVAL': '300'
     }
+}
+
+# County names mapping for Romanian CNP validation
+county_names = {
+    1: "Alba", 2: "Arad", 3: "Argeș", 4: "Bacău", 5: "Bihor", 6: "Bistrița-Năsăud",
+    7: "Botoșani", 8: "Brașov", 9: "Brăila", 10: "Buzău", 11: "Caraș-Severin",
+    12: "Cluj", 13: "Constanța", 14: "Covasna", 15: "Dâmbovița", 16: "Dolj",
+    17: "Galați", 18: "Gorj", 19: "Harghita", 20: "Hunedoara", 21: "Ialomița",
+    22: "Iași", 23: "Ilfov", 24: "Maramureș", 25: "Mehedinți", 26: "Mureș",
+    27: "Neamț", 28: "Olt", 29: "Prahova", 30: "Satu Mare", 31: "Sălaj",
+    32: "Sibiu", 33: "Suceava", 34: "Teleorman", 35: "Timiș", 36: "Tulcea",
+    37: "Vaslui", 38: "Vâlcea", 39: "Vrancea", 40: "București", 41: "București",
+    42: "București", 43: "București", 44: "București", 45: "București", 46: "București",
+    51: "Călărași", 52: "Giurgiu",
+    70: "Diaspora", 71: "Diaspora", 72: "Diaspora", 73: "Diaspora", 74: "Diaspora",
+    75: "Diaspora", 76: "Diaspora", 77: "Diaspora", 78: "Diaspora", 79: "Diaspora",
+    90: "Special", 91: "Special", 92: "Special", 93: "Special", 94: "Special",
+    95: "Special", 96: "Special", 97: "Special", 98: "Special", 99: "Special"
 }
 
 # Load configuration from file if it exists, otherwise use defaults
@@ -104,7 +128,7 @@ try:
     if local_config_files:
         logging.info("Local configuration loaded from local.cfg")
 except Exception as e:
-    logging.info("Using default configuration values")
+    logging.debug("Using default configuration values")
 
 # User roles configuration
 USERS = {}
@@ -128,6 +152,9 @@ REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
 REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
 REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
 RETRIEVAL_METHOD = config.get('dicom', 'RETRIEVAL_METHOD')
+FHIR_URL = config.get('fhir', 'FHIR_URL')
+FHIR_USERNAME = config.get('fhir', 'FHIR_USERNAME')
+FHIR_PASSWORD = config.get('fhir', 'FHIR_PASSWORD')
 IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
 DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
@@ -221,6 +248,9 @@ RULES:
 - "summary": diagnosis in maximum 5 words (e.g., "fracture", "pneumonia", "lung nodule")
 - If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
 - Ignore spelling errors
+- Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
+- Note: In Romanian reports, "SCD" means "costo-diaphragmatic sinuses" 
+- Note: In Romanian reports, "liber" means "clear" or "free"
 - Respond ONLY with the JSON, without additional text
 
 EXAMPLES:
@@ -229,6 +259,12 @@ Report: "Hazy opacity in the left mid lung field, possibly representing consolid
 Response: {"pathologic": "yes", "severity": 6, "summary": "pulmonary consolidation"}
 
 Report: "No pathological changes. Heart of normal size."
+Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
+
+Report: "Fără semne de fractură sau leziuni osteolitice."
+Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
+
+Report: "SCD libere, fără lichid pleural."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 """)
 
@@ -247,11 +283,12 @@ next_query = None  # Timestamp for the next scheduled DICOM query operation
 dicom_server = None  # DICOM server instance for receiving studies
 web_server = None  # Web server instance for dashboard and API
 
-# OpenAI health
+# External API health
 active_openai_url = None  # Currently active OpenAI API endpoint
 health_status = {
     OPENAI_URL_PRIMARY: False,  # Health status of primary OpenAI endpoint
-    OPENAI_URL_SECONDARY: False  # Health status of secondary OpenAI endpoint
+    OPENAI_URL_SECONDARY: False,  # Health status of secondary OpenAI endpoint
+    FHIR_URL: False  # Health status of FHIR endpoint
 }
 # OpenAI timings
 timings = {
@@ -265,6 +302,7 @@ KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DI
 LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
+QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')  # Base interval for query/retrieve in seconds
 
 # Load region identification rules from config
 REGION_RULES = {}
@@ -287,77 +325,727 @@ for key in region_config:
 
 # Dashboard state
 dashboard = {
-    'queue_size': 0,        # Number of exams waiting in the processing queue
+    'queue_size': 0,        # Number of exams waiting in the processing queue (queued + requeue)
+    'check_queue_size': 0,  # Number of exams queued for FHIR report checking
     'processing': None,     # Currently processing exam patient name
     'success_count': 0,     # Number of successfully processed exams in the last week
     'error_count': 0,       # Number of exams that failed processing
     'ignore_count': 0       # Number of exams that were ignored (wrong region)
 }
 
-# Database operations
-def init_database():
-    """
-    Initialize the SQLite database with the exams table and indexes.
 
-    Creates the exams table with columns for patient info, exam details,
-    AI reports, validation status, and processing status.
+
+# Database operations
+def db_init():
+    """
+    Initialize the SQLite database with normalized tables and indexes.
+
+    Creates tables for patients, exams, AI reports, and radiologist reports.
     Also creates indexes for efficient query operations.
+
+    Database Schema:
+    
+    patients:
+        - cnp (TEXT, PRIMARY KEY): Romanian personal identification number
+        - id (TEXT): Patient ID from hospital system
+        - name (TEXT): Patient full name
+        - age (INTEGER): Patient age in years
+        - sex (TEXT): Patient sex ('M', 'F', or 'O')
+    
+    exams:
+        - uid (TEXT, PRIMARY KEY): Unique exam identifier (SOP Instance UID)
+        - cnp (TEXT, FOREIGN KEY): References patients.cnp
+        - id (TEXT): Imaging study ID from HIS
+        - created (TIMESTAMP): Exam timestamp from DICOM
+        - protocol (TEXT): Imaging protocol name from DICOM
+        - region (TEXT): Anatomic region identified from protocol
+        - type (TEXT): Exam type/modality
+        - status (TEXT): Processing status ('none', 'queued', 'processing', 'done', 'error', 'ignore')
+        - study (TEXT): Study Instance UID
+        - series (TEXT): Series Instance UID
+    
+    ai_reports:
+        - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
+        - created (TIMESTAMP): Report creation timestamp (default: CURRENT_TIMESTAMP)
+        - updated (TIMESTAMP): Report last update timestamp (default: CURRENT_TIMESTAMP)
+        - text (TEXT): AI-generated report content
+        - positive (INTEGER): Binary indicator (-1=not assessed, 0=no findings, 1=findings)
+        - confidence (INTEGER): AI self-confidence score (0-100, -1 if not assessed)
+        - model (TEXT): Name of the model used to analyze the image
+        - latency (INTEGER): Time in seconds needed to analyze the image by the AI (-1 if not assessed)
+    
+    rad_reports:
+        - uid (TEXT, PRIMARY KEY, FOREIGN KEY): References exams.uid
+        - id (TEXT): Diagnostic report ID from HIS
+        - created (TIMESTAMP): Report creation timestamp (default: CURRENT_TIMESTAMP)
+        - updated (TIMESTAMP): Report last update timestamp (default: CURRENT_TIMESTAMP)
+        - text (TEXT): Radiologist report content
+        - positive (INTEGER): Binary indicator (-1=not assessed, 0=no findings, 1=findings)
+        - severity (INTEGER): Severity score (0-10, -1 if not assessed)
+        - summary (TEXT): Brief summary of findings
+        - type (TEXT): Exam type
+        - radiologist (TEXT): Identifier for the radiologist
+        - justification (TEXT): Clinical diagnostic text
+        - model (TEXT): Name of the model used to summarize the radiologist report
+        - latency (INTEGER): Time in seconds needed by the radiologist to fill in the report (-1 if not assessed)
+    
+    Indexes:
+        - idx_exams_status: Fast filtering by exam status
+        - idx_exams_region: Quick regional analysis
+        - idx_exams_cnp: Efficient patient lookup
+        - idx_patients_name: Fast patient name searches
     """
     with sqlite3.connect(DB_FILE) as conn:
+        # Enable foreign key constraints
+        conn.execute('PRAGMA foreign_keys = ON')
+        
+        # Patients table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS patients (
+                cnp TEXT PRIMARY KEY,
+                id TEXT,
+                name TEXT,
+                age INTEGER,
+                sex TEXT CHECK(sex IN ('M', 'F', 'O'))
+            )
+        ''')
+        
+        # Exams table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS exams (
                 uid TEXT PRIMARY KEY,
-                name TEXT,
+                cnp TEXT,
                 id TEXT,
-                age INTEGER,
-                sex TEXT CHECK(sex IN ('M', 'F', 'O')),
                 created TIMESTAMP,
                 protocol TEXT,
                 region TEXT,
-                reported TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                report TEXT,
-                positive INTEGER DEFAULT 0 CHECK(positive IN (0, 1)),
-                valid INTEGER DEFAULT 1 CHECK(valid IN (0, 1)),
-                reviewed INTEGER DEFAULT 0 CHECK(reviewed IN (0, 1)),
-                status TEXT DEFAULT 'none'
+                type TEXT,
+                status TEXT DEFAULT 'none',
+                study TEXT,
+                series TEXT,
+                FOREIGN KEY (cnp) REFERENCES patients(cnp)
             )
         ''')
-        # Index for cleanup operations
+        
+        # AI reports table
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_cleanup
-            ON exams(status, created)
+            CREATE TABLE IF NOT EXISTS ai_reports (
+                uid TEXT PRIMARY KEY,
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                text TEXT,
+                positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
+                confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
+                model TEXT,
+                latency INTEGER DEFAULT -1,
+                FOREIGN KEY (uid) REFERENCES exams(uid)
+            )
         ''')
+        
+        # Radiologist reports table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS rad_reports (
+                uid TEXT PRIMARY KEY,
+                id TEXT,
+                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                text TEXT,
+                positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
+                severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
+                summary TEXT,
+                type TEXT,
+                radiologist TEXT,
+                justification TEXT,
+                model TEXT,
+                latency INTEGER DEFAULT -1,
+                FOREIGN KEY (uid) REFERENCES exams(uid)
+            )
+        ''')
+        
         # Indexes for common query filters
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_status
+            CREATE INDEX IF NOT EXISTS idx_exams_status
             ON exams(status)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_reviewed
-            ON exams(reviewed)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_positive
-            ON exams(positive)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_valid
-            ON exams(valid)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_region
+            CREATE INDEX IF NOT EXISTS idx_exams_region
             ON exams(region)
         ''')
         conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_name
-            ON exams(name)
+            CREATE INDEX IF NOT EXISTS idx_exams_cnp
+            ON exams(cnp)
         ''')
-        logging.info("Initialized SQLite database.")
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_exams_created
+            ON exams(created)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_exams_study
+            ON exams(study)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_ai_reports_created
+            ON ai_reports(created)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_rad_reports_created
+            ON rad_reports(created)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_patients_name
+            ON patients(name)
+        ''')
+        logging.info("Initialized SQLite database with normalized schema.")
+
+
+def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
+    """Execute a database query and return results.
+
+    Executes a parameterized SQL query and returns results based on the
+    specified fetch mode.
+
+    Args:
+        query (str): SQL query to execute
+        params (tuple): Query parameters
+        fetch_mode (str): 'all', 'one', or 'none' for fetchall(), fetchone(), or no fetch
+
+    Returns:
+        Query results based on fetch_mode, or None on error
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+
+            if fetch_mode == 'all':
+                return cursor.fetchall()
+            elif fetch_mode == 'one':
+                return cursor.fetchone()
+            elif fetch_mode == 'none':
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            return handle_error(e, "database query execution", None, raise_on_error=False)
+
+
+def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
+    """Execute a database query with retry logic.
+
+    Executes a database query with exponential backoff retry logic in case
+    of failures.
+
+    Args:
+        query (str): SQL query to execute
+        params (tuple): Query parameters
+        max_retries (int): Maximum number of retry attempts
+
+    Returns:
+        Number of affected rows or None on error
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        for attempt in range(max_retries):
+            try:
+                cursor = conn.cursor()
+                cursor.execute(query, params)
+                conn.commit()
+                return cursor.rowcount
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # Use sync sleep for synchronous function
+                    import time
+                    time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
+                    continue
+                return handle_error(e, "database query with retry", None, raise_on_error=False)
+    return None
+
+
+# Cache for db_analyze results
+_db_analyze_cache = {}
+
+
+def db_analyze(table_name):
+    """
+    Analyze a table to get its primary key and columns using PRAGMA table_info.
+    
+    Args:
+        table_name: Name of the table to analyze
+        
+    Returns:
+        tuple: (primary_key, columns) where primary_key is the name of the 
+               primary key column and columns is a list of all column names
+    """
+    # Check cache first
+    if table_name in _db_analyze_cache:
+        return _db_analyze_cache[table_name]
+    
+    query = f"PRAGMA table_info({table_name})"
+    rows = db_execute_query(query, fetch_mode='all')
+    
+    if not rows:
+        return None, []
+    
+    primary_key = None
+    columns = []
+    
+    for row in rows:
+        # row format: (cid, name, type, notnull, dflt_value, pk)
+        cid, name, type, notnull, dflt_value, pk = row
+        columns.append(name)
+        if pk:  # pk is 1 if this column is part of the primary key
+            primary_key = name
+    
+    # Cache the result
+    result = (primary_key, columns)
+    _db_analyze_cache[table_name] = result
+    return result
+
+def db_unpack_result(result: list, keys: list) -> dict:
+    """
+    Unpack a database result list into a dictionary using provided keys.
+
+    Args:
+        result: List of values from a database query result
+        keys: List of keys to map to the values
+
+    Returns:
+        dict: Dictionary with keys mapped to corresponding values
+    """
+    if not result or not keys:
+        return {}
+    return dict(zip(keys, result))
+
+
+def db_create_insert_query(table_name, *columns):
+    """
+    Convenience function to build INSERT OR REPLACE query strings.
+
+    Args:
+        table_name: Name of the table to insert into
+        *columns: Variable number of column names
+
+    Returns:
+        str: Formatted SQL query string with placeholders
+    """
+    placeholders = ', '.join(['?'] * len(columns))
+    columns_str = ', '.join(columns)
+    return f'INSERT OR REPLACE INTO {table_name} ({columns_str}) VALUES ({placeholders})'
+
+
+def db_create_select_query(table_name, *columns, where=None, order_by=None, asc=True, limit=None):
+    """
+    Convenience function to build SELECT query strings.
+
+    Args:
+        table_name: Name of the table to select from
+        *columns: Variable number of column names (use '*' for all columns)
+        where: Optional WHERE clause (without the WHERE keyword)
+        order_by: Optional column to order by
+        asc: Boolean indicating ascending (True) or descending (False) order
+        limit: Optional limit on number of rows returned
+
+    Returns:
+        str: Formatted SQL query string
+    """
+    if not columns:
+        columns_str = '*'
+    else:
+        columns_str = ', '.join(columns)
+    
+    query = f'SELECT {columns_str} FROM {table_name}'
+    if where:
+        query += f' WHERE {where}'
+    if order_by:
+        query += f' ORDER BY {order_by}'
+        if not asc:
+            query += ' DESC'
+    if limit:
+        query += f' LIMIT {limit}'
+    return query
+
+
+def db_select(table_name, columns=None, where_clause=None, where_params=None, limit=None, order_by=None, asc=True):
+    """
+    Convenience function to select records from a table and return as list of dictionaries.
+
+    Args:
+        table_name: Name of the table to select from
+        columns: List of column names to select (None for all columns)
+        where_clause: Optional WHERE clause (without the WHERE keyword)
+        where_params: Parameters for the WHERE clause
+        limit: Optional limit on number of rows returned
+        order_by: Optional column to order by
+        asc: Boolean indicating ascending (True) or descending (False) order
+
+    Returns:
+        list: List of dictionaries representing the selected rows
+    """
+    # Use all columns if none specified
+    if columns is None:
+        # Get all columns from table schema
+        _, all_columns = db_analyze(table_name)
+        columns = all_columns
+    
+    # Build query
+    query = db_create_select_query(table_name, *columns, where=where_clause, order_by=order_by, asc=asc, limit=limit)
+    
+    # Execute query
+    params = where_params if where_params else ()
+    rows = db_execute_query(query, params, fetch_mode='all')
+    
+    # Convert to list of dictionaries
+    if rows:
+        return [db_unpack_result(row, columns) for row in rows]
+    return []
+
+
+def db_count(table_name, where_clause=None, where_params=None):
+    """
+    Convenience function to count records in a table.
+
+    Args:
+        table_name: Name of the table to count records in
+        where_clause: Optional WHERE clause (without the WHERE keyword)
+        where_params: Parameters for the WHERE clause
+
+    Returns:
+        int: Number of records matching the criteria
+    """
+    query = f"SELECT COUNT(*) FROM {table_name}"
+    params = ()
+    
+    if where_clause:
+        query += f" WHERE {where_clause}"
+        params = where_params if where_params else ()
+    
+    result = db_execute_query(query, params, fetch_mode='one')
+    return result[0] if result else 0
+
+
+def db_update(table_name, where_clause, where_params, **kwargs):
+    """
+    Convenience function to update records in a table.
+
+    Args:
+        table_name: Name of the table to update
+        where_clause: WHERE clause (without the WHERE keyword)
+        where_params: Parameters for the WHERE clause
+        **kwargs: Column-value pairs to update
+
+    Returns:
+        int: Number of rows affected
+    """
+    if not kwargs:
+        return 0
+    
+    # Build SET clause
+    set_columns = list(kwargs.keys())
+    set_values = list(kwargs.values())
+    set_clause = ', '.join([f'{col} = ?' for col in set_columns])
+    
+    # Build query
+    query = f'UPDATE {table_name} SET {set_clause} WHERE {where_clause}'
+    params = set_values + list(where_params)
+    
+    return db_execute_query_retry(query, tuple(params))
+
+
+def db_insert(table_name, **kwargs):
+    """
+    Convenience function to insert records into a table.
+
+    Args:
+        table_name: Name of the table to insert into
+        **kwargs: Column-value pairs to insert
+
+    Returns:
+        int: Number of rows affected
+    """
+    if not kwargs:
+        return 0
+    
+    # Build query using db_create_insert_query
+    columns = list(kwargs.keys())
+    values = list(kwargs.values())
+    query = db_create_insert_query(table_name, *columns)
+    params = tuple(values)
+    
+    return db_execute_query_retry(query, params)
+
+
+def db_select_one(table_name, pk_value):
+    """
+    Convenience function to get a single record from a table using its primary key.
+
+    Args:
+        table_name: Name of the table to select from
+        pk_value: Value of the primary key to search for
+
+    Returns:
+        dict: Record data or None if not found
+    """
+    # Get primary key and all columns for the table
+    primary_key, columns = db_analyze(table_name)
+    
+    if not primary_key or not columns:
+        return None
+    
+    # Create query using the primary key
+    where_clause = f"{primary_key} = ?"
+    query = db_create_select_query(table_name, *columns, where=where_clause)
+    params = (pk_value,)
+    
+    result = db_execute_query(query, params, fetch_mode='one')
+    if result:
+        return db_unpack_result(result, columns)
+    return None
+
+
+def db_add_patient(cnp, id, name, age, sex):
+    """
+    Add a new patient to the database or update existing patient information.
+
+    Args:
+        cnp: Romanian personal identification number (primary key)
+        id: Patient ID from hospital system
+        name: Patient full name
+        age: Patient age in years
+        sex: Patient sex ('M', 'F', or 'O')
+    """
+    query = db_create_insert_query('patients', 'cnp', 'id', 'name', 'age', 'sex')
+    params = (cnp, id, name, age, sex)
+    return db_execute_query_retry(query, params)
+
+
+def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
+    """
+    Add or update an AI report entry in the database.
+
+    Args:
+        uid: Exam unique identifier
+        report_text: AI-generated report content
+        positive: AI prediction result (True/False)
+        confidence: AI confidence score (0-100)
+        model: Name of the model used
+        latency: Processing time in seconds
+    """
+    db_insert('ai_reports',
+              uid=uid,
+              text=report_text,
+              positive=int(positive),
+              confidence=confidence if confidence is not None else -1,
+              model=model,
+              latency=latency)
+
+
+def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
+    """
+    Add or update a radiologist report entry in the database.
+
+    Args:
+        uid: Exam unique identifier
+        report_id: HIS report ID
+        report_text: Radiologist report content
+        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
+        severity: Severity score (0-10, -1 if not assessed)
+        summary: Brief summary of findings
+        report_type: Exam type
+        radiologist: Identifier for the radiologist
+        justification: Clinical diagnostic text
+        model: Name of the model used
+        latency: Processing time in seconds
+    """
+    db_insert('rad_reports',
+              uid=uid,
+              id=report_id,
+              text=report_text,
+              positive=positive,
+              severity=severity,
+              summary=summary,
+              type=report_type,
+              radiologist=radiologist,
+              justification=justification,
+              model=model,
+              latency=latency)
+
+def db_update_rad_report(uid, positive, severity, summary, model, latency):
+    """
+    Update a radiologist report with LLM analysis results.
+
+    Args:
+        uid: Exam unique identifier
+        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
+        severity: Severity score (0-10, -1 if not assessed)
+        summary: Brief summary of findings
+        model: Name of the model used
+        latency: Processing time in seconds
+    """
+    db_update('rad_reports', 'uid = ?', (uid,), 
+              positive=positive, 
+              severity=severity, 
+              summary=summary, 
+              model=model, 
+              latency=latency)
+
+def db_get_exams_without_rad_report():
+    """
+    Get all exams for a patient that don't have radiologist reports yet.
+    
+    First identifies a patient with at least one exam without a radiologist report,
+    then retrieves all exams for that patient without radiologist reports.
+    Newer exams have a higher chance of being selected. If no exam is found in the initial
+    time window, the window is doubled (up to 52 weeks) and tried once more.
+
+    Returns:
+        dict: Dictionary with patient info and list of exams, or empty dict if none found
+    """
+    # Randomly choose number of weeks (1-52) for initial search
+    weeks = random.randint(1, 52)
+    
+    # Try three - first with random weeks, then double if no results
+    for attempt in range(4):
+        # Calculate cutoff date
+        cutoff_date = datetime.now() - timedelta(weeks=weeks)
+        cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # First, find a patient with at least one exam without a radiologist report
+        patient_query = """
+            SELECT DISTINCT p.cnp, p.name, p.id, p.age, p.sex
+            FROM exams e
+            INNER JOIN patients p ON e.cnp = p.cnp
+            LEFT JOIN rad_reports rr ON e.uid = rr.uid
+            WHERE (rr.severity IS NULL OR rr.severity = -1)
+            AND e.status = 'done'
+            AND e.created >= ?
+            ORDER BY RANDOM()
+            LIMIT 1
+        """
+        patient_row = db_execute_query(patient_query, (cutoff_date_str,), fetch_mode='one')
+        
+        if patient_row:
+            patient_cnp, patient_name, patient_id, patient_age, patient_sex = patient_row
+            
+            # Now get all exams for this patient without radiologist reports
+            exams_query = """
+                SELECT 
+                    e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id
+                FROM exams e
+                LEFT JOIN rad_reports rr ON e.uid = rr.uid
+                WHERE e.cnp = ?
+                AND (rr.severity IS NULL OR rr.severity = -1)
+                AND e.status = 'done'
+                ORDER BY e.created DESC
+            """
+            exam_rows = db_execute_query(exams_query, (patient_cnp,), fetch_mode='all')
+            
+            if exam_rows:
+                result = {
+                    'patient': {
+                        'name': patient_name,
+                        'cnp': patient_cnp,
+                        'id': patient_id,
+                        'age': patient_age,
+                        'sex': patient_sex,
+                    },
+                    'exams': []
+                }
+                
+                for row in exam_rows:
+                    # Unpack row into named variables for better readability
+                    (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id) = row
+                    
+                    result['exams'].append({
+                        'uid': uid,
+                        'created': exam_created,
+                        'protocol': exam_protocol,
+                        'region': exam_region,
+                        'status': exam_status,
+                        'type': exam_type,
+                        'study': exam_study,
+                        'series': exam_series,
+                        'id': exam_id,
+                    })
+                return result
+        
+        # If no exam found, double the interval for second attempt (max 52 weeks)
+        if attempt == 0:
+            weeks = min(weeks * 2, 52)
+    
+    # No exams found after several attempts
+    return {}
+
+def db_update_patient_id(cnp, patient_id):
+    """
+    Update patient ID in the database.
+
+    Args:
+        cnp: Patient CNP
+        patient_id: Patient ID from HIS
+    """
+    db_update('patients', 'cnp = ?', (cnp,), id=patient_id)
+
+
+def db_add_exam(info, report=None, positive=None, confidence=None, justification=None):
+    """
+    Add or update an exam entry in the database.
+
+    This function handles queuing new exams for processing. It sets status to 'queued'
+    and stores exam metadata. Patient information is stored in the patients table.
+    If report data is provided, it also creates an entry in the ai_reports table.
+    If justification is provided, it creates an entry in the rad_reports table.
+
+    Args:
+        info: Dictionary containing exam metadata (uid, patient info, exam details)
+        report: Optional AI report text
+        positive: Optional AI positive finding indicator (True/False)
+        confidence: Optional AI confidence score (0-100)
+        justification: Optional clinical justification text
+    """
+    # Add or update patient information
+    patient = info["patient"]
+    db_add_patient(
+        patient["cnp"],
+        patient.get("id",""),
+        patient["name"],
+        patient["age"],
+        patient["sex"]
+    )
+    
+    # Set status to queued for new exams
+    status = 'queued'
+    
+    # Insert into database
+    exam = info["exam"]
+    db_insert('exams',
+              uid=info['uid'],
+              cnp=patient["cnp"],
+              id=exam.get("id",""),
+              created=exam['created'],
+              protocol=exam["protocol"],
+              region=exam['region'],
+              type=exam.get("type", ""),
+              status=status,
+              study=exam.get("study"),
+              series=exam.get("series"))
+
+    # If report is provided, add it to ai_reports table
+    if report is not None and positive is not None:
+        db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, -1)
+    
+    # If justification is provided, add it to rad_reports table
+    if justification is not None:
+        # Check if a rad report already exists for this UID
+        if not db_have_rad_reports(info['uid']):
+            # No existing report, insert a new one with justification
+            db_insert('rad_reports', uid=info['uid'], id='', type=exam.get("type", ""),  justification=justification)
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     """
     Load exams from the database with optional filters and pagination.
+
+    Retrieves exams with associated patient information, AI reports, and radiologist
+    reports. Calculates correctness based on agreement between AI and radiologist
+    predictions.
 
     Args:
         limit: Maximum number of exams to return (default: PAGE_SIZE)
@@ -365,44 +1053,63 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         **filters: Optional filters for querying exams:
             - reviewed: Filter by review status (0/1)
             - positive: Filter by AI prediction (0/1)
-            - valid: Filter by validation status (0/1)
+            - correct: Filter by correctness status (0/1)
             - region: Filter by anatomic region (case-insensitive partial
               match)
             - status: Filter by processing status (case-insensitive exact
-              match)
-            - search: Filter by patient name (case-insensitive partial
-              match)
+              match or list of statuses)
+            - search: Filter by patient name, CNP, or UID (case-insensitive
+              partial match for name/CNP, exact for UID)
+            - diagnostic: Filter by radiologist diagnostic summary
 
     Returns:
         tuple: (exams_list, total_count) where exams_list is a list of
-               exam dictionaries and total_count is the total number of
-               exams matching the filters
+               exam dictionaries containing patient, exam, and report data,
+               and total_count is the total number of exams matching the filters
     """
     conditions = []
     params = []
 
     # Update the conditions with proper parameterization
     if 'reviewed' in filters:
-        conditions.append("reviewed = ?")
-        params.append(filters['reviewed'])
+        conditions.append("rr.positive > ?")
+        params.append("-1")
     if 'positive' in filters:
-        conditions.append("positive = ?")
+        conditions.append("ar.positive = ?")
         params.append(filters['positive'])
-    if 'valid' in filters:
-        conditions.append("valid = ?")
-        params.append(filters['valid'])
+    if 'correct' in filters:
+        conditions.append("correct = ?")
+        params.append(filters['correct'])
     if 'region' in filters:
-        conditions.append("LOWER(region) LIKE ?")
+        conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
     if 'status' in filters:
-        conditions.append("LOWER(status) = ?")
-        params.append(filters['status'].lower())
-    else:
-        conditions.append("status = 'done'")
+        status_value = filters['status']
+        if isinstance(status_value, list):
+            # Handle list of statuses
+            placeholders = ','.join(['?'] * len(status_value))
+            conditions.append(f"LOWER(e.status) IN ({placeholders})")
+            params.extend([s.lower() for s in status_value])
+        else:
+            # Handle single status
+            conditions.append("LOWER(e.status) = ?")
+            params.append(status_value.lower())
     if 'search' in filters:
-        conditions.append("(LOWER(name) LIKE ? OR LOWER(id) LIKE ? OR uid LIKE ?)")
+        conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.cnp) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
-        params.extend([search_term, search_term, filters['search']])
+        params.extend([search_term, search_term, search_term])
+    if 'diagnostic' in filters:
+        conditions.append("LOWER(rr.summary) = LOWER(?)")
+        params.append(filters['diagnostic'])
+    if 'radiologist' in filters:
+        conditions.append("LOWER(rr.radiologist) = LOWER(?)")
+        params.append(filters['radiologist'])
+    if 'uid' in filters:
+        conditions.append("e.uid = LOWER(?)")
+        params.append(filters['uid'])
+    if 'cnp' in filters:
+        conditions.append("p.cnp = ?")
+        params.append(filters['cnp'])
 
     # Build WHERE clause
     where = ""
@@ -410,110 +1117,140 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         where = "WHERE " + " AND ".join(conditions)
 
     # Apply the limits (pagination)
-    query = f"SELECT * FROM exams {where} ORDER BY created DESC LIMIT ? OFFSET ?"
+    query = f"""
+        SELECT 
+            e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
+            p.name, p.cnp, p.id, p.age, p.sex,
+            ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.model, ar.latency,
+            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
+            CASE 
+                WHEN rr.positive = -1 THEN -1
+                WHEN ar.positive = rr.positive THEN 1
+                ELSE 0
+            END AS correct,
+            CASE
+                WHEN rr.positive > -1 THEN 1
+                ELSE 0
+            END AS reviewed
+        FROM exams e
+        INNER JOIN patients p ON e.cnp = p.cnp
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        {where}
+        ORDER BY e.created DESC
+        LIMIT ? OFFSET ?
+    """
     params.extend([limit, offset])
 
     # Get the exams
     exams = []
-    with sqlite3.connect(DB_FILE) as conn:
-        rows = conn.execute(query, params)
+    rows = db_execute_query(query, tuple(params), fetch_mode='all')
+    if rows:
         for row in rows:
-            dt = datetime.strptime(row[5], "%Y-%m-%d %H:%M:%S")
+            # Unpack row into named variables for better readability
+            (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
+             patient_name, patient_cnp, patient_id, patient_age, patient_sex,
+             ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_model, ai_latency,
+             rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
+             correct, reviewed) = row
+                
+            dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
             exams.append({
-                'uid': row[0],
+                'uid': uid,
                 'patient': {
-                    'name': row[1],
-                    'id': row[2],
-                    'age': row[3],
-                    'sex': row[4],
+                    'name': patient_name,
+                    'cnp': patient_cnp,
+                    'id': patient_id,
+                    'age': patient_age,
+                    'sex': patient_sex,
                 },
                 'exam': {
-                    'created': row[5],
+                    'created': exam_created,
                     'date': dt.strftime('%Y%m%d'),
                     'time': dt.strftime('%H%M%S'),
-                    'protocol': row[6],
-                    'region': row[7],
+                    'protocol': exam_protocol,
+                    'region': exam_region,
+                    'status': exam_status,
+                    'type': exam_type,
+                    'study': exam_study,
+                    'series': exam_series,
+                    'id': exam_id,
                 },
                 'report': {
-                    'text': row[9],
-                    'short': row[10] and 'yes' or 'no',
-                    'datetime': row[8],
-                    'positive': bool(row[10]),
-                    'valid': bool(row[11]),
-                    'reviewed': bool(row[12]),
+                    'ai': {
+                        'text': ai_text,
+                        'short': ai_positive and 'yes' or 'no' if ai_positive is not None and ai_positive > -1 else 'no',
+                        'created': ai_created,
+                        'updated': ai_updated,
+                        'positive': bool(ai_positive) if ai_positive is not None and ai_positive > -1 else False,
+                        'confidence': ai_confidence,
+                        'model': ai_model,
+                        'latency': ai_latency,
+                    },
+                    'rad': {
+                        'text': rad_text,
+                        'positive': bool(rad_positive) if (rad_positive is not None and rad_positive > -1) else False,
+                        'severity': rad_severity,
+                        'summary': rad_summary,
+                        'created': rad_created,
+                        'updated': rad_updated,
+                        'id': rad_id,
+                        'type': rad_type,
+                        'radiologist': rad_radiologist,
+                        'justification': rad_justification,
+                        'model': rad_model,
+                        'latency': rad_latency,
+                    },
+                    'correct': correct,
+                    'reviewed': reviewed,
                 },
-                'status': row[13],
             })
-        # Get the total for pagination
-        count_query = 'SELECT COUNT(*) FROM exams'
-        count_params = []
-        if conditions:
-            count_query += ' WHERE ' + " AND ".join(conditions)
-            count_params = params[:-2]  # Exclude limit and offset parameters
-        total = conn.execute(count_query, count_params).fetchone()[0]
+    # Get the total for pagination
+    count_query = """
+        SELECT COUNT(*) 
+        FROM exams e
+        INNER JOIN patients p ON e.cnp = p.cnp
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+    """
+    count_params = []
+    if conditions:
+        count_query += ' WHERE ' + " AND ".join(conditions)
+        count_params = params[:-2]  # Exclude limit and offset parameters
+    total_row = db_execute_query(count_query, tuple(count_params), fetch_mode='one')
+    total = total_row[0] if total_row else 0
     return exams, total
 
 
-def db_add_exam(info, report = None, positive = None):
+def db_get_previous_reports(patient_cnp, region, months=3):
     """
-    Add or update an exam entry in the database.
-
-    This function handles both queuing new exams for processing and storing
-    completed AI reports. For new exams, it sets status to 'queued'. For
-    completed reports, it sets status to 'done' and handles validation logic
-    when re-analyzing previously processed exams.
+    Get previous reports for the same patient and region from the last few months.
 
     Args:
-        info: Dictionary containing exam metadata (uid, patient info, exam details)
-        report: AI-generated report text (None for new exams to be queued)
-        positive: AI prediction result (True/False, None for queued exams)
-    """
-    # Check if we have a new report or just enqueue an exam
-    if report:
-        # We have a new report
-        poz = positive
-        valid = True
-        reviewed = False
-        status = 'done'
-        # Check if we have previous report
-        if 'report' in info:
-            # There is an previous also, check validity and new positivity
-            if not info['report']['valid'] and info['report']['positive'] != positive:
-                # It was invalid and now positivity flipped, mark it as reviewed
-                reviewed = True
-                logging.info(f"Exam {info['uid']} marked as reviewed and valid after being reanalyzed.")
+        patient_cnp: Patient identifier
+        region: Anatomic region to match
+        months: Number of months to look back (default: 3)
 
-    else:
-        # Null report, just enqueue a new exam
-        poz = False
-        valid = True
-        reviewed = False
-        status = 'queued'
-    # Timestamp
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    # Insert into database
-    with sqlite3.connect(DB_FILE) as conn:
-        values = (
-            info['uid'],
-            info["patient"]["name"],
-            info["patient"]["id"],
-            info["patient"]["age"],
-            info["patient"]["sex"],
-            info["exam"]['created'],
-            info["exam"]["protocol"],
-            info['exam']['region'],
-            now,
-            report,
-            poz,
-            valid,
-            reviewed,
-            status
-        )
-        conn.execute('''
-            INSERT OR REPLACE INTO exams
-                (uid, name, id, age, sex, created, protocol, region, reported, report, positive, valid, reviewed, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', values)
+    Returns:
+        list: List of tuples containing (report_text, updated_timestamp)
+    """
+    cutoff_date = datetime.now() - timedelta(days=months*30)
+    cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
+
+    query = """
+        SELECT ar.text, ar.updated
+        FROM exams e
+        INNER JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.cnp = ?
+        AND e.region = ?
+        AND ar.updated >= ?
+        AND ar.text IS NOT NULL
+        AND ar.positive IS NOT NULL
+        ORDER BY ar.updated DESC
+    """
+    params = (patient_cnp, region, cutoff_date_str)
+    results = db_execute_query(query, params, fetch_mode='all')
+    return results if results else []
 
 
 def db_check_already_processed(uid):
@@ -526,11 +1263,26 @@ def db_check_already_processed(uid):
     Returns:
         bool: True if exam exists with status 'done', 'queued', or 'processing'
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute(
-            "SELECT status FROM exams WHERE uid = ? AND status IN ('done', 'queued', 'processing')", (uid,)
-        ).fetchone()
-        return result is not None
+    results = db_select('exams', ['status'], where_clause='uid = ? AND status IN (?, ?, ?, ?)', 
+                       where_params=(uid, 'done', 'queued', 'requeue', 'processing'))
+    return len(results) > 0
+
+
+def db_check_study_exists(study_uid):
+    """
+    Check if a study is already in the database.
+
+    Args:
+        study_uid: Study Instance UID to check
+        series_uid: Unused parameter for compatibility
+
+    Returns:
+        bool: True if study exists in the database
+    """
+    # Check for any exam with this study UID
+    results = db_select('exams', ['uid'], where_clause='study = ?', 
+                       where_params=(study_uid,))
+    return len(results) > 0
 
 
 async def db_get_stats():
@@ -565,35 +1317,43 @@ async def db_get_stats():
         "throughput": 0,
         "error_stats": {}
     }
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        # Get count total and reviewed statistics in a single query
-        cursor.execute("""
-            SELECT
-                COUNT(*) AS total,
-                SUM(CASE WHEN reviewed = 1 THEN 1 ELSE 0 END) AS reviewed
-            FROM exams
-            WHERE status LIKE 'done'
-        """)
-        row = cursor.fetchone()
-        stats["total"] = row[0]
-        stats["reviewed"] = row[1] or 0
+    
+    # Get count total and reviewed statistics in a single query
+    query = """
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN rr.positive > -1 THEN 1 ELSE 0 END) AS reviewed
+        FROM exams e
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE e.status LIKE 'done'
+    """
+    row = db_execute_query(query, fetch_mode='one')
+    if row:
+        (total, reviewed) = row
+        stats["total"] = total
+        stats["reviewed"] = reviewed or 0
 
-        # Calculate correct (TP + TN) and wrong (FP + FN) predictions
-        cursor.execute("""
-            SELECT
-                SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
-                SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
-                SUM(reviewed = 1 AND positive = 1 AND valid = 0) AS fpos,
-                SUM(reviewed = 1 AND positive = 0 AND valid = 0) AS fneg
-            FROM exams
-            WHERE status LIKE 'done'
-        """)
-        metrics_row = cursor.fetchone()
-        tpos = metrics_row[0] or 0
-        tneg = metrics_row[1] or 0
-        fpos = metrics_row[2] or 0
-        fneg = metrics_row[3] or 0
+    # Calculate correct (TP + TN) and wrong (FP + FN) predictions
+    query = """
+        SELECT
+            SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 1) THEN 1 ELSE 0 END) AS tpos,
+            SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 0) THEN 1 ELSE 0 END) AS tneg,
+            SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 0) THEN 1 ELSE 0 END) AS fpos,
+            SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 1) THEN 1 ELSE 0 END) AS fneg
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE e.status LIKE 'done'
+          AND ar.positive > -1
+          AND rr.positive > -1;
+    """
+    metrics_row = db_execute_query(query, fetch_mode='one')
+    if metrics_row:
+        (tpos, tneg, fpos, fneg) = metrics_row
+        tpos = tpos or 0
+        tneg = tneg or 0
+        fpos = fpos or 0
+        fneg = fneg or 0
         stats["correct"] = tpos + tneg
         stats["wrong"] = fpos + fneg
 
@@ -605,79 +1365,88 @@ async def db_get_stats():
             mcc = (tpos * tneg - fpos * fneg) / denominator
             stats["mcc"] = round(mcc, 2)
 
-        # Get processing time statistics (last day only)
-        cursor.execute("""
-            SELECT
-                AVG(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) AS avg_processing_time,
-                COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', reported) - strftime('%s', created) AS REAL)) + 1) AS throughput
-            FROM exams
-            WHERE status LIKE 'done'
-              AND reported IS NOT NULL
-              AND created IS NOT NULL
-              AND created >= datetime('now', '-1 days')
-        """)
-        timing_row = cursor.fetchone()
-        if timing_row and timing_row[0] is not None:
-            stats["avg_processing_time"] = round(timing_row[0], 2)
-            stats["throughput"] = round(timing_row[1] * 3600, 2)  # exams per hour
+    # Get processing time statistics (last day only)
+    query = """
+        SELECT
+            AVG(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) AS avg_processing_time,
+            COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) + 1) AS throughput
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+          AND ar.created IS NOT NULL
+          AND e.created IS NOT NULL
+          AND e.created >= datetime('now', '-1 days')
+    """
+    timing_row = db_execute_query(query, fetch_mode='one')
+    if timing_row and timing_row[0] is not None:
+        (avg_processing_time, throughput) = timing_row
+        stats["avg_processing_time"] = round(avg_processing_time, 2)
+        stats["throughput"] = round(throughput * 3600, 2)  # exams per hour
 
-        # Get error statistics
-        cursor.execute("""
-            SELECT status, COUNT(*) as count
-            FROM exams
-            WHERE status IN ('error', 'ignore')
-            GROUP BY status
-        """)
-        error_data = cursor.fetchall()
+    # Get error statistics
+    query = """
+        SELECT status, COUNT(*) as count
+        FROM exams
+        WHERE status IN ('error', 'ignore')
+        GROUP BY status
+    """
+    error_data = db_execute_query(query, fetch_mode='all')
+    if error_data:
         for row in error_data:
-            stats["error_stats"][row[0]] = row[1]
+            (status, count) = row
+            stats["error_stats"][status] = count
 
-        # Totals per anatomic part
-        cursor.execute("""
-            SELECT region,
-                    COUNT(*) AS total,
-                    SUM(reviewed = 1) AS reviewed,
-                    SUM(positive = 1) AS positive,
-                    SUM(valid = 0) AS wrong,
-                    SUM(reviewed = 1 AND positive = 1 AND valid = 1) AS tpos,
-                    SUM(reviewed = 1 AND positive = 0 AND valid = 1) AS tneg,
-                    SUM(reviewed = 1 AND positive = 1 AND valid = 0) AS fpos,
-                    SUM(reviewed = 1 AND positive = 0 AND valid = 0) AS fneg
-            FROM exams
-            WHERE status LIKE 'done'
-            GROUP BY region
-        """)
-        for row in cursor.fetchall():
-            region = row[0] or 'unknown'
+    # Totals per anatomic part
+    query = """
+        SELECT e.region,
+                COUNT(*) AS total,
+                SUM(CASE WHEN rr.positive > -1 THEN 1 ELSE 0 END) AS reviewed,
+                SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
+                SUM(CASE WHEN (ar.positive != rr.positive AND ar.positive > -1 AND rr.positive > -1) THEN 1 ELSE 0 END) AS wrong,
+                SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 1) THEN 1 ELSE 0 END) AS tpos,
+                SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 0) THEN 1 ELSE 0 END) AS tneg,
+                SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 0) THEN 1 ELSE 0 END) AS fpos,
+                SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 1) THEN 1 ELSE 0 END) AS fneg
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE e.status LIKE 'done' AND ar.positive > -1
+        GROUP BY e.region
+    """
+    region_data = db_execute_query(query, fetch_mode='all')
+    if region_data:
+        for row in region_data:
+            (region, total, reviewed, positive, wrong, tpos, tneg, fpos, fneg) = row
+            region = region or 'unknown'
             stats["region"][region] = {
-                "total": row[1],
-                "reviewed": row[2],
-                "positive": row[3],
-                "wrong": row[4],
-                "tpos": row[5],
-                "tneg": row[6],
-                "fpos": row[7],
-                "fneg": row[8],
+                "total": total,
+                "reviewed": reviewed,
+                "positive": positive,
+                "wrong": wrong,
+                "tpos": tpos,
+                "tneg": tneg,
+                "fpos": fpos,
+                "fneg": fneg,
                 "ppv": '-',
                 "pnv": '-',
                 "snsi": '-',
                 "spci": '-',
             }
             # Calculate metrics safely
-            if (row[5] + row[7]) != 0:
-                stats["region"][region]["ppv"] = int(100.0 * row[5] / (row[5] + row[7]))
-            if (row[6] + row[8])  != 0:
-                stats["region"][region]["pnv"] = int(100.0 * row[6] / (row[6] + row[8]))
-            if (row[5] + row[8]) != 0:
-                stats["region"][region]["snsi"] = int(100.0 * row[5] / (row[5] + row[8]))
-            if (row[6] + row[7]) != 0:
-                stats["region"][region]["spci"] = int(100.0 * row[6] / (row[6] + row[7]))
+            if (tpos + fpos) != 0:
+                stats["region"][region]["ppv"] = int(100.0 * tpos / (tpos + fpos))
+            if (tneg + fneg) != 0:
+                stats["region"][region]["pnv"] = int(100.0 * tneg / (tneg + fneg))
+            if (tpos + fneg) != 0:
+                stats["region"][region]["snsi"] = int(100.0 * tpos / (tpos + fneg))
+            if (tneg + fpos) != 0:
+                stats["region"][region]["spci"] = int(100.0 * tneg / (tneg + fpos))
 
             # Calculate Matthews Correlation Coefficient (MCC)
-            tp = row[5] or 0
-            tn = row[6] or 0
-            fp = row[7] or 0
-            fn = row[8] or 0
+            tp = tpos or 0
+            tn = tneg or 0
+            fp = fpos or 0
+            fn = fneg or 0
             denominator = math.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
             if denominator == 0:
                 stats["region"][region]["mcc"] = 0.0
@@ -686,24 +1455,24 @@ async def db_get_stats():
                 # Round to 2 decimal places
                 stats["region"][region]["mcc"] = round(mcc, 2)
 
-
-        # Get temporal trends (last 30 days only to reduce memory usage)
-        cursor.execute("""
-            SELECT DATE(created) as date,
-                   region,
-                   COUNT(*) as total,
-                   SUM(positive = 1) as positive
-            FROM exams
-            WHERE status LIKE 'done'
-              AND created >= date('now', '-30 days')
-            GROUP BY DATE(created), region
-            ORDER BY date
-        """)
-        trends_data = cursor.fetchall()
-
+    # Get temporal trends (last 30 days only to reduce memory usage)
+    query = """
+        SELECT DATE(e.created) as date,
+               e.region,
+               COUNT(*) as total,
+               SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+          AND e.created >= date('now', '-30 days')
+        GROUP BY DATE(e.created), e.region
+        ORDER BY date
+    """
+    trends_data = db_execute_query(query, fetch_mode='all')
+    if trends_data:
         # Process trends data into a structured format
         for row in trends_data:
-            date, region, total, positive = row
+            (date, region, total, positive) = row
             if region not in stats["trends"]:
                 stats["trends"][region] = []
             stats["trends"][region].append({
@@ -712,23 +1481,24 @@ async def db_get_stats():
                 "positive": positive
             })
 
-        # Get monthly trends (last 12 months only to reduce memory usage)
-        cursor.execute("""
-            SELECT strftime('%Y-%m', created) as month,
-                   region,
-                   COUNT(*) as total,
-                   SUM(positive = 1) as positive
-            FROM exams
-            WHERE status LIKE 'done'
-              AND created >= date('now', '-12 months')
-            GROUP BY strftime('%Y-%m', created), region
-            ORDER BY month
-        """)
-        monthly_trends_data = cursor.fetchall()
-
+    # Get monthly trends (last 12 months only to reduce memory usage)
+    query = """
+        SELECT strftime('%Y-%m', e.created) as month,
+               e.region,
+               COUNT(*) as total,
+               SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status LIKE 'done'
+          AND e.created >= date('now', '-12 months')
+        GROUP BY strftime('%Y-%m', e.created), e.region
+        ORDER BY month
+    """
+    monthly_trends_data = db_execute_query(query, fetch_mode='all')
+    if monthly_trends_data:
         # Process monthly trends data into a structured format
         for row in monthly_trends_data:
-            month, region, total, positive = row
+            (month, region, total, positive) = row
             if region not in stats["monthly_trends"]:
                 stats["monthly_trends"][region] = []
             stats["monthly_trends"][region].append({
@@ -748,10 +1518,7 @@ def db_get_queue_size():
     Returns:
         int: Number of exams with status 'queued'
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("SELECT COUNT(*) FROM exams WHERE status = 'queued'").fetchone()
-        return result[0]
-    return 0
+    return db_count('exams', where_clause="status IN (?, ?, ?)", where_params=('queued', 'requeue', 'check'))
 
 
 def db_get_error_stats():
@@ -762,16 +1529,17 @@ def db_get_error_stats():
         dict: Dictionary with 'error' and 'ignore' counts
     """
     stats = {'error': 0, 'ignore': 0}
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT status, COUNT(*) as count
-            FROM exams
-            WHERE status IN ('error', 'ignore')
-            GROUP BY status
-        """)
-        for row in cursor.fetchall():
-            stats[row[0]] = row[1]
+    query = """
+        SELECT status, COUNT(*) as count
+        FROM exams
+        WHERE status IN ('error', 'ignore')
+        GROUP BY status
+    """
+    rows = db_execute_query(query, fetch_mode='all')
+    if rows:
+        for row in rows:
+            (status, count) = row
+            stats[status] = count
     return stats
 
 
@@ -782,14 +1550,86 @@ def db_get_weekly_processed_count():
     Returns:
         int: Number of exams with status 'done' reported in the last week
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        result = conn.execute("""
-            SELECT COUNT(*)
-            FROM exams
-            WHERE status = 'done'
-            AND reported >= datetime('now', '-7 days')
-        """).fetchone()
-        return result[0] if result else 0
+    query = """
+        SELECT COUNT(*)
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status = 'done'
+        AND ar.created >= datetime('now', '-7 days')
+    """
+    result = db_execute_query(query, fetch_mode='one')
+    return result[0] if result else 0
+
+
+def db_get_ai_report(uid):
+    """
+    Get AI report for a specific exam.
+
+    Args:
+        uid: Unique identifier of the exam
+
+    Returns:
+        dict: Report data or None if not found
+    """
+    return db_select_one('ai_reports', uid)
+
+
+def db_get_rad_report(uid):
+    """
+    Get radiologist report for a specific exam.
+
+    Args:
+        uid: Unique identifier of the exam
+
+    Returns:
+        dict: Report data or None if not found
+    """
+    return db_select_one('rad_reports', uid)
+
+
+def db_have_rad_reports(uid):
+    """
+    Check if a radiologist report already exists for a given exam UID.
+
+    Args:
+        uid: Unique identifier of the exam
+
+    Returns:
+        bool: True if a radiologist report exists for this UID, False otherwise
+    """
+    check_query = "SELECT 1 FROM rad_reports WHERE uid = ?"
+    check_params = (uid,)
+    result = db_execute_query(check_query, check_params, fetch_mode='one')
+    return result is not None
+
+
+def db_get_patient_by_cnp(cnp):
+    """
+    Get patient information by CNP.
+
+    Args:
+        cnp: Romanian personal identification number
+
+    Returns:
+        dict: Patient data or None if not found
+    """
+    return db_select_one('patients', cnp)
+
+
+def db_get_patient_exam_uids(cnp):
+    """
+    Get all exam UIDs for a specific patient.
+
+    Args:
+        cnp: Romanian personal identification number
+
+    Returns:
+        list: List of exam UIDs for this patient
+    """
+    query = "SELECT uid FROM exams WHERE cnp = ? ORDER BY created DESC"
+    params = (cnp,)
+    rows = db_execute_query(query, params, fetch_mode='all')
+    return [uid for (uid,) in rows] if rows else []
 
 
 def db_get_regions():
@@ -799,10 +1639,73 @@ def db_get_regions():
     Returns:
         list: List of distinct regions that have been processed with status 'done'
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.execute("SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' AND status = 'done' ORDER BY region")
-        regions = [row[0] for row in cursor.fetchall()]
-    return regions
+    query = "SELECT DISTINCT region FROM exams WHERE region IS NOT NULL AND region != '' AND status = 'done' ORDER BY region"
+    rows = db_execute_query(query, fetch_mode='all')
+    return [region for (region,) in rows] if rows else []
+
+
+def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
+    """
+    Load patients from the database with optional filters and pagination.
+
+    Args:
+        limit: Maximum number of patients to return (default: PAGE_SIZE)
+        offset: Number of patients to skip for pagination (default: 0)
+        **filters: Optional filters for querying patients:
+            - search: Filter by patient name or CNP (case-insensitive partial match)
+
+    Returns:
+        tuple: (patients_list, total_count) where patients_list is a list of
+               patient dictionaries and total_count is the total number of
+               patients matching the filters
+    """
+    conditions = []
+    params = []
+
+    # Update the conditions with proper parameterization
+    if 'search' in filters:
+        conditions.append("(LOWER(name) LIKE ? OR LOWER(cnp) LIKE ?)")
+        search_term = f"%{filters['search']}%"
+        params.extend([search_term, search_term])
+
+    # Build WHERE clause
+    where = ""
+    if conditions:
+        where = "WHERE " + " AND ".join(conditions)
+
+    # Apply the limits (pagination)
+    query = f"""
+        SELECT cnp, id, name, age, sex
+        FROM patients
+        {where}
+        ORDER BY name
+        LIMIT ? OFFSET ?
+    """
+    params.extend([limit, offset])
+
+    # Get the patients
+    patients = []
+    rows = db_execute_query(query, params, fetch_mode='all')
+    if rows:
+        for row in rows:
+            # Unpack row into named variables for better readability
+            (cnp, id, name, age, sex) = row
+            patients.append({
+                'cnp': cnp,
+                'id': id,
+                'name': name,
+                'age': age,
+                'sex': sex,
+            })
+    # Get the total for pagination
+    count_query = "SELECT COUNT(*) FROM patients"
+    count_params = []
+    if conditions:
+        count_query += ' WHERE ' + " AND ".join(conditions)
+        count_params = params[:-2]  # Exclude limit and offset parameters
+    total_row = db_execute_query(count_query, count_params, fetch_mode='one')
+    total = total_row[0] if total_row else 0
+    return patients, total
 
 
 def db_purge_ignored_errors():
@@ -810,21 +1713,51 @@ def db_purge_ignored_errors():
     Delete ignored and erroneous records older than 1 week and their associated files.
 
     Removes database entries with status 'ignore' or 'error' that are older than
-    1 week, along with their corresponding DICOM and PNG files from the filesystem.
+    1 week, along with their corresponding DICOM and PNG files from the filesystem
+    and associated AI and radiologist reports.
 
     Returns:
         int: Number of records deleted
     """
-    deleted_uids = []
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.execute('''
-            DELETE FROM exams
+    # First delete associated AI reports
+    ai_query = '''
+        DELETE FROM ai_reports
+        WHERE uid IN (
+            SELECT uid FROM exams
             WHERE status IN ('ignore', 'error')
             AND created < datetime('now', '-7 days')
-            RETURNING uid
-        ''')
-        deleted_uids = [row[0] for row in cursor.fetchall()]
-        deleted_count = cursor.rowcount
+        )
+    '''
+    db_execute_query_retry(ai_query)
+    
+    # Then delete associated radiologist reports
+    rad_query = '''
+        DELETE FROM rad_reports
+        WHERE uid IN (
+            SELECT uid FROM exams
+            WHERE status IN ('ignore', 'error')
+            AND created < datetime('now', '-7 days')
+        )
+    '''
+    db_execute_query_retry(rad_query)
+    
+    # Get UIDs for file cleanup before deleting exams
+    uid_query = '''
+        SELECT uid FROM exams
+        WHERE status IN ('ignore', 'error')
+        AND created < datetime('now', '-7 days')
+    '''
+    uid_rows = db_execute_query(uid_query, fetch_mode='all')
+    deleted_uids = [row[0] for row in uid_rows] if uid_rows else []
+    
+    # Finally delete the exams
+    exam_query = '''
+        DELETE FROM exams
+        WHERE status IN ('ignore', 'error')
+        AND created < datetime('now', '-7 days')
+    '''
+    deleted_count = db_execute_query_retry(exam_query)
+    
     # Delete associated files
     for uid in deleted_uids:
         for ext in ('dcm', 'png'):
@@ -867,46 +1800,33 @@ def db_backup():
         return None
 
 
-def db_validate(uid, normal = True, valid = None, enqueue = False):
+def db_rad_review(uid, normal, radiologist='rad'):
     """
-    Mark the entry as valid or invalid based on human review.
+    Update radiologist report with normal/abnormal status.
 
     When a radiologist reviews a case, they indicate if the finding is normal (negative)
-    or abnormal (positive). This function compares that human assessment with the AI's
-    prediction to determine if the AI was correct (valid=True) or incorrect (valid=False).
+    or abnormal (positive). This function updates the radiologist report with that information.
+    If no report entry exists for this UID, a new one is created with default values.
 
     Args:
         uid: The unique identifier of the exam
-        normal: Whether the human reviewer marked the case as normal (True) or abnormal (False)
-        valid: Optional override for validity. If None, will be calculated based on comparison
-        enqueue: Whether to re-queue the exam for re-analysis
+        normal: Whether the radiologist marked the case as normal (True) or abnormal (False)
+        radiologist: Name/identifier of the radiologist (default: 'rad')
 
     Returns:
-        bool: The validity status (True if AI prediction matched human review)
+        None
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        if valid is None:
-            # Check if the report is positive
-            result = conn.execute("SELECT positive FROM exams WHERE uid = ?", (uid,)).fetchone()
-            # Valid when review matches prediction
-            # If human says normal (True) and AI said negative (0), then valid
-            # If human says abnormal (False) and AI said positive (1), then valid
-            if result and result[0] is not None:
-                valid = bool(normal) != bool(result[0])
-            else:
-                valid = True
-        # Update the entry
-        columns = []
-        params = []
-        columns.append("reviewed = 1")
-        columns.append("valid = ?")
-        params.append(bool(valid))
-        if enqueue:
-            columns.append("status = 'queued'")
-        params.append(uid)
-        set_clause = 'SET ' + ','.join(columns)
-        conn.execute(f"UPDATE exams {set_clause} WHERE uid = ?", params)
-    return valid
+    positive = 0 if normal else 1
+    
+    # Check if a row already exists for this UID
+    result = db_select_one('rad_reports', uid)
+    
+    if result:
+        # Row exists, update it
+        db_update('rad_reports', 'uid = ?', (uid,), positive=positive, radiologist=radiologist)
+    else:
+        # Row doesn't exist, insert a new one
+        db_insert('rad_reports', uid=uid, positive=positive, radiologist=radiologist)
 
 
 def db_set_status(uid, status):
@@ -920,14 +1840,47 @@ def db_set_status(uid, status):
     Returns:
         str: The status that was set
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.execute("UPDATE exams SET status = ? WHERE uid = ?", (status, uid))
+    query = "UPDATE exams SET status = ? WHERE uid = ?"
+    params = (status, uid)
+    db_execute_query_retry(query, params)
     # Return the status
     return status
 
 
+def db_requeue_exam(uid):
+    """
+    Re-queue an exam for processing.
+
+    This function sets the exam status to 'requeue' so it will be processed again.
+    It clears most existing AI report data but preserves the text for reference.
+
+    Args:
+        uid: Unique identifier of the exam to re-queue
+
+    Returns:
+        bool: True if successfully re-queued, False otherwise
+    """
+    try:
+        # Set the status to requeue
+        db_set_status(uid, 'requeue')
+        
+        # Clear existing AI report data but preserve the text
+        query = """
+            UPDATE ai_reports 
+            SET positive = -1, confidence = -1, model = NULL, latency = -1, updated = CURRENT_TIMESTAMP
+            WHERE uid = ?
+        """
+        params = (uid,)
+        db_execute_query_retry(query, params)
+        
+        return True
+    except Exception as e:
+        logging.error(f"Failed to re-queue exam {uid}: {e}")
+        return False
+
+
 # DICOM network operations
-async def query_and_retrieve(minutes=15):
+async def query_and_retrieve(minutes=60):
     """
     Query and Retrieve new studies from the remote DICOM server.
 
@@ -936,7 +1889,7 @@ async def query_and_retrieve(minutes=15):
     time ranges that cross midnight by splitting into two separate queries.
 
     Args:
-        minutes: Number of minutes to look back for new studies (default: 15)
+        minutes: Number of minutes to look back for new studies (default: 60)
     """
     ae = AE(ae_title=AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
@@ -980,6 +1933,10 @@ async def query_and_retrieve(minutes=15):
             for (status, identifier) in responses:
                 if status and status.Status in (0xFF00, 0xFF01):
                     study_instance_uid = identifier.StudyInstanceUID
+                    # Check if this study is already in our database
+                    if db_check_study_exists(study_instance_uid):
+                        logging.info(f"Skipping Study {study_instance_uid} - already in database")
+                        continue
                     logging.info(f"Found Study {study_instance_uid}")
                     if RETRIEVAL_METHOD.upper() == 'C-GET':
                         await send_c_get(ae, study_instance_uid)
@@ -1069,7 +2026,25 @@ def dicom_store(event):
     uid = f"{ds.SOPInstanceUID}"
     # Check if already processed
     if db_check_already_processed(uid):
-        logging.info(f"Skipping already processed image {uid}")
+        # Check if the existing exam record is missing study or series information
+        existing_exam = db_select_one('exams', uid)
+        if existing_exam and (not existing_exam.get('study') or not existing_exam.get('series')):
+            # Extract study and series from the new DICOM
+            study_uid = str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None
+            series_uid = str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None
+            
+            # Update the existing record with study and series if missing
+            update_fields = {}
+            if study_uid and not existing_exam.get('study'):
+                update_fields['study'] = study_uid
+            if series_uid and not existing_exam.get('series'):
+                update_fields['series'] = series_uid
+            
+            if update_fields:
+                db_update('exams', 'uid = ?', (uid,), **update_fields)
+                logging.debug(f"Updated study/series info for exam {uid}")
+        
+        logging.debug(f"Skipping already processed image {uid}")
     elif ds.Modality == "CR":
         # Check the Modality
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
@@ -1097,7 +2072,7 @@ async def load_existing_dicom_files():
         uid, ext = os.path.splitext(os.path.basename(dicom_file.lower()))
         if ext == '.dcm':
             if db_check_already_processed(uid):
-                logging.info(f"Skipping already processed image {uid}")
+                logging.debug(f"Skipping already processed image {uid}")
             else:
                 logging.info(f"Adding {uid} into processing queue...")
                 full_path = os.path.join(IMAGES_DIR, dicom_file)
@@ -1121,6 +2096,7 @@ def extract_dicom_metadata(ds):
         dict: Dictionary containing structured exam information
     """
     age = -1
+    county = None
     if 'PatientAge' in ds:
         age = str(ds.PatientAge).lower().replace("y", "").strip()
         try:
@@ -1129,11 +2105,15 @@ def extract_dicom_metadata(ds):
             logging.error(f"Cannot convert age to number: {e}")
             # Try to compute age from PatientID if available
             if 'PatientID' in ds:
-                age = compute_age_from_id(ds.PatientID)
+                age = compute_age_from_cnp(ds.PatientID)
     else:
         # Try to compute age from PatientID if PatientAge is not available
         if 'PatientID' in ds:
-            age = compute_age_from_id(ds.PatientID)
+            age = compute_age_from_cnp(ds.PatientID)
+            # Also try to get county information
+            cnp_result = validate_romanian_cnp(ds.PatientID)
+            if cnp_result['valid']:
+                county = cnp_result['county']
     # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # Get the exam timestamp
@@ -1151,7 +2131,7 @@ def extract_dicom_metadata(ds):
         'uid': str(ds.SOPInstanceUID),
         'patient': {
             'name':  str(ds.PatientName),
-            'id':    str(ds.PatientID),
+            'cnp':    str(ds.PatientID),
             'age':   age,
             'sex':   str(ds.PatientSex),
             'bdate': str(ds.PatientBirthDate),
@@ -1160,16 +2140,23 @@ def extract_dicom_metadata(ds):
             'protocol': str(ds.ProtocolName),
             'created': created,
             'region': str(ds.ProtocolName),
+            'study': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
+            'series': str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None,
+            'id': None,
         }
     }
+    # Add county if available
+    if county is not None:
+        info['patient']['county'] = county
     # Check gender
     if not info['patient']['sex'] in ['M', 'F', 'O']:
         # Try to determine from ID only if it's a valid Romanian ID
-        if validate_romanian_id(info['patient']['id']):
-            try:
-                info['patient']['sex'] = int(info['patient']['id'][0]) % 2 == 0 and 'F' or 'M'
-            except:
-                info['patient']['sex'] = 'O'
+        result = validate_romanian_cnp(info['patient']['cnp'])
+        if result['valid']:
+            info['patient']['sex'] = result['sex']
+            # Also add county if not already added
+            if 'county' not in info['patient'] and 'county' in result:
+                info['patient']['county'] = result['county']
         else:
             info['patient']['sex'] = 'O'
     # Return the dicom info
@@ -1192,6 +2179,35 @@ def extract_patient_initials(name):
     parts = re.split(r'[-^ ]', name)
     initials = ''.join([part[0] + '.' for part in parts if part])
     return initials.upper() if initials else "NoName"
+
+
+def extract_radiologist_initials(name):
+    """
+    Extract initials from a radiologist name, keeping "Dr." prefix.
+
+    Args:
+        name: Radiologist name string
+
+    Returns:
+        str: Radiologist name with "Dr." prefix and initials
+    """
+    if not name or not isinstance(name, str):
+        return "Dr. NoName"
+    # Check if name starts with "Dr." (case insensitive)
+    if name.lower().startswith("dr."):
+        # Remove "Dr." prefix and extract initials from the rest
+        name_without_dr = name[3:].strip()
+        if not name_without_dr:
+            return "Dr. NoName"
+        # Split by spaces, hyphens, and carets and take first letter of each part
+        parts = re.split(r'[-^ ]', name_without_dr)
+        initials = ''.join([part[0] + '.' for part in parts if part])
+        return "Dr. " + initials.upper() if initials else "Dr. NoName"
+    else:
+        # No "Dr." prefix, just extract initials
+        parts = re.split(r'[-^ ]', name)
+        initials = ''.join([part[0] + '.' for part in parts if part])
+        return "Dr. " + initials.upper() if initials else "Dr. NoName"
 
 
 # Image processing operations
@@ -1249,6 +2265,13 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
     Returns:
         str: Path to the saved PNG file
     """
+    # Check if PNG file already exists
+    base_name = os.path.splitext(os.path.basename(dicom_file))[0]
+    png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
+    if os.path.exists(png_file):
+        logging.info(f"PNG file already exists: {png_file}")
+        return png_file
+        
     try:
         # Get the dataset
         ds = dcmread(dicom_file)
@@ -1281,8 +2304,6 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
         # Auto adjust gamma
         image = apply_gamma_correction(image, None)
         # Save the PNG file
-        base_name = os.path.splitext(os.path.basename(dicom_file))[0]
-        png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
         cv2.imwrite(png_file, image)
         logging.info(f"Converted PNG saved to {png_file}")
         # Return the PNG file name
@@ -1350,6 +2371,30 @@ async def serve_favicon(request):
     return web.FileResponse(path=os.path.join(STATIC_DIR, "favicon.ico"))
 
 
+async def serve_api_spec(request):
+    """Serve the OpenAPI specification file from static/spec.json.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.Response: OpenAPI spec as JSON with updated server URL
+    """
+    import json
+    
+    # Read the static spec file
+    spec_path = os.path.join(STATIC_DIR, "spec.json")
+    with open(spec_path, 'r') as f:
+        spec = json.load(f)
+    
+    # Update the server URL based on the request
+    server_url = f"{request.scheme}://{request.host}"
+    spec['servers'][0]['url'] = server_url
+    
+    # Return as JSON response
+    return web.json_response(spec)
+
+
 async def websocket_handler(request):
     """Handle WebSocket connections for real-time dashboard updates.
 
@@ -1396,11 +2441,11 @@ async def exams_handler(request):
         
         page = int(request.query.get("page", "1"))
         filters = {}
-        for filter in ['reviewed', 'positive', 'valid']:
+        for filter in ['positive', 'correct', 'reviewed']:
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value[0].lower() == 'y' and 1 or 0
-        for filter in ['region', 'status', 'search']:
+        for filter in ['region', 'status', 'search', 'diagnostic', 'radiologist']:
             value = request.query.get(filter, 'any')
             if value != 'any':
                 filters[filter] = value
@@ -1412,15 +2457,18 @@ async def exams_handler(request):
             if user_role != 'admin':
                 # Anonymize the patient name
                 exam['patient']['name'] = extract_patient_initials(exam['patient']['name'])
-                # Show only first 7 digits of patient ID
-                patient_id = exam['patient']['id']
-                if patient_id and len(patient_id) > 7:
-                    exam['patient']['id'] = patient_id[:7] + '...'
-                elif patient_id:
-                    exam['patient']['id'] = patient_id
+                # Show only first 7 digits of patient CNP
+                patient_cnp = exam['patient']['cnp']
+                if patient_cnp and len(patient_cnp) > 7:
+                    exam['patient']['cnp'] = patient_cnp[:7] + '...'
+                elif patient_cnp:
+                    exam['patient']['cnp'] = patient_cnp
                 else:
-                    exam['patient']['id'] = 'Unknown'
-        
+                    exam['patient']['cnp'] = 'Unknown'
+                # Anonymize the radiologist name
+                if 'radiologist' in exam['report']['rad']:
+                    exam['report']['rad']['radiologist'] = extract_radiologist_initials(exam['report']['rad']['radiologist'])
+        # Return the response
         return web.json_response({
             "exams": data,
             "total": total,
@@ -1501,7 +2549,217 @@ async def regions_handler(request):
         return web.json_response([], status = 500)
 
 
-async def manual_query(request):
+async def diagnostics_handler(request):
+    """Provide distinct diagnostic summaries from radiologist reports along with their report counts.
+
+    Returns the list of unique diagnostic summaries (from rad_reports.summary) and their report counts
+    for use in filtering or display in the frontend.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with diagnostic summaries and report counts in {'summary': 3} format
+    """
+    try:
+        # Get distinct diagnostic summaries and their report counts from the database
+        query = """
+            SELECT summary, COUNT(*) as report_count 
+            FROM rad_reports 
+            WHERE summary IS NOT NULL AND summary != '' 
+            GROUP BY summary 
+            ORDER BY summary
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        diagnostics = {summary: count for summary, count in rows} if rows else {}
+        return web.json_response(diagnostics)
+    except Exception as e:
+        logging.error(f"Diagnostics endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
+
+async def radiologists_handler(request):
+    """Provide distinct radiologist names from radiologist reports along with their report counts.
+
+    Returns the list of unique radiologist names (from rad_reports.radiologist) and their report counts
+    for use in filtering or display in the frontend.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with radiologist names and report counts in {'dr. X Y': 3} format
+    """
+    try:
+        # Get distinct radiologist names and their report counts from the database
+        query = """
+            SELECT radiologist, COUNT(*) as report_count 
+            FROM rad_reports 
+            WHERE radiologist IS NOT NULL AND radiologist != '' 
+            GROUP BY radiologist 
+            ORDER BY radiologist
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        radiologists = {radiologist: count for radiologist, count in rows} if rows else {}
+        return web.json_response(radiologists)
+    except Exception as e:
+        logging.error(f"Radiologists endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
+
+async def patients_handler(request):
+    """Provide paginated patient data with optional filters.
+
+    Retrieves patients from database with pagination and filtering options.
+    Supports filtering by name and CNP search.
+    Anonymizes patient data for non-admin users.
+
+    Args:
+        request: aiohttp request object with query parameters
+
+    Returns:
+        web.json_response: JSON response with patients data and pagination info
+    """
+    try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
+        page = int(request.query.get("page", "1"))
+        filters = {}
+        for filter in ['search']:
+            value = request.query.get(filter, 'any')
+            if value != 'any':
+                filters[filter] = value
+        offset = (page - 1) * PAGE_SIZE
+        
+        # Get patients with pagination
+        patients, total = db_get_patients(limit=PAGE_SIZE, offset=offset, **filters)
+        
+        # Anonymize patient data for non-admin users
+        for patient in patients:
+            if user_role != 'admin':
+                # Anonymize the patient name
+                patient['name'] = extract_patient_initials(patient['name'])
+                # Show only first 7 digits of patient CNP
+                patient_cnp = patient['cnp']
+                if patient_cnp and len(patient_cnp) > 7:
+                    patient['cnp'] = patient_cnp[:7] + '...'
+                elif patient_cnp:
+                    patient['cnp'] = patient_cnp
+                else:
+                    patient['cnp'] = 'Unknown'
+        
+        return web.json_response({
+            "patients": patients,
+            "total": total,
+            "pages": int(total / PAGE_SIZE) + 1,
+            "filters": filters,
+        })
+    except Exception as e:
+        logging.error(f"Patients page error: {e}")
+        return web.json_response([], status = 500)
+
+
+async def patient_handler(request):
+    """Provide a single patient's data by CNP.
+
+    Retrieves a specific patient from the database by their CNP.
+    Anonymizes patient data for non-admin users.
+    Includes a list of all exam UIDs for this patient.
+
+    Args:
+        request: aiohttp request object with CNP parameter
+
+    Returns:
+        web.json_response: JSON response with patient data and exam UIDs or error
+    """
+    try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
+        # Get CNP from URL parameter
+        cnp = request.match_info['cnp']
+        
+        # Get patient from database
+        patient = db_get_patient_by_cnp(cnp)
+        
+        if not patient:
+            return web.json_response({"error": "Patient not found"}, status=404)
+        
+        # Get all exam UIDs for this patient
+        exam_uids = db_get_patient_exam_uids(cnp)
+        
+        # Add exam UIDs to patient data
+        patient['exams'] = exam_uids
+        
+        # Anonymize patient data for non-admin users
+        if user_role != 'admin':
+            # Anonymize the patient name
+            patient['name'] = extract_patient_initials(patient['name'])
+            # Show only first 7 digits of patient CNP
+            patient_cnp = patient['cnp']
+            if patient_cnp and len(patient_cnp) > 7:
+                patient['cnp'] = patient_cnp[:7] + '...'
+            elif patient_cnp:
+                patient['cnp'] = patient_cnp
+            else:
+                patient['cnp'] = 'Unknown'
+        
+        return web.json_response(patient)
+    except Exception as e:
+        logging.error(f"Patient endpoint error: {e}")
+        return web.json_response({"error": "Internal server error"}, status=500)
+
+
+async def exam_handler(request):
+    """Provide a single exam's data by UID.
+
+    Retrieves a specific exam from the database by its UID, including
+    all associated patient and report data.
+
+    Args:
+        request: aiohttp request object with UID parameter
+
+    Returns:
+        web.json_response: JSON response with exam data or error
+    """
+    try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
+        # Get UID from URL parameter
+        uid = request.match_info['uid']
+        
+        # Get exam from database
+        exams, _ = db_get_exams(limit=1, uid=uid)
+        if not exams:
+            return web.json_response({"error": "Exam not found"}, status=404)
+        
+        exam = exams[0]
+        
+        # Anonymize patient data for non-admin users
+        if user_role != 'admin':
+            # Anonymize the patient name
+            exam['patient']['name'] = extract_patient_initials(exam['patient']['name'])
+            # Show only first 7 digits of patient CNP
+            patient_cnp = exam['patient']['cnp']
+            if patient_cnp and len(patient_cnp) > 7:
+                exam['patient']['cnp'] = patient_cnp[:7] + '...'
+            elif patient_cnp:
+                exam['patient']['cnp'] = patient_cnp
+            else:
+                exam['patient']['cnp'] = 'Unknown'
+            # Anonymize the radiologist name
+            if 'radiologist' in exam['report']['rad']:
+                exam['report']['rad']['radiologist'] = extract_radiologist_initials(exam['report']['rad']['radiologist'])
+        # Return the exam data
+        return web.json_response(exam)
+    except Exception as e:
+        logging.error(f"Exam endpoint error: {e}")
+        return web.json_response({"error": "Internal server error"}, status=500)
+
+
+async def dicom_query(request):
     """Trigger a manual DICOM query/retrieve operation.
 
     Allows manual triggering of DICOM query operations for specified time
@@ -1526,82 +2784,153 @@ async def manual_query(request):
                                   'message': str(e)})
 
 
-async def validate(request):
-    """Mark a study as valid or invalid based on human review.
+async def rad_review(request):
+    """Record radiologist's review of an exam as normal or abnormal.
 
-    Updates the validation status of an exam in the database based on
-    radiologist review. Compares human assessment with AI prediction
-    to determine validity.
+    Updates the radiologist report with the normal/abnormal status based on
+    the radiologist's assessment. Uses the authenticated username as the
+    radiologist identifier.
 
     Args:
-        request: aiohttp request object with JSON body containing uid and normal status
+        request: aiohttp request object with JSON body containing:
+            - uid: The unique identifier of the exam
+            - normal: Whether the radiologist marked the case as normal (True) or abnormal (False)
 
     Returns:
-        web.json_response: JSON response with validation result
+        web.json_response: JSON response with review status
     """
-    data = await request.json()
-    # Get 'uid' and 'normal' from request
-    uid = data.get('uid')
-    normal = data.get('normal', None)
-    # Validate/Invalidate a study, send only the 'normal' attribute
-    valid = db_validate(uid, normal)
-    logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} which {valid and 'validates' or 'invalidates'} the report.")
-    payload = {'uid': uid, 'valid': valid}
-    await broadcast_dashboard_update(event = "validate", payload = payload)
-    response = {'status': 'success'}
-    response.update(payload)
-    return web.json_response(response)
+    try:
+        data = await request.json()
+        # Get 'uid', 'normal', and optional 'radiologist' from request
+        uid = data.get('uid')
+        normal = data.get('normal', None)
+        # Use authenticated username as radiologist name, fallback to 'rad' if not available
+        radiologist = getattr(request, 'username', 'rad')
+        
+        if uid is None or normal is None:
+            return web.json_response({'status': 'error', 'message': 'UID and normal status are required'}, status=400)
+        
+        # Update the radiologist report
+        db_rad_review(uid, normal, radiologist)
+        
+        # Get the updated exam data
+        exam_data = db_get_exams(limit=1, uid=uid)
+        logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}, which {exam_data['report']['correct'] and 'validates' or 'invalidates'} the AI report.")
+        await broadcast_dashboard_update(event = "radreview", payload = exam_data)
+        response = {'status': 'success'}
+        return web.json_response(response)
+    except Exception as e:
+        logging.error(f"Error processing radiologist review: {e}")
+        return web.json_response({'status': 'error', 'message': str(e)}, status=500)
 
 
-async def lookagain(request):
-    """Send an exam back to the processing queue for re-analysis.
 
-    Marks an exam as reviewed but invalid, then re-queues it for
-    re-analysis by the AI system.
+
+async def requeue_exam(request):
+    """Re-queue an exam for processing.
+
+    Sets an exam's status to 'queued' so it will be processed again by the AI.
+    Clears existing AI report data (except text for reference) to ensure fresh analysis.
 
     Args:
-        request: aiohttp request object with JSON body containing uid and optional prompt
+        request: aiohttp request object with JSON body containing:
+            - uid: The unique identifier of the exam to re-queue
 
     Returns:
         web.json_response: JSON response with re-queue status
     """
-    data = await request.json()
-    # Get 'uid' and custom 'prompt' from request
-    uid = data.get('uid')
-    prompt = data.get('prompt', None)
-    # Mark reviewed, invalid and re-enqueue
-    valid = db_validate(uid, valid = False, enqueue = True)
-    logging.info(f"Exam {uid} sent to the processing queue (look again).")
-    # Notify the queue
-    QUEUE_EVENT.set()
-    payload = {'uid': uid, 'valid': valid}
-    await broadcast_dashboard_update(event = "lookagain", payload = payload)
-    response = {'status': 'success'}
-    response.update(payload)
-    return web.json_response(response)
+    try:
+        data = await request.json()
+        uid = data.get('uid')
+        
+        if not uid:
+            return web.json_response({'status': 'error', 'message': 'UID is required'}, status=400)
+        
+        # Re-queue the exam
+        success = db_requeue_exam(uid)
+        
+        if success:
+            logging.info(f"Exam {uid} re-queued for processing.")
+            # Notify the queue
+            QUEUE_EVENT.set()
+            payload = {'uid': uid}
+            await broadcast_dashboard_update(event="requeue", payload=payload)
+            return web.json_response({'status': 'success', 'message': f'Exam {uid} re-queued'})
+        else:
+            return web.json_response({'status': 'error', 'message': f'Failed to re-queue exam {uid}'}, status=500)
+    except Exception as e:
+        logging.error(f"Error re-queuing exam: {e}")
+        return web.json_response({'status': 'error', 'message': str(e)}, status=500)
 
 
-async def check_report_handler(request):
+async def get_report_handler(request):
+    """Trigger checking of radiologist report for an exam.
+
+    Sets an exam's status to 'check' so its radiologist report will be processed.
+    
+    Args:
+        request: aiohttp request object with JSON body containing:
+            - uid: The unique identifier of the exam to check
+
+    Returns:
+        web.json_response: JSON response with check status
+    """
+    try:
+        data = await request.json()
+        uid = data.get('uid')
+        
+        if not uid:
+            return web.json_response({'status': 'error', 'message': 'UID is required'}, status=400)
+        
+        # Get exam details from database
+        exams, _ = db_get_exams(limit=1, uid=uid)
+        if not exams:
+            return web.json_response({'status': 'error', 'message': 'Exam not found'}, status=404)
+        
+        exam = exams[0]
+        
+        # If patient ID is not known, search for it in FHIR
+        if not exam['patient']['id']:
+            async with aiohttp.ClientSession() as session:
+                patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'])
+                if patient_id:
+                    exam['patient']['id'] = patient_id
+
+        if exam['patient']['id']:
+            current_exam = exam['exam']
+            current_exam['uid'] = uid
+            # Process the exam immediately using existing patient ID
+            async with aiohttp.ClientSession() as session:
+                await process_single_exam_without_rad_report(session, current_exam, exam['patient']['id'])
+     
+        # Notify the queue
+        QUEUE_EVENT.set()
+        payload = {'uid': uid}
+        await broadcast_dashboard_update(event="radreport", payload=payload)
+        return web.json_response({'status': 'success', 'message': f'Report retrieved for exam {uid}'})
+    except Exception as e:
+        logging.error(f"Error checking radiologist report: {e}")
+        return web.json_response({'status': 'error', 'message': str(e)}, status=500)
+
+
+async def check_report(report_text):
     """Analyze a free-text radiology report for pathological findings.
 
     Takes a radiology report text and sends it to the LLM for analysis
     using a specialized prompt to extract key information.
 
     Args:
-        request: aiohttp request object with JSON body containing report text
+        report_text: Radiology report text to analyze
 
     Returns:
-        web.json_response: JSON response with analysis results
+        dict: Analysis results with pathologic, severity, and summary
     """
     try:
-        data = await request.json()
-        report_text = data.get('report', '').strip()
-        
         logging.info(f"Report check request received with report length: {len(report_text)} characters")
         
         if not report_text:
-            logging.warning("Report check request failed: No report text provided")
-            return web.json_response({'error': 'No report text provided'}, status=400)
+            logging.warning("Report check request failed: no report text provided")
+            return {'error': 'No report text provided'}
         
         # Prepare the request headers
         headers = {
@@ -1634,7 +2963,7 @@ async def check_report_handler(request):
             result = await send_to_openai(session, headers, payload)
             if not result:
                 logging.error("Failed to get response from AI service")
-                return web.json_response({'error': 'Failed to get response from AI service'}, status=500)
+                return {'error': 'Failed to get response from AI service'}
             
             response_text = result["choices"][0]["message"]["content"].strip()
             logging.debug(f"Raw AI response: {response_text}")
@@ -1645,32 +2974,60 @@ async def check_report_handler(request):
             
             try:
                 parsed_response = json.loads(response_text)
-                logging.info(f"Successfully parsed AI response: {parsed_response}")
+                logging.debug(f"AI responded: {parsed_response}")
                 
                 # Validate required fields
                 if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
-                    raise ValueError("Missing required fields in response")
+                    raise ValueError("Missing required fields in AI response")
                 
                 # Validate pathologic field
                 if parsed_response["pathologic"] not in ["yes", "no"]:
-                    raise ValueError("Invalid pathologic value")
+                    raise ValueError("Invalid pathologic value in AI response")
                 
                 # Validate severity field
                 if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
-                    raise ValueError("Invalid severity value")
+                    raise ValueError("Invalid severity value in AI response")
                 
                 # Validate summary field
                 if not isinstance(parsed_response["summary"], str):
-                    raise ValueError("Invalid summary value")
+                    raise ValueError("Invalid summary value in AI response")
                 
-                logging.info(f"Report check completed successfully. Pathologic: {parsed_response['pathologic']}, Severity: {parsed_response['severity']}")
-                return web.json_response(parsed_response)
+                logging.info(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
+                return parsed_response
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
-                return web.json_response({'error': 'Failed to parse AI response', 'response': response_text}, status=500)
+                return {'error': 'Failed to parse AI response', 'response': response_text}
             except ValueError as e:
                 logging.error(f"Invalid AI response format: {e}")
-                return web.json_response({'error': f'Invalid AI response format: {str(e)}', 'response': response_text}, status=500)
+                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
+    except Exception as e:
+        logging.error(f"Error processing report check request: {e}")
+        return {'error': 'Internal server error'}
+
+async def check_report_handler(request):
+    """Analyze a free-text radiology report for pathological findings.
+
+    Takes a radiology report text and sends it to the LLM for analysis
+    using a specialized prompt to extract key information.
+
+    Args:
+        request: aiohttp request object with JSON body containing report text
+
+    Returns:
+        web.json_response: JSON response with analysis results
+    """
+    try:
+        data = await request.json()
+        report_text = data.get('report', '').strip()
+        
+        result = await check_report(report_text)
+        
+        # Check if there was an error
+        if 'error' in result:
+            status = 500 if result['error'] != 'No report text provided' else 400
+            return web.json_response(result, status=status)
+        
+        return web.json_response(result)
     except Exception as e:
         logging.error(f"Error processing report check request: {e}")
         return web.json_response({'error': 'Internal server error'}, status=500)
@@ -1706,8 +3063,9 @@ async def auth_middleware(request, handler):
         if not user_info or user_info['password'] != password:
             logging.warning(f"Invalid authentication for user: {username}")
             raise ValueError("Invalid authentication")
-        # Store user role in request for later use
+        # Store user role and username in request for later use
         request.user_role = user_info['role']
+        request.username = username
     except (ValueError, UnicodeDecodeError) as e:
         raise web.HTTPUnauthorized(
             text = "401: Invalid authentication",
@@ -1729,8 +3087,9 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     # Check if there are any clients
     if not (websocket_clients or client):
         return
-    # Update the queue size
-    dashboard['queue_size'] = db_get_queue_size()
+    # Update the queue sizes
+    dashboard['queue_size'] = db_count('exams', where_clause="status IN (?, ?, ?)", where_params=('queued', 'requeue', 'check'))
+    dashboard['check_queue_size'] = db_count('exams', where_clause="status = ?", where_params=('check',))
     # Get error statistics
     error_stats = db_get_error_stats()
     dashboard['error_count'] = error_stats['error']
@@ -1803,7 +3162,7 @@ async def send_ntfy_notification(uid, report, info):
 
 
 # API operations
-def validate_romanian_id(patient_id):
+def validate_romanian_cnp(patient_cnp):
     """
     Validate Romanian personal identification number (CNP) format and checksum.
 
@@ -1818,73 +3177,89 @@ def validate_romanian_id(patient_id):
     - Position 13: Checksum digit
 
     Args:
-        patient_id: Personal identification number as string
+        patient_cnp: Personal identification number as string
 
     Returns:
-        bool: True if valid CNP, False otherwise
+        dict: Dictionary with validation result and parsed information if valid
+              {
+                  'valid': bool,
+                  'birth_date': datetime object (if valid),
+                  'age': int (current age in years, if valid),
+                  'sex': str ('M' or 'F', if valid),
+                  'county': int (county code, if valid)
+              }
     """
+    # Ensure we have a string and clean it
+    pid = str(patient_cnp).strip()
+    # Check if it's exactly 13 digits
+    if not pid or len(pid) != 13 or not pid.isdigit():
+        return {'valid': False}
+    
+    # Extract components
+    gender_digit = int(pid[0])
+    year = int(pid[1:3])
+    month = int(pid[3:5])
+    day = int(pid[5:7])
+    county = int(pid[7:9])
+    checksum_digit = int(pid[12])
+    
+    # Validate gender digit (1-9)
+    if gender_digit < 1 or gender_digit > 9:
+        return {'valid': False}
+    
+    # Validate date components
+    # Determine century based on gender digit
+    century_map = {1: 1900, 2: 1900, 3: 1800, 4: 1800, 5: 2000, 6: 2000, 7: 2000, 8: 2000, 9: 1900}
+    if gender_digit not in century_map:
+        return {'valid': False}
+    
+    full_year = century_map[gender_digit] + year
+    
+    # Validate month (1-12) and day (1-31) with precise date validation
     try:
-        # Ensure we have a string and clean it
-        pid = str(patient_id).strip()
-        # Check if it's exactly 13 digits
-        if not pid or len(pid) != 13 or not pid.isdigit():
-            return False
-        # Extract components
-        gender_digit = int(pid[0])
-        year = int(pid[1:3])
-        month = int(pid[3:5])
-        day = int(pid[5:7])
-        county = int(pid[7:9])
-        serial = int(pid[9:12])
-        checksum_digit = int(pid[12])
-        # Validate gender digit (1-9)
-        if gender_digit < 1 or gender_digit > 9:
-            return False
-        # Validate date components
-        # Determine century based on gender digit
-        if gender_digit in [1, 2]:
-            full_year = 1900 + year
-        elif gender_digit in [3, 4]:
-            full_year = 1800 + year
-        elif gender_digit in [5, 6]:
-            full_year = 2000 + year
-        elif gender_digit in [7, 8]:
-            full_year = 2000 + year  # For people born after 2000
-        elif gender_digit == 9:
-            full_year = 1900 + year  # Foreign residents
-        else:
-            return False
-        # Validate month (1-12)
-        if month < 1 or month > 12:
-            return False
-        # Validate day (1-31)
-        if day < 1 or day > 31:
-            return False
-        # More precise date validation
-        try:
-            datetime(full_year, month, day)
-        except ValueError:
-            return False
-        # Validate county code (01-52 or 99)
-        if not ((1 <= county <= 52) or county == 99):
-            return False
-        # Validate checksum using the official algorithm
-        # Weights for each digit position
-        weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
-        # Calculate weighted sum
-        weighted_sum = sum(int(pid[i]) * weights[i] for i in range(12))
-        # Calculate checksum
-        checksum = weighted_sum % 11
-        if checksum == 10:
-            checksum = 1
-        # Compare with provided checksum digit
-        return checksum == checksum_digit
-    except Exception as e:
-        logging.debug(f"Error validating Romanian ID {patient_id}: {e}")
-        return False
+        birth_date = datetime(full_year, month, day)
+    except ValueError:
+        return {'valid': False}
+    
+    # Validate county code (01-52 excluding 47-50, 70-79, 90-99)
+    valid_counties = set(range(1, 47)) | set(range(51, 53)) | set(range(70, 80)) | set(range(90, 100))
+    if county not in valid_counties:
+        return {'valid': False}
+    
+    # Validate checksum using the official algorithm
+    # Weights for each digit position
+    weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
+    # Calculate weighted sum
+    weighted_sum = sum(int(pid[i]) * weights[i] for i in range(12))
+    # Calculate checksum
+    checksum = weighted_sum % 11
+    if checksum == 10:
+        checksum = 1
+    # Compare with provided checksum digit
+    if checksum != checksum_digit:
+        return {'valid': False}
+    
+    # Calculate current age
+    today = datetime.now()
+    age = today.year - birth_date.year
+    # Adjust if birthday hasn't occurred this year
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        age -= 1
+    
+    # Determine sex
+    sex = 'M' if gender_digit % 2 == 1 else 'F'
+    
+    # Return validation result with parsed information
+    return {
+        'valid': True,
+        'birth_date': birth_date,
+        'age': age,
+        'sex': sex,
+        'county': county
+    }
 
 
-def compute_age_from_id(patient_id):
+def compute_age_from_cnp(patient_cnp):
     """
     Compute patient age based on Romanian personal identification number.
 
@@ -1893,43 +3268,17 @@ def compute_age_from_id(patient_id):
     - Next 6 digits: YYMMDD (birth date)
 
     Args:
-        patient_id: Personal identification number as string
+        patient_cnp: Personal identification number as string
 
     Returns:
         int: Age in years, or -1 if unable to compute
     """
-    # First validate the Romanian ID format
-    if not validate_romanian_id(patient_id):
+    # First validate the Romanian ID format and get parsed information
+    result = validate_romanian_cnp(patient_cnp)
+    if not result['valid']:
         return -1
-    try:
-        # Ensure we have a string
-        pid = str(patient_id).strip()
-        if not pid or len(pid) < 7:
-            return -1
-        # Extract birth year based on first digit
-        first_digit = int(pid[0])
-        year_prefix = ""
-        if first_digit in [1, 2]:
-            year_prefix = "19"
-        elif first_digit in [5, 6, 7, 8]:
-            year_prefix = "20"
-        else:
-            return -1
-        # Extract birth date components
-        birth_year = int(year_prefix + pid[1:3])
-        birth_month = int(pid[3:5])
-        birth_day = int(pid[5:7])
-        # Calculate age
-        today = datetime.now()
-        birth_date = datetime(birth_year, birth_month, birth_day)
-        age = today.year - birth_date.year
-        # Adjust if birthday hasn't occurred this year
-        if (today.month, today.day) < (birth_date.month, birth_date.day):
-            age -= 1
-        return age
-    except Exception as e:
-        logging.debug(f"Could not compute age from ID {patient_id}: {e}")
-        return -1
+    # Return the computed age
+    return result['age']
 
 
 def contains_any_word(string, *words):
@@ -1979,40 +3328,6 @@ def identify_anatomic_region(info):
     return region, question
 
 
-def db_get_previous_reports(patient_id, region, months=3):
-    """
-    Get previous reports for the same patient and region from the last few months.
-
-    Args:
-        patient_id: Patient identifier
-        region: Anatomic region to match
-        months: Number of months to look back (default: 3)
-
-    Returns:
-        list: List of tuples containing (report_text, created_timestamp)
-    """
-    from datetime import datetime, timedelta
-
-    cutoff_date = datetime.now() - timedelta(days=months*30)
-    cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
-
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        query = """
-            SELECT report, created
-            FROM exams
-            WHERE id = ?
-            AND region = ?
-            AND created >= ?
-            AND report IS NOT NULL
-            AND positive IS NOT NULL
-            ORDER BY created DESC
-        """
-        cursor.execute(query, (patient_id, region, cutoff_date_str))
-        results = cursor.fetchall()
-
-    return results
-
 
 def identify_imaging_projection(info):
     """
@@ -2053,7 +3368,7 @@ def determine_patient_gender_description(info):
     Returns:
         str: Gender description ('boy', 'girl', or 'child')
     """
-    patient_sex = info["patient"]["sex"].lower()
+    patient_sex = info["patient"].get("sex", "").lower()
     if "m" in patient_sex:
         gender = "boy"
     elif "f" in patient_sex:
@@ -2064,6 +3379,144 @@ def determine_patient_gender_description(info):
     # Return the gender
     return gender
 
+
+async def get_fhir_patient(session, cnp):
+    """
+    Search for a patient in FHIR system by CNP.
+
+    Args:
+        session: aiohttp ClientSession instance
+        cnp: Patient CNP
+
+    Returns:
+        dict or None: Patient data from FHIR if successful, None otherwise
+    """
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+        
+        url = f"{FHIR_URL}/fhir/Patient"
+        params = {'q': cnp}
+        
+        async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data.get('resourceType') == 'Patient':
+                    # Single patient returned
+                    return data
+                # Multiple patients returned
+                logging.error(f"FHIR patient search error: multiple patients found for CNP {cnp}")
+            else:
+                logging.warning(f"FHIR patient search failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR patient search error: {e}")
+    return None
+
+async def get_fhir_imagingstudies(session, patient_id, exam_datetime):
+    """
+    Search for imaging studies for a patient in FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        patient_id: Patient ID from HIS
+        exam_datetime: Exam datetime to search around
+
+    Returns:
+        list: List of imaging studies from FHIR (exactly one study) or empty list
+    """
+    async def _fetch_fhir_imagingstudies(session, auth, url, params):
+        """
+        Helper function to fetch imaging studies from FHIR.
+        
+        Args:
+            session: aiohttp ClientSession instance
+            auth: BasicAuth object for authentication
+            url: FHIR endpoint URL
+            params: Query parameters
+            
+        Returns:
+            list: List of imaging studies or empty list
+        """
+        try:
+            async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get('resourceType') == 'Bundle' and 'entry' in data:
+                        studies = []
+                        for entry in data['entry']:
+                            if 'resource' in entry and entry['resource'].get('resourceType') == 'Observation':
+                                # Only add resources that have an 'id' field
+                                if 'id' in entry['resource']:
+                                    studies.append(entry['resource'])
+                                else:
+                                    logging.warning("FHIR imaging study resource missing 'id' field")
+                        # We need exactly one study
+                        if len(studies) == 1:
+                            return studies
+                        elif len(studies) > 1:
+                            logging.warning(f"FHIR imaging studies search returned {len(studies)} studies, expected exactly one")
+                        # Return empty list if no studies or more than one
+                        return []
+                else:
+                    logging.warning(f"FHIR imaging studies search failed with status {resp.status}")
+        except Exception as e:
+            logging.error(f"FHIR imaging studies fetch error: {e}")
+        return []
+
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+        
+        url = f"{FHIR_URL}/fhir/Observation"
+        params = {
+            'patient': patient_id,
+            'type': 'radio',
+            'dt': exam_datetime
+        }
+        
+        # First try without full=yes parameter
+        studies = await _fetch_fhir_imagingstudies(session, auth, url, params)
+        if studies:
+            return studies
+            
+        # If no studies found, try with full=yes parameter
+        params['full'] = 'yes'
+        studies = await _fetch_fhir_imagingstudies(session, auth, url, params)
+        return studies
+    except Exception as e:
+        logging.error(f"FHIR imaging studies search error: {e}")
+    return []
+
+async def get_fhir_diagnosticreport(session, report_id):
+    """
+    Get a diagnostic report from FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        report_id: Report ID
+
+    Returns:
+        dict or None: Diagnostic report from FHIR if successful, None otherwise
+    """
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+        
+        url = f"{FHIR_URL}/fhir/DiagnosticReport/{report_id}"
+        
+        async with session.get(url, auth=auth, timeout=30) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                # Ensure the resource type is DiagnosticReport
+                if data.get('resourceType') == 'DiagnosticReport':
+                    return data
+                else:
+                    logging.warning(f"FHIR diagnostic report has incorrect resource type: {data.get('resourceType')}")
+            else:
+                logging.warning(f"FHIR diagnostic report failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR diagnostic report error: {e}")
+    return None
 
 async def send_to_openai(session, headers, payload):
     """
@@ -2080,6 +3533,10 @@ async def send_to_openai(session, headers, payload):
     Returns:
         dict or None: JSON response from API if successful, None otherwise
     """
+    if not active_openai_url:
+        logging.error("No active OpenAI URL configured")
+        return None
+        
     try:
         async with session.post(active_openai_url, headers = headers, json = payload, timeout = 300) as resp:
             if resp.status == 200:
@@ -2108,6 +3565,31 @@ async def send_exam_to_openai(exam, max_retries = 3):
         bool: True if successfully processed, False otherwise
     """
     try:
+        # Try to get additional patient and exam information from FHIR before processing
+        patient_cnp = exam['patient']['cnp']
+        if patient_cnp:
+            async with aiohttp.ClientSession() as session:
+                # Get patient information from FHIR
+                fhir_patient = await get_fhir_patient(session, patient_cnp)
+                if fhir_patient:
+                    # Update patient ID if found
+                    if 'id' in fhir_patient:
+                        exam['patient']['id'] = fhir_patient['id']
+                        # Update in database
+                        db_update_patient_id(patient_cnp, fhir_patient['id'])
+                    
+                    # Get patient name if available
+                    if 'name' in fhir_patient and fhir_patient['name']:
+                        try:
+                            # FHIR name is typically an array with given/family elements
+                            names = fhir_patient['name'][0]
+                            if 'given' in names and 'family' in names:
+                                given_names = ' '.join(names['given'])
+                                family_name = names['family']
+                                exam['patient']['name'] = f"{given_names} {family_name}"
+                        except Exception as e:
+                            logging.debug(f"Could not extract patient name from FHIR: {e}")
+        
         # Read the PNG file
         with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
             image_bytes = f.read()
@@ -2139,7 +3621,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         else:
             anatomy = ""
         # Get previous reports for the same patient and region
-        previous_reports = db_get_previous_reports(exam['patient']['id'], region, months=3)
+        previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
 
         # Create the prompt
         prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
@@ -2154,9 +3636,9 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-        if exam['report']['text']:
-            json_report = {'short': exam['report']['short'],
-                           'report': exam['report']['text']}
+        if exam['report']['ai']['text']:
+            json_report = {'short': exam['report']['ai']['short'],
+                           'report': exam['report']['ai']['text']}
             exam['report']['json'] = json.dumps(json_report)
             logging.info(f"Previous report: {exam['report']['json']}")
         # Base64 encode the PNG to comply with OpenAI Vision API
@@ -2225,23 +3707,29 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
                     # Save to exams database
                     is_positive = short == "yes"
-                    db_add_exam(exam, report = report, positive = is_positive)
+                    # Calculate timing statistics
+                    global timings
+                    end_time = asyncio.get_event_loop().time()
+                    processing_time = end_time - start_time  # In seconds
+                    timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
+                    if timings['average'] > 0:
+                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                    else:
+                        timings['average'] = timings['total']
+                    # Update the AI report with the processing time
+                    query = "UPDATE ai_reports SET latency = ? WHERE uid = ?"
+                    params = (processing_time, exam['uid'])
+                    db_execute_query_retry(query, params)
+                    # Save to exams database
+                    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
                     # Send notification for positive cases
                     if is_positive:
                         try:
                             await send_ntfy_notification(exam['uid'], report, exam)
                         except Exception as e:
                             logging.error(f"Failed to send ntfy notification: {e}")
-                    # Calculate timing statistics
-                    global timings
-                    end_time = asyncio.get_event_loop().time()
-                    timings['total'] = int((end_time - start_time) * 1000)  # Convert to milliseconds
-                    if timings['average'] > 0:
-                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
-                    else:
-                        timings['average'] = timings['total']
                     # Notify the dashboard frontend to reload first page
-                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report'].get('reviewed', False)})
+                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
                     # Success
                     return True
             except Exception as e:
@@ -2279,14 +3767,29 @@ async def start_dashboard():
     app.router.add_get('/check', serve_check_page)
     app.router.add_get('/favicon.ico', serve_favicon)
     app.router.add_get('/ws', websocket_handler)
+    
+    # API endpoints - Data retrieval
     app.router.add_get('/api/exams', exams_handler)
+    app.router.add_get('/api/exams/{uid}', exam_handler)
+    app.router.add_get('/api/patients', patients_handler)
+    app.router.add_get('/api/patients/{cnp}', patient_handler)
     app.router.add_get('/api/stats', stats_handler)
-    app.router.add_get('/api/config', config_handler)
     app.router.add_get('/api/regions', regions_handler)
-    app.router.add_post('/api/validate', validate)
-    app.router.add_post('/api/lookagain', lookagain)
-    app.router.add_post('/api/trigger_query', manual_query)
-    app.router.add_post('/api/check', check_report_handler)
+    app.router.add_get('/api/diagnostics', diagnostics_handler)
+    app.router.add_get('/api/radiologists', radiologists_handler)
+    app.router.add_get('/api/config', config_handler)
+    
+    # API endpoints - Actions
+    app.router.add_post('/api/dicomquery', dicom_query)
+    app.router.add_post('/api/radreview', rad_review)
+    app.router.add_post('/api/requeue', requeue_exam)
+    app.router.add_post('/api/getrad', get_report_handler)
+    app.router.add_post('/api/checkrad', check_report_handler)
+    
+    # API endpoints - Metadata
+    app.router.add_get('/api/spec', serve_api_spec)
+    
+    # Static file serving
     app.router.add_static('/images/', path = IMAGES_DIR, name = 'images')
     app.router.add_static('/static/', path = STATIC_DIR, name = 'static')
     web_server = web.AppRunner(app)
@@ -2312,14 +3815,14 @@ async def relay_to_openai_loop():
     """
     while True:
         # Get one file from queue
-        exams, total = db_get_exams(limit = 1, status = 'queued')
+        exams, total = db_get_exams(limit = 1, status = ['queued', 'requeue', 'check'])
         # Wait here if there are no items in queue or there is no OpenAI server
         if not exams or active_openai_url is None:
             QUEUE_EVENT.clear()
             await QUEUE_EVENT.wait()
             continue
         # Get only one exam, if any
-        exam = exams[0]
+        (exam,) = exams
         # The DICOM file name
         dicom_file = os.path.join(IMAGES_DIR, f"{exam['uid']}.dcm")
         try:
@@ -2329,24 +3832,33 @@ async def relay_to_openai_loop():
             dashboard['queue_size'] = total
             dashboard['processing'] = extract_patient_initials(exam['patient']['name'])
             await broadcast_dashboard_update()
-            # Send to AI for processing
-            result = await send_exam_to_openai(exam)
-            # Check the result
-            if result:
-                # Set the status
-                db_set_status(exam['uid'], "done")
-                # Remove the DICOM file
-                if not KEEP_DICOM:
-                    try:
-                        os.remove(dicom_file)
-                        logging.info(f"DICOM file {dicom_file} deleted after processing.")
-                    except Exception as e:
-                        logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+            
+            # Check the exam status and process accordingly
+            exam_status = exam['exam']['status']
+            if exam_status in ['queued', 'requeue']:
+                # Send to AI for processing
+                result = await send_exam_to_openai(exam)
+                # Check the result
+                if result:
+                    # Set the status
+                    db_set_status(exam['uid'], "done")
+                    # Remove the DICOM file
+                    if not KEEP_DICOM:
+                        try:
+                            os.remove(dicom_file)
+                            logging.info(f"DICOM file {dicom_file} deleted after processing.")
+                        except Exception as e:
+                            logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
+                    else:
+                        logging.debug(f"Keeping DICOM file: {dicom_file}")
                 else:
-                    logging.debug(f"Keeping DICOM file: {dicom_file}")
-            else:
-                # Error already set in send_exam_to_openai
-                pass
+                    # Error already set in send_exam_to_openai
+                    pass
+            elif exam_status == 'check':
+                # Process FHIR report with LLM
+                await process_fhir_report_with_llm(exam['uid'])
+                # Set the status to done
+                db_set_status(exam['uid'], "done")
         except Exception as e:
             logging.error(f"Unexpected error processing {exam['uid']}: {e}")
             db_set_status(exam['uid'], "error")
@@ -2371,10 +3883,10 @@ async def openai_health_check():
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url.replace("/chat/completions", "/models"), timeout = 5) as resp:
                         health_status[url] = (resp.status == 200)
-                        logging.info(f"Health check {url} → {resp.status}")
+                        logging.debug(f"Health check {url} → {resp.status}")
             except Exception as e:
                 health_status[url] = False
-                logging.warning(f"Health check failed for {url}: {e}")
+                logging.debug(f"Health check failed for {url}: {e}")
 
         if health_status.get(OPENAI_URL_PRIMARY):
             active_openai_url = OPENAI_URL_PRIMARY
@@ -2393,24 +3905,270 @@ async def openai_health_check():
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 
+async def fhir_loop():
+    """
+    Periodically check the health status of FHIR API endpoint and process exams.
+
+    Tests FHIR endpoint health and processes exams without radiologist reports.
+    """
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                # Test FHIR connectivity using the proper metadata endpoint
+                # Health check does not require authentication
+                async with session.get(f"{FHIR_URL}/fhir/Metadata", timeout=10) as resp:
+                    health_status[FHIR_URL] = resp.status == 200
+                    logging.debug(f"FHIR check {FHIR_URL} → {resp.status}")
+                
+                if health_status[FHIR_URL]:
+                    # Process exams without radiologist reports
+                    await process_exams_without_rad_reports(session)
+        except Exception as e:
+            health_status[FHIR_URL] = False
+            logging.warning(f"Health check failed for FHIR: {e}")
+        
+        # WebSocket broadcast
+        await broadcast_dashboard_update()
+        
+        # Random delay between 1 and 5 minutes
+        delay = random.randint(30, 120)
+        await asyncio.sleep(delay)
+
+async def process_fhir_report_with_llm(exam_uid):
+    """
+    Process a FHIR diagnostic report with the LLM and update the database.
+
+    Args:
+        exam_uid: The exam UID to process
+    """
+    # Get the radiologist report from the database
+    rad_report = db_get_rad_report(exam_uid)
+    
+    if not rad_report:
+        logging.warning(f"No radiologist report found for exam {exam_uid}")
+        return
+    
+    # If the report has already been assessed (severity > -1), skip processing
+    if rad_report.get('severity', -1) > -1:
+        logging.debug(f"Radiologist report for exam {exam_uid} already assessed, skipping LLM processing")
+        return
+    
+    # Extract the report text
+    report_text = rad_report.get('text', "").strip()
+    if not report_text:
+        logging.warning(f"No text in radiologist report for exam {exam_uid}")
+        return
+    
+    # Log the current status before sending to LLM
+    logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
+    
+    # Use LLM to analyze the diagnostic report and fill positive, severity, and summary fields
+    start_time = asyncio.get_event_loop().time()
+    analysis_result = await check_report(report_text)
+    end_time = asyncio.get_event_loop().time()
+    processing_time = end_time - start_time  # In seconds
+    
+    # Set default values in case of analysis failure
+    positive = -1
+    severity = -1
+    summary = ''
+    
+    # Extract values from analysis result if successful
+    if 'error' not in analysis_result:
+        try:
+            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
+            severity = analysis_result['severity']
+            summary = analysis_result['summary']
+        except Exception as e:
+            logging.warning(f"Could not extract analysis results from LLM: {e}")
+    else:
+        logging.warning(f"LLM failed for exam {exam_uid}: {analysis_result['error']}")
+        processing_time = -1  # Set to -1 if failed
+    
+    # Update the radiologist report in our database
+    db_update_rad_report(
+        uid=exam_uid,
+        positive=positive,
+        severity=severity,
+        summary=summary,
+        model=MODEL_NAME,
+        latency=processing_time
+    )
+    logging.info(f"Updated FHIR report for exam {exam_uid} with summary '{summary}'")
+    
+    # Notify dashboard of the update
+    await broadcast_dashboard_update(event="radreport_processed", payload={'uid': exam_uid})
+
+async def process_single_exam_without_rad_report(session, exam, patient_id):
+    """
+    Process a single exam that doesn't have a radiologist report yet.
+
+    This function retrieves the radiologist report for a specific exam
+    from the FHIR system and prepares it for LLM analysis.
+
+    Args:
+        session: aiohttp ClientSession instance
+        exam: Dictionary containing exam information
+        patient_id: Patient ID in the HIS system
+    """
+    exam_uid = exam['uid']
+    exam_datetime = exam['created']
+    
+    # Search for imaging studies
+    studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
+    if not studies:
+        logging.warning(f"No imaging studies found for exam {exam_uid}")
+        return
+    elif len(studies) > 1:
+        logging.info(f"Multiple close imaging studies found for exam {exam_uid}, skipping.")
+        return
+
+    # Get the single study
+    study = studies[0]
+    if not 'id' in study:
+        logging.warning(f"Imaging study for exam {exam_uid} has no ID, skipping.")
+        return
+    
+    # Save the study ID early to avoid redundant searches later
+    db_insert('rad_reports',
+              uid=exam_uid,
+              id=study.get('id', ''),
+              type='radio'
+    )
+    logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
+    
+    # If exactly one study found, get its diagnostic report
+    report = await get_fhir_diagnosticreport(session, study['id'])
+    if report and 'presentedForm' in report and report['presentedForm']:
+        # Check if there's exactly one item in presentedForm
+        if len(report['presentedForm']) != 1:
+            logging.info(f"Skipping diagnostic report for exam {exam_uid} with {len(report['presentedForm'])} items in presentedForm")
+            return
+            
+        # Extract the report text from the first (and only) item
+        report_text = report['presentedForm'][0].get('data', '').strip()
+        if not report_text:
+            logging.warning(f"No data found in presentedForm[0] for exam {exam_uid}")
+            return
+            
+        # Extract radiologist name from resultsInterpreter if available
+        radiologist = 'rad'  # Default value
+        try:
+            if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
+                interpreter = report['resultsInterpreter'][0]
+                if 'display' in interpreter:
+                    radiologist = interpreter['display']
+        except Exception as e:
+            logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
+        
+        # Extract justification from extensions if available
+        justification = ''  # Default value
+        try:
+            if 'extension' in report:
+                for ext in report['extension']:
+                    if 'diagnostic-report-reason' in ext.get('url', ''):
+                        if 'extension' in ext:
+                            for nested_ext in ext['extension']:
+                                if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
+                                    justification = nested_ext['valueString']
+                                    break
+        except Exception as e:
+            logging.warning(f"Could not extract justification from FHIR report: {e}")
+
+        # Log the retrieved report
+        logging.info(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
+        # Update the radiologist report in our database
+        db_update('rad_reports', 'uid = ?', (exam_uid,),
+                  text=report_text,
+                  radiologist=radiologist,
+                  justification=justification,
+                  positive=-1,
+                  severity=-1,
+                  summary='',
+                  type='radio',
+                  model=MODEL_NAME,
+                  latency=-1)
+
+        # Set the exam status to 'check' for LLM processing in queue
+        db_set_status(exam_uid, "check")
+        # Notify the queue
+        QUEUE_EVENT.set()
+    else:
+        logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
+
+
+async def get_patient_id_from_fhir(session, patient_cnp):
+    """
+    Get patient ID from FHIR system by CNP.
+
+    Args:
+        session: aiohttp ClientSession instance
+        patient_cnp: Patient CNP
+
+    Returns:
+        str or None: Patient ID from FHIR if successful, None otherwise
+    """
+    fhir_patient = await get_fhir_patient(session, patient_cnp)
+    if fhir_patient and 'id' in fhir_patient:
+        patient_id = fhir_patient['id']
+        # Update patient ID in database
+        db_update_patient_id(patient_cnp, patient_id)
+        return patient_id
+    return None
+
+
+async def process_exams_without_rad_reports(session):
+    """
+    Process exams that don't have radiologist reports yet.
+
+    This function identifies exams without radiologist reports, finds the
+    corresponding patient in HIS, and retrieves the radiologist report.
+    """
+    # Get exams for a patient without radiologist reports
+    result = db_get_exams_without_rad_report()
+    if not result or not result.get('exams'):
+        return
+    
+    # Extract necessary information from the first exam
+    patient_cnp = result['patient']['cnp']
+    patient_id = result['patient']['id']
+    exams = result['exams']
+    
+    # If patient ID is not known, search for it in FHIR
+    if not patient_id:
+        patient_id = await get_patient_id_from_fhir(session, patient_cnp)
+    # If still no patient ID, log and skip
+    if not patient_id:
+        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp}, skipping exams")
+        return
+    
+    # Process each exam for this patient
+    for exam in exams:
+        await process_single_exam_without_rad_report(session, exam, patient_id)
 
 async def query_retrieve_loop():
     """
     Periodically query the remote DICOM server for new studies.
 
     Runs an infinite loop that queries the remote PACS for new CR studies
-    every 15 minutes (900 seconds). Can be disabled with the --no-query flag.
+    at a configurable interval with +/- 30% random variation.
+    Can be disabled with the --no-query flag.
     Updates the next_query timestamp for dashboard display.
     """
     if NO_QUERY:
         logging.warning(f"Automatic Query/Retrieve disabled.")
     while not NO_QUERY:
         await query_and_retrieve()
+        # Calculate delay with +/- 30% variation
+        variation = QUERY_INTERVAL * 0.3
+        min_delay = max(1, int(QUERY_INTERVAL - variation))
+        max_delay = int(QUERY_INTERVAL + variation)
+        delay = random.randint(min_delay, max_delay)
         current_time = datetime.now()
         global next_query
-        next_query = current_time + timedelta(seconds = 900)
-        logging.info(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
-        await asyncio.sleep(900)
+        next_query = current_time + timedelta(seconds = delay)
+        logging.debug(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')} (in {delay} seconds)")
+        await asyncio.sleep(delay)
 
 
 async def maintenance_loop():
@@ -2527,6 +4285,29 @@ def process_dicom_file(dicom_file, uid):
         logging.error(f"Error processing DICOM file {dicom_file}: {e}")
         db_set_status(uid, "error")
 
+def handle_error(e, context="", default_return=None, raise_on_error=False):
+    """Unified error handling wrapper.
+
+    Provides consistent error handling across the application with optional
+    exception re-raising capabilities.
+
+    Args:
+        e (Exception): The exception that occurred
+        context (str): Context information about where the error occurred
+        default_return: Default value to return on error
+        raise_on_error (bool): Whether to re-raise the exception
+
+    Returns:
+        The default_return value or re-raises the exception
+    """
+    error_msg = f"Error{f' in {context}' if context else ''}: {e}"
+    logging.error(error_msg)
+
+    if raise_on_error:
+        raise e
+
+    return default_return
+
 
 async def main():
     """
@@ -2544,12 +4325,20 @@ async def main():
     # Init the database if not found
     if not os.path.exists(DB_FILE):
         logging.info("SQLite database not found. Creating a new one...")
-        init_database()
+        db_init()
     else:
         logging.info("SQLite database found.")
     # Print some data
     logging.info(f"Python SQLite version: {sqlite3.version}")
     logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
+    
+    # Reset any exams stuck in 'processing' status back to 'queued'
+    reset_count = db_update('exams', "status = ?", ('processing',), status='queued')
+    if reset_count and reset_count > 0:
+        logging.info(f"Reset {reset_count} exams from 'processing' to 'queued' status")
+        # Signal the queue to process these reset exams
+        QUEUE_EVENT.set()
+    
     # Load exams
     exams, total = db_get_exams(status = 'done')
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
@@ -2563,9 +4352,12 @@ async def main():
     tasks.append(asyncio.create_task(relay_to_openai_loop()))
     tasks.append(asyncio.create_task(query_retrieve_loop()))
     tasks.append(asyncio.create_task(maintenance_loop()))
+    tasks.append(asyncio.create_task(fhir_loop()))
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
+        # Query for studies from the last hour on startup
+        await query_and_retrieve(60)
     try:
         # Wait for all tasks to complete
         await asyncio.gather(*tasks)
@@ -2589,6 +4381,7 @@ if __name__ == '__main__':
     parser.add_argument("--enable-ntfy", action = "store_true", default=ENABLE_NTFY, help = "Enable ntfy.sh notifications")
     parser.add_argument("--model", type=str, default=MODEL_NAME, help="Model name to use for analysis")
     parser.add_argument("--retrieval-method", type=str, choices=['C-MOVE', 'C-GET'], default=RETRIEVAL_METHOD, help="DICOM retrieval method")
+    parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Set logging level")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
@@ -2597,7 +4390,8 @@ if __name__ == '__main__':
     ENABLE_NTFY = args.enable_ntfy
     MODEL_NAME = args.model
     RETRIEVAL_METHOD = args.retrieval_method
-
+    # Set log level
+    logging.getLogger().setLevel(getattr(logging, args.log_level))
     # Run
     try:
         asyncio.run(main())

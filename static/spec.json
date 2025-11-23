@@ -1,0 +1,1133 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "XRayVision API",
+    "description": "API for the XRayVision DICOM processor with OpenAI integration",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "XRayVision server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "basicAuth": {
+        "type": "http",
+        "scheme": "basic"
+      }
+    },
+    "schemas": {
+      "Exam": {
+        "type": "object",
+        "properties": {
+          "uid": {
+            "type": "string",
+            "description": "Unique identifier of the exam (SOP Instance UID)"
+          },
+          "patient": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Patient full name"
+              },
+              "cnp": {
+                "type": "string",
+                "description": "Patient CNP (Romanian personal identification number)"
+              },
+              "age": {
+                "type": "integer",
+                "description": "Patient age in years"
+              },
+              "sex": {
+                "type": "string",
+                "enum": ["M", "F", "O"],
+                "description": "Patient sex (M, F, or O)"
+              },
+              "county": {
+                "type": "integer",
+                "description": "Patient county code"
+              }
+            }
+          },
+          "exam": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Exam timestamp"
+              },
+              "date": {
+                "type": "string",
+                "description": "Exam date in YYYYMMDD format"
+              },
+              "time": {
+                "type": "string",
+                "description": "Exam time in HHMMSS format"
+              },
+              "protocol": {
+                "type": "string",
+                "description": "Imaging protocol name from DICOM"
+              },
+              "region": {
+                "type": "string",
+                "description": "Anatomic region identified from protocol"
+              }
+            }
+          },
+          "report": {
+            "type": "object",
+            "properties": {
+              "ai": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "AI-generated report content"
+                  },
+                  "short": {
+                    "type": "string",
+                    "enum": ["yes", "no"],
+                    "description": "Whether pathological findings are present"
+                  },
+                  "created": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report creation timestamp"
+                  },
+                  "updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report last update timestamp"
+                  },
+                  "positive": {
+                    "type": "boolean",
+                    "description": "Binary indicator of findings"
+                  },
+                  "confidence": {
+                    "type": "integer",
+                    "description": "AI self-confidence score (0-100, -1 if not assessed)"
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "Name of the model used to analyze the image"
+                  },
+                  "latency": {
+                    "type": "integer",
+                    "description": "Time in seconds needed to analyze the image by the AI (-1 if not assessed)"
+                  }
+                }
+              },
+              "rad": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Radiologist report content"
+                  },
+                  "positive": {
+                    "type": "boolean",
+                    "description": "Binary indicator of findings"
+                  },
+                  "severity": {
+                    "type": "integer",
+                    "description": "Severity score (0-10, -1 if not assessed)"
+                  },
+                  "summary": {
+                    "type": "string",
+                    "description": "Brief summary of findings"
+                  },
+                  "created": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report creation timestamp"
+                  },
+                  "updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Report last update timestamp"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Diagnostic report ID from HIS"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "Exam type"
+                  },
+                  "radiologist": {
+                    "type": "string",
+                    "description": "Identifier for the radiologist"
+                  },
+                  "justification": {
+                    "type": "string",
+                    "description": "Clinical diagnostic text"
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "Name of the model used to summarize the radiologist report"
+                  },
+                  "latency": {
+                    "type": "integer",
+                    "description": "Time in seconds needed by the radiologist to fill in the report (-1 if not assessed)"
+                  }
+                }
+              },
+              "correct": {
+                "type": "integer",
+                "description": "Validation status (-1=not assessed, 0=incorrect, 1=correct)"
+              },
+              "reviewed": {
+                "type": "integer",
+                "description": "Review status (0=not reviewed, 1=reviewed)"
+              }
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": ["none", "queued", "processing", "done", "error", "ignore"],
+            "description": "Processing status"
+          }
+        }
+      },
+      "Stats": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Total number of exams"
+          },
+          "reviewed": {
+            "type": "integer",
+            "description": "Number of reviewed exams"
+          },
+          "positive": {
+            "type": "integer",
+            "description": "Number of positive findings"
+          },
+          "correct": {
+            "type": "integer",
+            "description": "Number of correct predictions"
+          },
+          "wrong": {
+            "type": "integer",
+            "description": "Number of wrong predictions"
+          },
+          "region": {
+            "type": "object",
+            "description": "Regional statistics",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "total": {
+                  "type": "integer"
+                },
+                "reviewed": {
+                  "type": "integer"
+                },
+                "positive": {
+                  "type": "integer"
+                },
+                "wrong": {
+                  "type": "integer"
+                },
+                "tpos": {
+                  "type": "integer"
+                },
+                "tneg": {
+                  "type": "integer"
+                },
+                "fpos": {
+                  "type": "integer"
+                },
+                "fneg": {
+                  "type": "integer"
+                },
+                "ppv": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["-"]
+                    }
+                  ]
+                },
+                "pnv": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["-"]
+                    }
+                  ]
+                },
+                "snsi": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["-"]
+                    }
+                  ]
+                },
+                "spci": {
+                  "oneOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "enum": ["-"]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "trends": {
+            "type": "object",
+            "description": "Temporal trends by region"
+          },
+          "monthly_trends": {
+            "type": "object",
+            "description": "Monthly trends by region"
+          },
+          "avg_processing_time": {
+            "type": "number",
+            "description": "Average processing time in seconds"
+          },
+          "throughput": {
+            "type": "number",
+            "description": "Processing throughput (exams per hour)"
+          },
+          "error_stats": {
+            "type": "object",
+            "description": "Error statistics"
+          }
+        }
+      },
+      "Config": {
+        "type": "object",
+        "properties": {
+          "OPENAI_URL_PRIMARY": {
+            "type": "string",
+            "description": "Primary OpenAI API URL"
+          },
+          "OPENAI_URL_SECONDARY": {
+            "type": "string",
+            "description": "Secondary OpenAI API URL"
+          },
+          "NTFY_URL": {
+            "type": "string",
+            "description": "NTFY notification URL"
+          },
+          "AE_TITLE": {
+            "type": "string",
+            "description": "DICOM AE Title"
+          },
+          "AE_PORT": {
+            "type": "integer",
+            "description": "DICOM AE Port"
+          },
+          "REMOTE_AE_TITLE": {
+            "type": "string",
+            "description": "Remote DICOM AE Title"
+          },
+          "REMOTE_AE_IP": {
+            "type": "string",
+            "description": "Remote DICOM AE IP"
+          },
+          "REMOTE_AE_PORT": {
+            "type": "integer",
+            "description": "Remote DICOM AE Port"
+          }
+        }
+      },
+      "CNPValidationResponse": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "description": "Whether the CNP is valid"
+          },
+          "birth_date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Birth date extracted from CNP"
+          },
+          "age": {
+            "type": "integer",
+            "description": "Current age in years"
+          },
+          "sex": {
+            "type": "string",
+            "enum": ["M", "F"],
+            "description": "Sex derived from CNP"
+          },
+          "county": {
+            "type": "integer",
+            "description": "County code"
+          }
+        }
+      },
+      "QueryRequest": {
+        "type": "object",
+        "properties": {
+          "hours": {
+            "type": "integer",
+            "description": "Number of hours to look back for studies",
+            "default": 3
+          }
+        }
+      },
+      "CheckReportRequest": {
+        "type": "object",
+        "properties": {
+          "report": {
+            "type": "string",
+            "description": "Radiology report text to analyze"
+          }
+        },
+        "required": ["report"]
+      },
+      "CheckReportResponse": {
+        "type": "object",
+        "properties": {
+          "pathologic": {
+            "type": "string",
+            "enum": ["yes", "no"],
+            "description": "Whether any anomaly exists"
+          },
+          "severity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Severity score (0-10)"
+          },
+          "summary": {
+            "type": "string",
+            "description": "Diagnosis in maximum 5 words"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Serve dashboard page",
+        "description": "Serve the main dashboard HTML page",
+        "responses": {
+          "200": {
+            "description": "Dashboard HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "summary": "Serve statistics page",
+        "description": "Serve the statistics HTML page",
+        "responses": {
+          "200": {
+            "description": "Statistics HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/about": {
+      "get": {
+        "summary": "Serve about page",
+        "description": "Serve the about HTML page",
+        "responses": {
+          "200": {
+            "description": "About HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/check": {
+      "get": {
+        "summary": "Serve report check page",
+        "description": "Serve the report check HTML page",
+        "responses": {
+          "200": {
+            "description": "Check HTML page",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/favicon.ico": {
+      "get": {
+        "summary": "Serve favicon",
+        "description": "Serve the favicon.ico file",
+        "responses": {
+          "200": {
+            "description": "Favicon file",
+            "content": {
+              "image/x-icon": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ws": {
+      "get": {
+        "summary": "WebSocket connection",
+        "description": "Handle WebSocket connections for real-time dashboard updates",
+        "responses": {
+          "101": {
+            "description": "WebSocket connection established"
+          }
+        }
+      }
+    },
+    "/api/exams": {
+      "get": {
+        "summary": "Get exams",
+        "description": "Provide paginated exam data with optional filters",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "reviewed",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["any", "yes", "no"]
+            },
+            "description": "Filter by review status"
+          },
+          {
+            "name": "positive",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["any", "yes", "no"]
+            },
+            "description": "Filter by AI prediction"
+          },
+          {
+            "name": "correct",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["any", "yes", "no"]
+            },
+            "description": "Filter by correctness status"
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by anatomic region"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by processing status"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by patient name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exams data with pagination info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exams": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Exam"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "pages": {
+                      "type": "integer"
+                    },
+                    "filters": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "summary": "Get statistics",
+        "description": "Provide statistical data for the dashboard",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statistical data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stats"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "summary": "Get configuration",
+        "description": "Provide global configuration parameters to the frontend",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Configuration parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Config"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/regions": {
+      "get": {
+        "summary": "Get regions",
+        "description": "Provide supported regions for the frontend dropdown",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of regions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/patients": {
+      "get": {
+        "summary": "Get patients",
+        "description": "Provide paginated patient data with optional filters",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by patient name or CNP"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Patients data with pagination info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "patients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "cnp": {
+                            "type": "string",
+                            "description": "Patient CNP (Romanian personal identification number)"
+                          },
+                          "id": {
+                            "type": "string",
+                            "description": "Patient ID from hospital system"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "Patient full name"
+                          },
+                          "age": {
+                            "type": "integer",
+                            "description": "Patient age in years"
+                          },
+                          "sex": {
+                            "type": "string",
+                            "enum": ["M", "F", "O"],
+                            "description": "Patient sex (M, F, or O)"
+                          }
+                        }
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "pages": {
+                      "type": "integer"
+                    },
+                    "filters": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/patients/{cnp}": {
+      "get": {
+        "summary": "Get patient by CNP",
+        "description": "Provide a single patient's data by CNP",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "cnp",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Patient CNP"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Patient data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cnp": {
+                      "type": "string",
+                      "description": "Patient CNP (Romanian personal identification number)"
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Patient ID from hospital system"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Patient full name"
+                    },
+                    "age": {
+                      "type": "integer",
+                      "description": "Patient age in years"
+                    },
+                    "sex": {
+                      "type": "string",
+                      "enum": ["M", "F", "O"],
+                      "description": "Patient sex (M, F, or O)"
+                    },
+                    "exams": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "List of exam UIDs for this patient"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Patient not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/exams/{uid}": {
+      "get": {
+        "summary": "Get exam by UID",
+        "description": "Provide a single exam's data by UID",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "uid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exam UID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exam data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Exam"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Exam not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/radreview": {
+      "post": {
+        "summary": "Radiologist review",
+        "description": "Record radiologist's review of an exam as normal or abnormal",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "string",
+                    "description": "Unique identifier of the exam"
+                  },
+                  "normal": {
+                    "type": "boolean",
+                    "description": "Whether the radiologist marked the case as normal"
+                  }
+                },
+                "required": ["uid", "normal"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Review status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/requeue": {
+      "post": {
+        "summary": "Re-queue exam",
+        "description": "Re-queue an exam for processing",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "string",
+                    "description": "Unique identifier of the exam"
+                  }
+                },
+                "required": ["uid"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Re-queue status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dicomquery": {
+      "post": {
+        "summary": "Trigger DICOM query",
+        "description": "Trigger a manual DICOM query/retrieve operation",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/check": {
+      "post": {
+        "summary": "Check report",
+        "description": "Analyze a free-text radiology report for pathological findings",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckReportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Analysis results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckReportResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/spec": {
+      "get": {
+        "summary": "Get API specification",
+        "description": "Serve the OpenAPI specification file",
+        "responses": {
+          "200": {
+            "description": "OpenAPI specification",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "basicAuth": []
+    }
+  ]
+}
