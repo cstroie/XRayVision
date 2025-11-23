@@ -3542,6 +3542,31 @@ async def send_exam_to_openai(exam, max_retries = 3):
         bool: True if successfully processed, False otherwise
     """
     try:
+        # Try to get additional patient and exam information from FHIR before processing
+        patient_cnp = exam['patient']['cnp']
+        if patient_cnp:
+            async with aiohttp.ClientSession() as session:
+                # Get patient information from FHIR
+                fhir_patient = await get_fhir_patient(session, patient_cnp)
+                if fhir_patient:
+                    # Update patient ID if found
+                    if 'id' in fhir_patient:
+                        exam['patient']['id'] = fhir_patient['id']
+                        # Update in database
+                        db_update_patient_id(patient_cnp, fhir_patient['id'])
+                    
+                    # Get patient name if available
+                    if 'name' in fhir_patient and fhir_patient['name']:
+                        try:
+                            # FHIR name is typically an array with given/family elements
+                            names = fhir_patient['name'][0]
+                            if 'given' in names and 'family' in names:
+                                given_names = ' '.join(names['given'])
+                                family_name = names['family']
+                                exam['patient']['name'] = f"{given_names} {family_name}"
+                        except Exception as e:
+                            logging.debug(f"Could not extract patient name from FHIR: {e}")
+        
         # Read the PNG file
         with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
             image_bytes = f.read()
