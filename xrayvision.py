@@ -4094,18 +4094,20 @@ async def query_retrieve_loop():
     Periodically query the remote DICOM server for new studies.
 
     Runs an infinite loop that queries the remote PACS for new CR studies
-    every 15 minutes (900 seconds). Can be disabled with the --no-query flag.
+    every 4-6 minutes (240-360 seconds). Can be disabled with the --no-query flag.
     Updates the next_query timestamp for dashboard display.
     """
     if NO_QUERY:
         logging.warning(f"Automatic Query/Retrieve disabled.")
     while not NO_QUERY:
         await query_and_retrieve()
+        # Random delay between 4 and 6 minutes (240-360 seconds)
+        delay = random.randint(240, 360)
         current_time = datetime.now()
         global next_query
-        next_query = current_time + timedelta(seconds = 900)
+        next_query = current_time + timedelta(seconds = delay)
         logging.debug(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
-        await asyncio.sleep(900)
+        await asyncio.sleep(delay)
 
 
 async def maintenance_loop():
