@@ -533,10 +533,10 @@
                         <figure class="xray">
                             <img src="/images/${item.uid}.png" alt="Processed Image" onclick="openLightbox('/images/${item.uid}.png', '${sanitize(formattedPatientName)}', '${sanitize(text)}', ${isCorrect}, ${isPositive})">
                             <div role="group">
-                                <button class="abnormal" onclick="radreview('${item.uid}', false)">⚠️ Abnormal</button>
-                                <button class="normal" onclick="radreview('${item.uid}', true)">✓ Normal</button>
-                                <button class="secondary " onclick="lookagain('${item.uid}')">Look again</button>
-                                <button class="secondary " onclick="getrad('${item.uid}')">Check report</button>
+                                <button class="abnormal" onclick="radreview('${item.uid}', false)" title="Abnormal">&#x26A0;</button>
+                                <button class="normal" onclick="radreview('${item.uid}', true)" title="Normal">&#x2713;</button>
+                                <button class="secondary" onclick="lookagain('${item.uid}')" title="Look again">&#x1F440;</button>
+                                <button class="secondary" onclick="getrad('${item.uid}')" title="Check report">&#x1F4DD;</button>
                             </div>
                         </figure>
                         <aside class="details">
