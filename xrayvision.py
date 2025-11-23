@@ -1262,7 +1262,7 @@ def db_check_already_processed(uid):
     return len(results) > 0
 
 
-def db_check_study_series_exists(study_uid, series_uid=None):
+def db_check_study_exists(study_uid):
     """
     Check if a study is already in the database.
 
@@ -1928,7 +1928,7 @@ async def query_and_retrieve(minutes=15):
                 if status and status.Status in (0xFF00, 0xFF01):
                     study_instance_uid = identifier.StudyInstanceUID
                     # Check if this study is already in our database
-                    if db_check_study_series_exists(study_instance_uid):
+                    if db_check_study_exists(study_instance_uid):
                         logging.info(f"Skipping Study {study_instance_uid} - already in database")
                         continue
                     logging.info(f"Found Study {study_instance_uid}")
