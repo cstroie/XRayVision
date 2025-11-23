@@ -2206,6 +2206,13 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
     Returns:
         str: Path to the saved PNG file
     """
+    # Check if PNG file already exists
+    base_name = os.path.splitext(os.path.basename(dicom_file))[0]
+    png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
+    if os.path.exists(png_file):
+        logging.info(f"PNG file already exists: {png_file}")
+        return png_file
+        
     try:
         # Get the dataset
         ds = dcmread(dicom_file)
@@ -2238,8 +2245,6 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
         # Auto adjust gamma
         image = apply_gamma_correction(image, None)
         # Save the PNG file
-        base_name = os.path.splitext(os.path.basename(dicom_file))[0]
-        png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
         cv2.imwrite(png_file, image)
         logging.info(f"Converted PNG saved to {png_file}")
         # Return the PNG file name
