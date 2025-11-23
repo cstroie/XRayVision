@@ -2793,6 +2793,39 @@ async def requeue_exam(request):
         return web.json_response({'status': 'error', 'message': str(e)}, status=500)
 
 
+async def check_rad_report(request):
+    """Trigger checking of radiologist report for an exam.
+
+    Sets an exam's status to 'check' so its radiologist report will be processed.
+    
+    Args:
+        request: aiohttp request object with JSON body containing:
+            - uid: The unique identifier of the exam to check
+
+    Returns:
+        web.json_response: JSON response with check status
+    """
+    try:
+        data = await request.json()
+        uid = data.get('uid')
+        
+        if not uid:
+            return web.json_response({'status': 'error', 'message': 'UID is required'}, status=400)
+        
+        # Set the exam status to 'check' for FHIR report processing
+        db_set_status(uid, 'check')
+        
+        logging.info(f"Exam {uid} queued for radiologist report checking.")
+        # Notify the queue
+        QUEUE_EVENT.set()
+        payload = {'uid': uid}
+        await broadcast_dashboard_update(event="check_rad", payload=payload)
+        return web.json_response({'status': 'success', 'message': f'Exam {uid} queued for report checking'})
+    except Exception as e:
+        logging.error(f"Error checking radiologist report: {e}")
+        return web.json_response({'status': 'error', 'message': str(e)}, status=500)
+
+
 async def check_report(report_text):
     """Analyze a free-text radiology report for pathological findings.
 
@@ -3646,6 +3679,7 @@ async def start_dashboard():
     # API endpoints - Actions
     app.router.add_post('/api/radreview', rad_review)
     app.router.add_post('/api/requeue', requeue_exam)
+    app.router.add_post('/api/checkrad', check_rad_report)
     app.router.add_post('/api/dicomquery', dicom_query)
     app.router.add_post('/api/check', check_report_handler)
     

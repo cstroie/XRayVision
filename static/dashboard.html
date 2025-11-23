@@ -327,6 +327,26 @@
             });
         }
 
+        function checkrad(uid) {
+            fetch('/api/checkrad', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: uid })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    showToast("Exam queued for report checking");
+                } else {
+                    showToast("Error: " + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error sending check report request:', error);
+                showToast("Error sending check report request");
+            });
+        }
+
         function triggerQuery() {
             const hours = document.getElementById('queryInterval').value;
             if (!hours) {
@@ -512,6 +532,7 @@
                                 <button class="abnormal" onclick="radreview('${item.uid}', false)">⚠️ Abnormal</button>
                                 <button class="normal" onclick="radreview('${item.uid}', true)">✓ Normal</button>
                                 <button class="secondary " onclick="lookagain('${item.uid}')">Look again</button>
+                                <button class="secondary " onclick="checkrad('${item.uid}')">Check report</button>
                             </div>
                         </figure>
                         <aside class="details">
