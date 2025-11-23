@@ -2812,10 +2812,24 @@ async def check_rad_report(request):
         if not uid:
             return web.json_response({'status': 'error', 'message': 'UID is required'}, status=400)
         
-        # Set the exam status to 'check' for FHIR report processing
-        db_set_status(uid, 'check')
+        # Get exam details from database
+        exams, _ = db_get_exams(search=uid)
+        if not exams:
+            return web.json_response({'status': 'error', 'message': 'Exam not found'}, status=404)
         
-        logging.info(f"Exam {uid} queued for radiologist report checking.")
+        exam = exams[0]
+        
+        # If patient ID is not known, we can't process the report
+        if not exam['patient']['id']:
+            # Set status to check so it will be processed by fhir_loop
+            db_set_status(uid, 'check')
+            logging.info(f"Exam {uid} queued for radiologist report checking (no patient ID).")
+        else:
+            # Process the exam immediately using existing patient ID
+            async with aiohttp.ClientSession() as session:
+                await process_single_exam_without_rad_report(session, exam['exam'], exam['patient']['id'])
+            logging.info(f"Exam {uid} processed for radiologist report checking.")
+        
         # Notify the queue
         QUEUE_EVENT.set()
         payload = {'uid': uid}
