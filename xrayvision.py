@@ -1091,13 +1091,19 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if 'search' in filters:
         conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.cnp) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
-        params.extend([search_term, search_term, filters['search']])
+        params.extend([search_term, search_term, search_term])
     if 'diagnostic' in filters:
         conditions.append("LOWER(rr.summary) = LOWER(?)")
         params.append(filters['diagnostic'])
     if 'radiologist' in filters:
         conditions.append("LOWER(rr.radiologist) = LOWER(?)")
         params.append(filters['radiologist'])
+    if 'uid' in filters:
+        conditions.append("e.uid = LOWER(?)")
+        params.append(filters['uid'])
+    if 'cnp' in filters:
+        conditions.append("p.cnp = ?")
+        params.append(filters['cnp'])
 
     # Build WHERE clause
     where = ""
@@ -1132,7 +1138,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
     # Get the exams
     exams = []
-    rows = db_execute_query(query, params, fetch_mode='all')
+    rows = db_execute_query(query, tuple(params), fetch_mode='all')
     if rows:
         for row in rows:
             # Unpack row into named variables for better readability
@@ -2077,7 +2083,7 @@ def extract_dicom_metadata(ds):
             'region': str(ds.ProtocolName),
             'study': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
             'series': str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None,
-            'id': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,  # HIS study ID
+            'id': None,
         }
     }
     # Add county if available
@@ -2661,7 +2667,7 @@ async def exam_handler(request):
         uid = request.match_info['uid']
         
         # Get exam from database
-        exams, _ = db_get_exams(search=uid)
+        exams, _ = db_get_exams(limit=1, uid=uid)
         if not exams:
             return web.json_response({"error": "Exam not found"}, status=404)
         
@@ -2744,7 +2750,7 @@ async def rad_review(request):
         db_rad_review(uid, normal, radiologist)
         
         # Get the updated exam data
-        exam_data = db_get_exams(limit=1, search=uid)
+        exam_data = db_get_exams(limit=1, uid=uid)
         logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}, which {exam_data['report']['correct'] and 'validates' or 'invalidates'} the AI report.")
         await broadcast_dashboard_update(event = "radreview", payload = exam_data)
         response = {'status': 'success'}
@@ -2793,7 +2799,7 @@ async def requeue_exam(request):
         return web.json_response({'status': 'error', 'message': str(e)}, status=500)
 
 
-async def check_rad_report(request):
+async def get_report_handler(request):
     """Trigger checking of radiologist report for an exam.
 
     Sets an exam's status to 'check' so its radiologist report will be processed.
@@ -2813,7 +2819,7 @@ async def check_rad_report(request):
             return web.json_response({'status': 'error', 'message': 'UID is required'}, status=400)
         
         # Get exam details from database
-        exams, _ = db_get_exams(search=uid)
+        exams, _ = db_get_exams(limit=1, uid=uid)
         if not exams:
             return web.json_response({'status': 'error', 'message': 'Exam not found'}, status=404)
         
@@ -2824,24 +2830,20 @@ async def check_rad_report(request):
             async with aiohttp.ClientSession() as session:
                 patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'])
                 if patient_id:
-                    # Process the exam immediately using the newly found patient ID
-                    await process_single_exam_without_rad_report(session, exam['exam'], patient_id)
-                    logging.info(f"Exam {uid} processed for radiologist report checking.")
-                else:
-                    # Set status to check so it will be processed by fhir_loop
-                    db_set_status(uid, 'check')
-                    logging.info(f"Exam {uid} queued for radiologist report checking (no patient ID).")
-        else:
+                    exam['patient']['id'] = patient_id
+
+        if exam['patient']['id']:
+            current_exam = exam['exam']
+            current_exam['uid'] = uid
             # Process the exam immediately using existing patient ID
             async with aiohttp.ClientSession() as session:
-                await process_single_exam_without_rad_report(session, exam['exam'], exam['patient']['id'])
-            logging.info(f"Exam {uid} processed for radiologist report checking.")
-        
+                await process_single_exam_without_rad_report(session, current_exam, exam['patient']['id'])
+     
         # Notify the queue
         QUEUE_EVENT.set()
         payload = {'uid': uid}
-        await broadcast_dashboard_update(event="check_rad", payload=payload)
-        return web.json_response({'status': 'success', 'message': f'Exam {uid} queued for report checking'})
+        await broadcast_dashboard_update(event="radreport", payload=payload)
+        return web.json_response({'status': 'success', 'message': f'Report retrieved for exam {uid}'})
     except Exception as e:
         logging.error(f"Error checking radiologist report: {e}")
         return web.json_response({'status': 'error', 'message': str(e)}, status=500)
@@ -3698,11 +3700,11 @@ async def start_dashboard():
     app.router.add_get('/api/config', config_handler)
     
     # API endpoints - Actions
+    app.router.add_post('/api/dicomquery', dicom_query)
     app.router.add_post('/api/radreview', rad_review)
     app.router.add_post('/api/requeue', requeue_exam)
-    app.router.add_post('/api/checkrad', check_rad_report)
-    app.router.add_post('/api/dicomquery', dicom_query)
-    app.router.add_post('/api/check', check_report_handler)
+    app.router.add_post('/api/getrad', get_report_handler)
+    app.router.add_post('/api/checkrad', check_report_handler)
     
     # API endpoints - Metadata
     app.router.add_get('/api/spec', serve_api_spec)
