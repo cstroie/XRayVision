@@ -92,7 +92,7 @@ DEFAULT_CONFIG = {
         'LOAD_DICOM': 'False',
         'NO_QUERY': 'False',
         'ENABLE_NTFY': 'False',
-        'QUERY_INTERVAL': '18000'
+        'QUERY_INTERVAL': '300'
     }
 }
 
