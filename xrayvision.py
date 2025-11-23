@@ -3940,7 +3940,7 @@ async def process_fhir_report_with_llm(exam_uid):
         model=MODEL_NAME,
         latency=processing_time
     )
-    logging.info(f"Updated FHIR report for exam {exam_uid} with LLM analysis results")
+    logging.info(f"Updated FHIR report for exam {exam_uid} with summary '{summary}'")
 
 async def process_single_exam_without_rad_report(session, exam, patient_id):
     """
