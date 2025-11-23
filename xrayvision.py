@@ -3173,18 +3173,11 @@ def validate_romanian_cnp(patient_cnp):
     
     # Validate date components
     # Determine century based on gender digit
-    if gender_digit in [1, 2]:
-        full_year = 1900 + year
-    elif gender_digit in [3, 4]:
-        full_year = 1800 + year
-    elif gender_digit in [5, 6]:
-        full_year = 2000 + year
-    elif gender_digit in [7, 8]:
-        full_year = 2000 + year  # For people born after 2000
-    elif gender_digit == 9:
-        full_year = 1900 + year  # Foreign residents
-    else:
+    century_map = {1: 1900, 2: 1900, 3: 1800, 4: 1800, 5: 2000, 6: 2000, 7: 2000, 8: 2000, 9: 1900}
+    if gender_digit not in century_map:
         return {'valid': False}
+    
+    full_year = century_map[gender_digit] + year
     
     # Validate month (1-12) and day (1-31) with precise date validation
     try:
@@ -3193,7 +3186,8 @@ def validate_romanian_cnp(patient_cnp):
         return {'valid': False}
     
     # Validate county code (01-52 excluding 47-50, 70-79, 90-99)
-    if not ((1 <= county <= 52 and not (47 <= county <= 50)) or (70 <= county <= 79) or (90 <= county <= 99)):
+    valid_counties = set(range(1, 47)) | set(range(51, 53)) | set(range(70, 80)) | set(range(90, 100))
+    if county not in valid_counties:
         return {'valid': False}
     
     # Validate checksum using the official algorithm
