@@ -521,7 +521,7 @@ def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') ->
                 conn.commit()
                 return cursor.rowcount
         except Exception as e:
-            return handle_error(e, "database query execution", None, raise_on_error=True)
+            return handle_error(e, "database query execution", None, raise_on_error=False)
 
 
 def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
@@ -551,7 +551,7 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3)
                     import time
                     time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
                     continue
-                return handle_error(e, "database query with retry", None, raise_on_error=True)
+                return handle_error(e, "database query with retry", None, raise_on_error=False)
     return None
 
 
