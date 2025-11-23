@@ -2131,18 +2131,18 @@ def extract_dicom_metadata(ds):
         'uid': str(ds.SOPInstanceUID),
         'patient': {
             'name':  str(ds.PatientName),
-            'cnp':    str(ds.PatientID),
+            'cnp':   str(ds.PatientID),
             'age':   age,
             'sex':   str(ds.PatientSex),
             'bdate': str(ds.PatientBirthDate),
         },
         'exam': {
             'protocol': str(ds.ProtocolName),
-            'created': created,
-            'region': str(ds.ProtocolName),
-            'study': str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
-            'series': str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None,
-            'id': None,
+            'created':  created,
+            'region':   str(ds.ProtocolName),
+            'study':    str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
+            'series':   str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None,
+            'id':       None,
         }
     }
     # Add county if available
