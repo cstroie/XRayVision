@@ -1910,6 +1910,10 @@ async def query_and_retrieve(minutes=15):
             for (status, identifier) in responses:
                 if status and status.Status in (0xFF00, 0xFF01):
                     study_instance_uid = identifier.StudyInstanceUID
+                    # Check if this study is already in our database
+                    if db_check_study_series_exists(study_instance_uid):
+                        logging.info(f"Skipping Study {study_instance_uid} - already in database")
+                        continue
                     logging.info(f"Found Study {study_instance_uid}")
                     await send_c_move(ae, study_instance_uid)
         # Release the association
