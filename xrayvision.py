@@ -126,7 +126,7 @@ try:
     # Check for local configuration file to override settings
     local_config_files = config.read('local.cfg')
     if local_config_files:
-        logging.info("Local configuration loaded from local.cfg")
+        logging.debug("Local configuration loaded from local.cfg")
 except Exception as e:
     logging.debug("Using default configuration values")
 
@@ -2050,7 +2050,7 @@ def dicom_store(event):
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
         # Save the DICOM file
         ds.save_as(dicom_file, enforce_file_format = True)
-        logging.info(f"DICOM file saved to {dicom_file}")
+        logging.debug(f"DICOM file saved to {dicom_file}")
         # Process the DICOM file
         process_dicom_file(dicom_file, uid)
         # Notify the queue
@@ -2074,7 +2074,7 @@ async def load_existing_dicom_files():
             if db_check_already_processed(uid):
                 logging.debug(f"Skipping already processed image {uid}")
             else:
-                logging.info(f"Adding {uid} into processing queue...")
+                logging.debug(f"Adding {uid} into processing queue...")
                 full_path = os.path.join(IMAGES_DIR, dicom_file)
                 # Process the DICOM file
                 process_dicom_file(full_path, uid)
@@ -2269,7 +2269,7 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
     base_name = os.path.splitext(os.path.basename(dicom_file))[0]
     png_file = os.path.join(IMAGES_DIR, f"{base_name}.png")
     if os.path.exists(png_file):
-        logging.info(f"PNG file already exists: {png_file}")
+        logging.debug(f"PNG file already exists: {png_file}")
         return png_file
         
     try:
@@ -2305,7 +2305,7 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
         image = apply_gamma_correction(image, None)
         # Save the PNG file
         cv2.imwrite(png_file, image)
-        logging.info(f"Converted PNG saved to {png_file}")
+        logging.debug(f"Converted PNG saved to {png_file}")
         # Return the PNG file name
         return png_file
     except Exception as e:
@@ -2774,7 +2774,7 @@ async def dicom_query(request):
     try:
         data = await request.json()
         hours = int(data.get('hours', 3))
-        logging.info(f"Manual QueryRetrieve triggered for the last {hours} hours.")
+        logging.debug(f"Manual QueryRetrieve triggered for the last {hours} hours.")
         await query_and_retrieve(hours * 60)
         return web.json_response({'status': 'success',
                                   'message': f'Query triggered for the last {hours} hours.'})
@@ -2926,7 +2926,7 @@ async def check_report(report_text):
         dict: Analysis results with pathologic, severity, and summary
     """
     try:
-        logging.info(f"Report check request received with report length: {len(report_text)} characters")
+        logging.debug(f"Report check request received with report length: {len(report_text)} characters")
         
         if not report_text:
             logging.warning("Report check request failed: no report text provided")
@@ -2992,7 +2992,7 @@ async def check_report(report_text):
                 if not isinstance(parsed_response["summary"], str):
                     raise ValueError("Invalid summary value in AI response")
                 
-                logging.info(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
+                logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
                 return parsed_response
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
@@ -3131,7 +3131,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
 async def send_ntfy_notification(uid, report, info):
     """Send notification to ntfy.sh with image and report"""
     if not ENABLE_NTFY:
-        logging.info("NTFY notifications are disabled")
+        logging.debug("NTFY notifications are disabled")
         return
 
     try:
@@ -3154,9 +3154,9 @@ async def send_ntfy_notification(uid, report, info):
                 headers=headers
             ) as resp:
                 if resp.status == 200:
-                    logging.info("Successfully sent ntfy notification")
+                    logging.debug("Successfully sent ntfy notification")
                 else:
-                    logging.error(f"Notification failed with status {resp.status}: {await resp.text()}")
+                    logging.warning(f"Notification failed with status {resp.status}: {await resp.text()}")
     except Exception as e:
         logging.error(f"Failed to send ntfy notification: {e}")
 
@@ -3846,7 +3846,7 @@ async def relay_to_openai_loop():
                     if not KEEP_DICOM:
                         try:
                             os.remove(dicom_file)
-                            logging.info(f"DICOM file {dicom_file} deleted after processing.")
+                            logging.debug(f"DICOM file {dicom_file} deleted after processing.")
                         except Exception as e:
                             logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
                     else:
@@ -4076,7 +4076,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
             logging.warning(f"Could not extract justification from FHIR report: {e}")
 
         # Log the retrieved report
-        logging.info(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
+        logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
         # Update the radiologist report in our database
         db_update('rad_reports', 'uid = ?', (exam_uid,),
                   text=report_text,
