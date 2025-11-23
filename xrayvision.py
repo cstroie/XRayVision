@@ -1876,7 +1876,7 @@ def db_requeue_exam(uid):
 
 
 # DICOM network operations
-async def query_and_retrieve(minutes=15):
+async def query_and_retrieve(minutes=60):
     """
     Query and Retrieve new studies from the remote DICOM server.
 
@@ -1885,7 +1885,7 @@ async def query_and_retrieve(minutes=15):
     time ranges that cross midnight by splitting into two separate queries.
 
     Args:
-        minutes: Number of minutes to look back for new studies (default: 15)
+        minutes: Number of minutes to look back for new studies (default: 60)
     """
     ae = AE(ae_title=AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
