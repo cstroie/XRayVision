@@ -92,7 +92,7 @@ DEFAULT_CONFIG = {
         'LOAD_DICOM': 'False',
         'NO_QUERY': 'False',
         'ENABLE_NTFY': 'False',
-        'QUERY_INTERVAL_MINUTES': '300'
+        'QUERY_INTERVAL': '18000'
     }
 }
 
@@ -298,7 +298,7 @@ KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DI
 LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
-QUERY_INTERVAL_MINUTES = config.getint('processing', 'QUERY_INTERVAL_MINUTES')  # Base interval for query/retrieve in minutes
+QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')  # Base interval for query/retrieve in seconds
 
 # Load region identification rules from config
 REGION_RULES = {}
@@ -4105,9 +4105,9 @@ async def query_retrieve_loop():
     while not NO_QUERY:
         await query_and_retrieve()
         # Calculate delay with +/- 30% variation
-        variation = QUERY_INTERVAL_MINUTES * 0.3
-        min_delay = max(1, int((QUERY_INTERVAL_MINUTES - variation) * 60))  # At least 1 second
-        max_delay = int((QUERY_INTERVAL_MINUTES + variation) * 60)
+        variation = QUERY_INTERVAL * 0.3
+        min_delay = max(1, int(QUERY_INTERVAL - variation))
+        max_delay = int(QUERY_INTERVAL + variation)
         delay = random.randint(min_delay, max_delay)
         current_time = datetime.now()
         global next_query
