@@ -91,7 +91,8 @@ DEFAULT_CONFIG = {
         'KEEP_DICOM': 'False',
         'LOAD_DICOM': 'False',
         'NO_QUERY': 'False',
-        'ENABLE_NTFY': 'False'
+        'ENABLE_NTFY': 'False',
+        'QUERY_INTERVAL_MINUTES': '300'
     }
 }
 
@@ -297,6 +298,7 @@ KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DI
 LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
+QUERY_INTERVAL_MINUTES = config.getint('processing', 'QUERY_INTERVAL_MINUTES')  # Base interval for query/retrieve in minutes
 
 # Load region identification rules from config
 REGION_RULES = {}
@@ -4094,19 +4096,23 @@ async def query_retrieve_loop():
     Periodically query the remote DICOM server for new studies.
 
     Runs an infinite loop that queries the remote PACS for new CR studies
-    every 4-6 minutes (240-360 seconds). Can be disabled with the --no-query flag.
+    at a configurable interval with +/- 30% random variation.
+    Can be disabled with the --no-query flag.
     Updates the next_query timestamp for dashboard display.
     """
     if NO_QUERY:
         logging.warning(f"Automatic Query/Retrieve disabled.")
     while not NO_QUERY:
         await query_and_retrieve()
-        # Random delay between 4 and 6 minutes (240-360 seconds)
-        delay = random.randint(240, 360)
+        # Calculate delay with +/- 30% variation
+        variation = QUERY_INTERVAL_MINUTES * 0.3
+        min_delay = max(1, int((QUERY_INTERVAL_MINUTES - variation) * 60))  # At least 1 second
+        max_delay = int((QUERY_INTERVAL_MINUTES + variation) * 60)
+        delay = random.randint(min_delay, max_delay)
         current_time = datetime.now()
         global next_query
         next_query = current_time + timedelta(seconds = delay)
-        logging.debug(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')}")
+        logging.debug(f"Next Query/Retrieve at {next_query.strftime('%Y-%m-%d %H:%M:%S')} (in {delay} seconds)")
         await asyncio.sleep(delay)
 
 
