@@ -3153,87 +3153,80 @@ def validate_romanian_cnp(patient_cnp):
                   'county': int (county code, if valid)
               }
     """
-    try:
-        # Ensure we have a string and clean it
-        pid = str(patient_cnp).strip()
-        # Check if it's exactly 13 digits
-        if not pid or len(pid) != 13 or not pid.isdigit():
-            return {'valid': False}
-        # Extract components
-        gender_digit = int(pid[0])
-        year = int(pid[1:3])
-        month = int(pid[3:5])
-        day = int(pid[5:7])
-        county = int(pid[7:9])
-        serial = int(pid[9:12])
-        checksum_digit = int(pid[12])
-        # Validate gender digit (1-9)
-        if gender_digit < 1 or gender_digit > 9:
-            return {'valid': False}
-        # Validate date components
-        # Determine century based on gender digit
-        if gender_digit in [1, 2]:
-            full_year = 1900 + year
-        elif gender_digit in [3, 4]:
-            full_year = 1800 + year
-        elif gender_digit in [5, 6]:
-            full_year = 2000 + year
-        elif gender_digit in [7, 8]:
-            full_year = 2000 + year  # For people born after 2000
-        elif gender_digit == 9:
-            full_year = 1900 + year  # Foreign residents
-        else:
-            return {'valid': False}
-        # Validate month (1-12)
-        if month < 1 or month > 12:
-            return {'valid': False}
-        # Validate day (1-31)
-        if day < 1 or day > 31:
-            return {'valid': False}
-        # More precise date validation
-        try:
-            birth_date = datetime(full_year, month, day)
-        except ValueError:
-            return {'valid': False}
-        # Validate county code (01-52 excluding 47-50, 70-79, 90-99)
-        if not ((1 <= county <= 52 and not (47 <= county <= 50)) or (70 <= county <= 79) or (90 <= county <= 99)):
-            return {'valid': False}
-        # Get county name
-        county_name = county_names.get(county, "Unknown")
-        # Validate checksum using the official algorithm
-        # Weights for each digit position
-        weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
-        # Calculate weighted sum
-        weighted_sum = sum(int(pid[i]) * weights[i] for i in range(12))
-        # Calculate checksum
-        checksum = weighted_sum % 11
-        if checksum == 10:
-            checksum = 1
-        # Compare with provided checksum digit
-        if checksum != checksum_digit:
-            return {'valid': False}
-        
-        # Calculate current age
-        today = datetime.now()
-        age = today.year - birth_date.year
-        # Adjust if birthday hasn't occurred this year
-        if (today.month, today.day) < (birth_date.month, birth_date.day):
-            age -= 1
-        
-        # Determine sex
-        sex = 'M' if gender_digit % 2 == 1 else 'F'
-        
-        # Return validation result with parsed information
-        return {
-            'valid': True,
-            'birth_date': birth_date,
-            'age': age,
-            'sex': sex,
-            'county': county
-        }
-    except Exception as e:
-        logging.debug(f"Error validating Romanian CNP {patient_cnp}: {e}")
+    # Ensure we have a string and clean it
+    pid = str(patient_cnp).strip()
+    # Check if it's exactly 13 digits
+    if not pid or len(pid) != 13 or not pid.isdigit():
         return {'valid': False}
+    
+    # Extract components
+    gender_digit = int(pid[0])
+    year = int(pid[1:3])
+    month = int(pid[3:5])
+    day = int(pid[5:7])
+    county = int(pid[7:9])
+    checksum_digit = int(pid[12])
+    
+    # Validate gender digit (1-9)
+    if gender_digit < 1 or gender_digit > 9:
+        return {'valid': False}
+    
+    # Validate date components
+    # Determine century based on gender digit
+    if gender_digit in [1, 2]:
+        full_year = 1900 + year
+    elif gender_digit in [3, 4]:
+        full_year = 1800 + year
+    elif gender_digit in [5, 6]:
+        full_year = 2000 + year
+    elif gender_digit in [7, 8]:
+        full_year = 2000 + year  # For people born after 2000
+    elif gender_digit == 9:
+        full_year = 1900 + year  # Foreign residents
+    else:
+        return {'valid': False}
+    
+    # Validate month (1-12) and day (1-31) with precise date validation
+    try:
+        birth_date = datetime(full_year, month, day)
+    except ValueError:
+        return {'valid': False}
+    
+    # Validate county code (01-52 excluding 47-50, 70-79, 90-99)
+    if not ((1 <= county <= 52 and not (47 <= county <= 50)) or (70 <= county <= 79) or (90 <= county <= 99)):
+        return {'valid': False}
+    
+    # Validate checksum using the official algorithm
+    # Weights for each digit position
+    weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
+    # Calculate weighted sum
+    weighted_sum = sum(int(pid[i]) * weights[i] for i in range(12))
+    # Calculate checksum
+    checksum = weighted_sum % 11
+    if checksum == 10:
+        checksum = 1
+    # Compare with provided checksum digit
+    if checksum != checksum_digit:
+        return {'valid': False}
+    
+    # Calculate current age
+    today = datetime.now()
+    age = today.year - birth_date.year
+    # Adjust if birthday hasn't occurred this year
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        age -= 1
+    
+    # Determine sex
+    sex = 'M' if gender_digit % 2 == 1 else 'F'
+    
+    # Return validation result with parsed information
+    return {
+        'valid': True,
+        'birth_date': birth_date,
+        'age': age,
+        'sex': sex,
+        'county': county
+    }
 
 
 def compute_age_from_cnp(patient_cnp):
