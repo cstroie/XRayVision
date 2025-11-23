@@ -1262,6 +1262,28 @@ def db_check_already_processed(uid):
     return len(results) > 0
 
 
+def db_check_study_series_exists(study_uid, series_uid=None):
+    """
+    Check if a study/series is already in the database.
+
+    Args:
+        study_uid: Study Instance UID to check
+        series_uid: Optional Series Instance UID to check
+
+    Returns:
+        bool: True if study/series exists in the database
+    """
+    if series_uid:
+        # Check for specific study and series combination
+        results = db_select('exams', ['uid'], where_clause='study = ? AND series = ?', 
+                           where_params=(study_uid, series_uid))
+    else:
+        # Check for any exam with this study UID
+        results = db_select('exams', ['uid'], where_clause='study = ?', 
+                           where_params=(study_uid,))
+    return len(results) > 0
+
+
 async def db_get_stats():
     """
     Retrieve comprehensive statistics from the database for dashboard
