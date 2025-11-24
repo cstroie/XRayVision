@@ -284,7 +284,7 @@ article>footer {
     text-align: center;
     font-size: 0.8rem;
     padding: 0.25rem 0.5rem;
-    color: var(--pico-color-slate-400);
+    color: var(--pico-muted-color);
 }
 
 .image-card .xray img {
