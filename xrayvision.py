@@ -1051,7 +1051,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         limit: Maximum number of exams to return (default: PAGE_SIZE)
         offset: Number of exams to skip for pagination (default: 0)
         **filters: Optional filters for querying exams:
-            - reviewed: Filter by review status (0/1)
+            - reviewed: Filter by review status (0/1) - reviewed if severity > -1
             - positive: Filter by AI prediction (0/1)
             - correct: Filter by correctness status (0/1)
             - region: Filter by anatomic region (case-insensitive partial
