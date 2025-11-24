@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+# XRayVision - Async DICOM processor with AI and WebSocket dashboard.
 # Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -284,13 +284,13 @@ dicom_server = None  # DICOM server instance for receiving studies
 web_server = None  # Web server instance for dashboard and API
 
 # External API health
-active_openai_url = None  # Currently active OpenAI API endpoint
+active_openai_url = None  # Currently active AI API endpoint
 health_status = {
-    OPENAI_URL_PRIMARY: False,  # Health status of primary OpenAI endpoint
-    OPENAI_URL_SECONDARY: False,  # Health status of secondary OpenAI endpoint
+    OPENAI_URL_PRIMARY: False,  # Health status of primary AI endpoint
+    OPENAI_URL_SECONDARY: False,  # Health status of secondary AI endpoint
     FHIR_URL: False  # Health status of FHIR endpoint
 }
-# OpenAI timings
+# AI timings
 timings = {
     'total': 0,       # Total processing time (milliseconds)
     'average': 0      # Average processing time (milliseconds)
@@ -2830,8 +2830,6 @@ async def rad_review(request):
         return web.json_response({'status': 'error', 'message': str(e)}, status=500)
 
 
-
-
 async def requeue_exam(request):
     """Re-queue an exam for processing.
 
@@ -2963,7 +2961,7 @@ async def check_report(report_text):
             ]
         }
         
-        logging.debug(f"Sending report to OpenAI API with model: {MODEL_NAME}")
+        logging.debug(f"Sending report to AI API with model: {MODEL_NAME}")
         
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
@@ -3083,7 +3081,7 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     """Broadcast dashboard updates to all connected WebSocket clients.
 
     Sends real-time updates to dashboard clients including queue status,
-    processing information, statistics, and OpenAI health status.
+    processing information, statistics, and AI health status.
 
     Args:
         event: Optional event name for specific update types
@@ -3526,9 +3524,9 @@ async def get_fhir_diagnosticreport(session, report_id):
 
 async def send_to_openai(session, headers, payload):
     """
-    Send a request to the currently active OpenAI API endpoint.
+    Send a request to the currently active AI API endpoint.
 
-    Attempts to send a POST request to the active OpenAI endpoint with the
+    Attempts to send a POST request to the active AI endpoint with the
     provided headers and payload. Handles HTTP errors and exceptions.
 
     Args:
@@ -3540,7 +3538,7 @@ async def send_to_openai(session, headers, payload):
         dict or None: JSON response from API if successful, None otherwise
     """
     if not active_openai_url:
-        logging.error("No active OpenAI URL configured")
+        logging.error("No active AI URL configured")
         return None
         
     try:
@@ -3726,10 +3724,10 @@ def process_ai_response(response_text, exam_uid):
         report = parsed["report"].strip()
         confidence = parsed.get("confidence", 0)
         if short not in ("yes", "no") or not report:
-            raise ValueError("Invalid json format in OpenAI response")
+            raise ValueError("Invalid json format in AI response")
         return short, report, confidence
     except Exception as e:
-        logging.error(f"Rejected malformed OpenAI response: {e}")
+        logging.error(f"Rejected malformed AI response: {e}")
         logging.error(response_text)
         return None, None, None
 
@@ -3770,7 +3768,7 @@ async def handle_ai_success(exam, short, report, confidence, processing_time):
 
 async def send_exam_to_openai(exam, max_retries = 3):
     """
-    Send an exam's PNG image to the OpenAI API for analysis.
+    Send an exam's PNG image to the AI API for analysis.
 
     Processes the exam by identifying region/projection, preparing AI prompts,
     encoding the image, sending requests with retries, parsing responses,
@@ -3828,7 +3826,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     if short is None:  # Parsing failed
                         break
                         
-                    logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
+                    logging.info(f"AI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
                     
                     # Calculate timing statistics
                     global timings
@@ -3915,7 +3913,7 @@ async def start_dashboard():
 
 async def relay_to_openai_loop():
     """
-    Main processing loop that sends queued exams to the OpenAI API.
+    Main processing loop that sends queued exams to the AI API.
 
     This is the core processing function that:
     1. Continuously monitors the database for queued exams
@@ -3930,7 +3928,7 @@ async def relay_to_openai_loop():
     while True:
         # Get one file from queue
         exams, total = db_get_exams(limit = 1, status = ['queued', 'requeue', 'check'])
-        # Wait here if there are no items in queue or there is no OpenAI server
+        # Wait here if there are no items in queue or there is no AI server
         if not exams or active_openai_url is None:
             QUEUE_EVENT.clear()
             await QUEUE_EVENT.wait()
@@ -3983,9 +3981,9 @@ async def relay_to_openai_loop():
 
 async def openai_health_check():
     """
-    Periodically check the health status of OpenAI API endpoints.
+    Periodically check the health status of AI API endpoints.
 
-    Tests both primary and secondary OpenAI endpoints every 5 minutes,
+    Tests both primary and secondary AI endpoints every 5 minutes,
     updates health status tracking, selects the active endpoint based
     on health status, and signals the processing queue when endpoints
     become available.
@@ -4004,13 +4002,13 @@ async def openai_health_check():
 
         if health_status.get(OPENAI_URL_PRIMARY):
             active_openai_url = OPENAI_URL_PRIMARY
-            logging.info("Using primary OpenAI backend.")
+            logging.info("Using primary AI backend.")
         elif health_status.get(OPENAI_URL_SECONDARY):
             active_openai_url = OPENAI_URL_SECONDARY
-            logging.info("Using secondary OpenAI backend.")
+            logging.info("Using secondary AI backend.")
         else:
             active_openai_url = None
-            logging.error("No OpenAI backend is currently healthy")
+            logging.error("No AI backend is currently healthy")
         # Signal the queue
         if active_openai_url:
             QUEUE_EVENT.set()
@@ -4540,7 +4538,7 @@ async def main():
 # Command run
 if __name__ == '__main__':
     # Need to process the arguments
-    parser = argparse.ArgumentParser(description = "XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard")
+    parser = argparse.ArgumentParser(description = "XRayVision - Async DICOM processor with AI and WebSocket dashboard")
     parser.add_argument("--keep-dicom", action = "store_true", default=KEEP_DICOM, help = "Do not delete .dcm files after conversion")
     parser.add_argument("--load-dicom", action = "store_true", default=LOAD_DICOM, help = "Load existing .dcm files in queue")
     parser.add_argument("--no-query", action = "store_true", default=NO_QUERY, help = "Do not query the DICOM server automatically")
