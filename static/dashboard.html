@@ -141,7 +141,6 @@
                             <span class="patient-cnp"></span><br>
                             <span class="patient-his"></span><br>
                             <span class="exam-time"></span><br>
-                            <span class="exam-region"></span><br>
                             <span class="exam-justification"></span>
                         </p>
                     </details>
@@ -611,7 +610,6 @@
                     examClone.querySelector('.details .patient-his').style.display = 'none';
                 }
                 examClone.querySelector('.details .exam-time').innerHTML = `<small><strong>Time:</strong> <time datetime="${datetimeString}">${formattedDate} ${formattedTime}</time></small>`;
-                examClone.querySelector('.details .exam-region').innerHTML = `<small><strong>Region:</strong> ${item.exam.region}</small>`;
                 
                 // Set protocol in figcaption
                 examClone.querySelector('figcaption').textContent = item.exam.protocol;
