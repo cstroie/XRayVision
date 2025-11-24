@@ -466,6 +466,119 @@ Modificări ale protocolului de examinare radiologică pot necesita reantrenarea
 
 ## 15. Plan de Management al Riscurilor
 
+### 15.1 Identificarea Riscurilor
+
+#### 15.1.1 Riscuri Tehnice
+- **Defecțiuni Hardware**: Riscul de eșec al componentelor serverului AI, stocării sau rețelei
+- **Probleme de Conectivitate**: Întreruperi ale conexiunii de rețea între componente sau cu sistemele externe
+- **Suprasolicitare Sistem**: Imposibilitatea sistemului de a gestiona volumul de examinări în perioadele de vârf
+- **Defecțiuni Software**: Bug-uri, erori de cod sau incompatibilități care pot afecta funcționarea sistemului
+- **Probleme de Integrare**: Eșecul integrării cu PACS, FHIR sau alte sisteme existente
+
+#### 15.1.2 Riscuri Clinice
+- **Diagnostic AI Incorect**: Generarea de rapoarte diagnostice eronate care pot duce la decizii medicale greșite
+- **Întârzierea Diagnosticului**: Sistemul poate cauza întârzieri în diagnosticul cazurilor urgente
+- **Dependență Excesivă**: Personalul medical poate deveni prea dependent de sistem, reducând vigilenta umană
+- **Lipsa Feedback-ului Uman**: Neutilizarea sistemului de feedback poate duce la degradarea performanței în timp
+
+#### 15.1.3 Riscuri de Securitate și Confidențialitate
+- **Acces Neautorizat**: Posibilitatea ca persoane neautorizate să acceseze datele pacienților
+- **Pierderea Datelor**: Riscul de pierdere a imaginilor, rapoartelor sau altor date medicale critice
+- **Atacuri Cibernetice**: Vulnerabilități la atacuri DDoS, ransomware sau alte forme de atacuri
+- **Nerespectarea GDPR**: Neconformitatea cu reglementările privind protecția datelor
+
+#### 15.1.4 Riscuri Operaționale
+- **Lipsa Personalului Calificat**: Insuficiența personalului pentru operarea și întreținerea sistemului
+- **Defecțiuni Furnizori**: Probleme cu furnizorii de servicii cloud, licențe software sau echipamente
+- **Schimbări Reglementare**: Modificări ale reglementărilor medicale care pot necesita adaptări ale sistemului
+
+### 15.2 Strategii Detaliate de Mitigare pentru Riscurile Identificate
+
+#### 15.2.1 Mitigarea Riscurilor Tehnice
+- **Arhitectură Redundantă**: Implementarea unui sistem cu componente redundante pentru toate componentele critice
+- **Monitorizare Continuă**: Sistem de monitorizare 24/7 a stării de sănătate a tuturor componentelor
+- **Testare Regulată**: Teste automate periodice ale funcționalității sistemului și ale conexiunilor
+- **Capacitate de Scalare**: Arhitectură care permite scalarea rapidă în perioadele de vârf
+- **Documentație Completă**: Documentație detaliată pentru troubleshooting și recuperare
+
+#### 15.2.2 Mitigarea Riscurilor Clinice
+- **Sistem de Verificare Dublă**: Toate diagnosticurile AI sunt verificate de radiologi înainte de a fi considerate finale
+- **Alerte pentru Cazuri Critice**: Sistem automat de notificare pentru cazurile identificate ca urgente
+- **Formare Continuă**: Program regulat de instruire pentru personalul medical în utilizarea sistemului
+- **Feedback Structurat**: Mecanism eficient de colectare și procesare a feedback-ului de la radiologi
+
+#### 15.2.3 Mitigarea Riscurilor de Securitate și Confidențialitate
+- **Criptare End-to-End**: Toate datele sunt criptate în tranzit și în repaus
+- **Control de Acces Riguros**: Autentificare multi-factor și permisiuni granulare pentru accesul la date
+- **Audit Complet**: Jurnalizarea tuturor acceselor și operațiunilor asupra datelor pacienților
+- **Conformitate GDPR**: Implementarea tuturor cerințelor GDPR prin design-ul sistemului
+
+#### 15.2.4 Mitigarea Riscurilor Operaționale
+- **Plan de Continuitate a Activității**: Proceduri detaliate pentru menținerea funcționării în caz de incidente
+- **Contracte SLA cu Furnizori**: Acorduri de nivel de serviciu cu toți furnizorii critici
+- **Echipă Dedicată de Suport**: Personal specializat pentru întreținerea și operarea sistemului
+- **Actualizări Regulate**: Proces formal de actualizare și testare a sistemului
+
+### 15.3 Planuri de Contingență pentru Defecțiunile Sistemului
+
+#### 15.3.1 Defecțiune Server AI Principal
+- **Activare Automată Server Backup**: În cazul unei defecțiuni a serverului principal, sistemul comută automat către serverul de backup în mai puțin de 30 de secunde
+- **Redirecționare Trafic**: Toate solicitările sunt redirecționate către nodul secundar fără întrerupere perceptibilă
+- **Notificare Echipă IT**: Alertă automată către echipa de IT pentru intervenție imediată
+- **Funcționare Mod Degradat**: Sistemul continuă să funcționeze cu performanță redusă timp de până la 24 de ore
+
+#### 15.3.2 Pierdere Conectivitate Rețea
+- **Comutare Conexiune Rezervă**: Activare automată a conexiunii de rezervă (4G/5G) în cazul pierderii conexiunii principale
+- **Stocare Locală Temporară**: Imaginile sunt stocate local până la restabilirea conexiunii
+- **Sincronizare Automată**: La restabilirea conexiunii, toate datele stocate local sunt sincronizate automat
+- **Notificare Administratori**: Echipa de administrare este notificată imediat despre incident
+
+#### 15.3.3 Defecțiune Sistem Stocare
+- **Activare RAID Hot-Swap**: În cazul unei defecțiuni a unui disc, sistemul RAID activează automat discul de rezervă
+- **Redirecționare Stocare Cloud**: Datele sunt temporar redirecționate către stocare cloud securizată
+- **Backup Automat**: Restaurare automată din ultimele 24 de ore de backup
+- **Restaurare Completă**: Restaurarea completă a sistemului în mai puțin de 2 ore
+
+#### 15.3.4 Defecțiune Server DICOM
+- **Activare Server DICOM Rezervă**: Serverul DICOM de rezervă este activat automat
+- **Redirecționare Porturi Rețea**: Porturile de rețea sunt redirecționate automat către noul server
+- **Continuare Recepție Imagini**: Recepția imaginilor continuă fără întrerupere
+- **Notificare Echipă Medicală și IT**: Ambele echipe sunt notificate pentru verificare
+
+#### 15.3.5 Defecțiune Integrare FHIR
+- **Funcționare Mod Offline**: Sistemul funcționează în mod offline cu stocare locală temporară
+- **Sincronizare Automată**: La restabilirea conexiunii, datele sunt sincronizate automat
+- **Notificare Manuală Radiologi**: Radiologii sunt notificați manual pentru verificare
+- **Jurnalizare Operațiuni Offline**: Toate operațiunile offline sunt jurnalizate pentru audit
+
+### 15.4 Proceduri de Backup și Recuperare în Caz de Dezastru
+
+#### 15.4.1 Backup Zilnic Automat
+- **Copiere Automată**: Toate datele sunt copiate automat zilnic pe un sistem de stocare separat
+- **Verificare Integritate**: Fiecare backup este verificat automat pentru integritate
+- **Stocare Criptată**: Toate backup-urile sunt criptate pentru securitate maximă
+- **Retenție 30 Zile**: Păstrarea backup-urilor pentru o perioadă de 30 de zile
+
+#### 15.4.2 Backup Săptămânal Off-site
+- **Copii de Siguranță Săptămânale**: Copii de siguranță săptămânale sunt stocate într-o locație fizic separată
+- **Transport Securizat**: Transferul datelor către locația off-site este securizat
+- **Testare Periodică**: Testarea periodică a restaurării din backup-urile off-site
+- **Conformitate Reglementări**: Asigurarea conformității cu reglementările privind păstrarea datelor medicale
+
+#### 15.4.3 Plan de Recuperare în Caz de Dezastru
+- **Identificare Rapidă Incident**: Proceduri clare pentru identificarea rapidă a tipului de dezastru
+- **Activare Echipă de Răspuns**: Activarea imediată a echipei de răspuns la dezastru
+- **Evaluare Impact**: Evaluarea rapidă a impactului asupra operațiunilor medicale
+- **Restaurare Prioritară**: Restaurarea funcționalităților critice în ordinea priorității clinice
+- **Comunicare cu Părțile Interesate**: Informarea tuturor părților interesate despre statusul recuperării
+- **Raport Final**: Documentarea completă a incidentului și a măsurilor luate
+
+#### 15.4.4 Testare Regulată a Planurilor de Contingență
+- **Simulări Lunare**: Simulări lunare ale diferitelor scenarii de defecțiune
+- **Audit Anual**: Audit anual complet al tuturor planurilor de contingență
+- **Actualizare Proceduri**: Actualizarea regulată a procedurilor în funcție de rezultatele testărilor
+- **Formare Personal**: Formarea continuă a personalului în procedurile de răspuns la dezastru
+
 ## 16. Managementul Datelor și Conformitatea cu Confidențialitatea
 
 ## 17. Instruire și Managementul Schimbării
