@@ -65,18 +65,22 @@
         
         <section id="filters" role="group">
             <select id="filter-reviewed" onchange="loadPage(1)" aria-label="Select reviewed or not reviewed studies">
-                <option value="any">Review: all</option>
-                <option value="yes">Reviewed</option>
-                <option value="no">Not reviewed</option>
-                <optgroup label="Radiologists" id="radiologists-list">
+                <optgroup label="Reviewed" id="reviewed-list">
+                    <option value="any">All exams</option>
+                    <option value="yes">Reviewed</option>
+                    <option value="no">Not reviewed</option>
+                </optgroup>
+                <optgroup label="By radiologist" id="radiologists-list">
                     <!-- Radiologist options will be populated dynamically -->
                 </optgroup>
             </select>
             <select id="filter-positive" onchange="loadPage(1)" aria-label="Select positive or negative studies">
-                <option value="any">Result: all</option>
-                <option value="yes">Positive</option>
-                <option value="no">Negative</option>
-                <optgroup label="Diagnostics" id="diagnostics-list">
+                <optgroup label="Positive" id="positive-list">
+                    <option value="any">All exams</option>
+                    <option value="yes">Positive</option>
+                    <option value="no">Negative</option>
+                </optgroup>
+                <optgroup label="By diagnostic" id="diagnostics-list">
                     <!-- Diagnostic options will be populated dynamically -->
                 </optgroup>
             </select>

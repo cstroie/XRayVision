@@ -4094,7 +4094,7 @@ async def process_fhir_report_with_llm(exam_uid):
         try:
             positive = 1 if analysis_result['pathologic'] == 'yes' else 0
             severity = analysis_result['severity']
-            summary = analysis_result['summary']
+            summary = analysis_result['summary'].lower()
         except Exception as e:
             logging.warning(f"Could not extract analysis results from LLM: {e}")
     else:
