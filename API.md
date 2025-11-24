@@ -46,12 +46,14 @@ Provide paginated exam data with optional filters.
 
 **Query Parameters:**
 - `page` (integer, default: 1) - Page number
-- `reviewed` (string, enum: any, yes, no) - Filter by review status
+- `reviewed` (string, enum: any, yes, no) - Filter by review status (yes = severity > -1, no = severity = -1)
 - `positive` (string, enum: any, yes, no) - Filter by AI prediction
 - `correct` (string, enum: any, yes, no) - Filter by correctness status
 - `region` (string) - Filter by anatomic region
 - `status` (string) - Filter by processing status
 - `search` (string) - Filter by patient name
+- `diagnostic` (string) - Filter by radiologist diagnostic summary
+- `radiologist` (string) - Filter by radiologist name
 
 **Response:**
 ```json
