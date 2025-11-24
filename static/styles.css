@@ -275,7 +275,6 @@ article>footer {
 
 .image-card .xray {
     background-color: #0a0a0a;
-    padding: 0.5rem 2px;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -301,10 +300,7 @@ article>footer {
     bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
-    display: flex;
-    gap: 5px;
     background-color: rgba(15, 23, 42, 0.8);
-    padding: 5px;
     border-radius: 0.375rem;
     opacity: 0;
     transition: opacity 0.2s ease;
@@ -315,19 +311,10 @@ article>footer {
 }
 
 .image-card .xray div[role="group"] button {
-    border-radius: 0.375rem;
     font-size: 0.9rem;
-    padding: 0.5rem 0.75rem;
+    padding: 0.3rem 0.3rem;
     margin-bottom: 0;
     min-width: 40px;
-}
-
-.image-card .xray div[role="group"] button:first-child {
-    border-radius: 0.375rem;
-}
-
-.image-card .xray div[role="group"] button:last-child {
-    border-radius: 0.375rem;
 }
 
 button.normal {
