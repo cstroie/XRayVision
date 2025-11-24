@@ -82,131 +82,152 @@ Sistemul utilizează modelul MedGemma-4B-IT, un LLM specializat în domeniul med
 - Versiuni ale rapoartelor pentru audit
 - Trasabilitatea deciziilor medicale
 
-## 6. Beneficii Clinice Așteptate
+## 6. Consimțământ și Etică
 
-### 6.1 Pentru Pacienți
+### 6.1 Consimțământul Informațional
+- Pacienții și reprezentanții legali vor fi informați în mod corespunzător despre utilizarea tehnologiei AI în procesul de diagnostic
+- Informarea va include scopul utilizării sistemului, beneficiile și riscurile potențiale
+- Dreptul pacientului de a refuza utilizarea sistemului va fi respectat în conformitate cu legislația în vigoare
+- Documentația privind consimțământul va fi păstrată în dosarul medical electronic
+
+### 6.2 Anonimizarea Datelor
+- Toate datele pacienților sunt anonimizate în procesul de învățare și antrenare a modelelor AI
+- Numele pacienților și alte date de identificare personală sunt eliminate din seturile de date utilizate pentru dezvoltarea sistemului
+- Accesul la datele complete ale pacienților este restricționat doar personalului medical autorizat
+- Sistemul utilizează identificatori unici interni care nu pot fi corelați direct cu identitatea pacientului fără acces la baza de date autorizat
+
+### 6.3 Considerații Etice
+- Sistemul este conceput ca instrument de asistență decizională, nu ca substitut al medicului
+- Responsabilitatea deciziilor medicale rămâne în sarcina personalului medical calificat
+- Se va asigura transparența în ceea ce privește modul de funcționare al algoritmilor AI
+- Vor fi implementate mecanisme de monitorizare și audit pentru a preveni discriminarea și a asigura echitatea în diagnostic
+- Respectarea principiilor medicale fundamentale: beneficența, non-maleficența, autonomia și dreptatea
+
+## 7. Beneficii Clinice Așteptate
+
+### 7.1 Pentru Pacienți
 - Reducerea timpului de așteptare pentru diagnostic
 - Îmbunătățirea acurateței diagnosticului
 - Prioritizarea cazurilor critice
 - Reducerea expunerii la radiații prin evitarea repetărilor
 
-### 6.2 Pentru Personalul Medical
+### 7.2 Pentru Personalul Medical
 - Suport decizional rapid în situații de urgență
 - Reducerea sarcinii cognitive în perioadele de vârf
 - Instrument de învățare pentru personalul junior
 - Standardizarea rapoartelor diagnostice
 
-### 6.3 Pentru Spital
+### 7.3 Pentru Spital
 - Optimizarea fluxului de lucru în radiologie
 - Reducerea timpului de răspuns în urgență
 - Îmbunătățirea indicatorilor de calitate
 - Reducerea costurilor operaționale
 
-## 7. Planul de Implementare
+## 8. Planul de Implementare
 
-### 7.1 Faza 1: Instalare și Testare (Luni 1-2)
+### 8.1 Faza 1: Instalare și Testare (Luni 1-2)
 - Instalarea sistemului în mediul de test
 - Configurarea conexiunilor DICOM și FHIR
 - Testarea funcționalităților de bază
 
-### 7.2 Faza 2: Validare Clinică (Luni 3-4)
+### 8.2 Faza 2: Validare Clinică (Luni 3-4)
 - Testare cu date istorice anonimizate
 - Calibrarea modelului AI pentru populația pediatrică locală
 - Evaluarea acurateței diagnosticului
 
-### 7.3 Faza 3: Implementare Pilot (Luni 5-6)
+### 8.3 Faza 3: Implementare Pilot (Luni 5-6)
 - Implementare într-o secțiune selectată
 - Monitorizarea performanței în condiții reale
 - Feedback de la personalul medical
 
-### 7.4 Faza 4: Implementare Completă (Luni 7-8)
+### 8.4 Faza 4: Implementare Completă (Luni 7-8)
 - Extinderea la toate secțiunile de urgență
 - Integrare completă cu HIS
 - Formarea personalului medical
 
-## 8. Considerații Etice
+## 9. Considerații Etice și de Securitate
 
-### 8.1 Consimțământul Informațional
-- Pacienții și reprezentanții legali vor fi informați despre utilizarea tehnologiei AI
-- Dreptul de a refuza utilizarea sistemului va fi respectat
-
-### 8.2 Responsabilitatea Medicală
+### 9.1 Responsabilitatea Medicală
 - Sistemul funcționează ca asistent, nu ca înlocuitor al medicului
 - Deciziile medicale finale rămân în sarcina personalului medical calificat
 - Mecanisme de audit pentru toate deciziile asistate de AI
 
-### 8.3 Echitatea și Non-discriminarea
+### 9.2 Echitatea și Non-discriminarea
 - Sistemul va fi testat pentru a evita prejudecăți în diagnostic
 - Monitorizarea performanței pentru diferite grupuri demografice
+- Asigurarea unui acces egal la beneficiile tehnologiei AI indiferent de caracteristicile pacientului
 
-## 9. Evaluarea Riscurilor
+## 10. Evaluarea Riscurilor
 
-### 9.1 Riscuri Tehnice
+### 10.1 Riscuri Tehnice
 - Defecte de funcționare ale sistemului
 - Probleme de conectivitate cu PACS/HIS
 - Suprasolicitarea resurselor computaționale
 
-### 9.2 Riscuri Clinice
+### 10.2 Riscuri Clinice
 - Diagnostic eronat generat de AI
 - Dependență excesivă de tehnologie
 - Întârzierea deciziilor critice
 
-### 9.3 Măsuri de Mitigare
+### 10.3 Măsuri de Mitigare
 - Sistem de backup și failover
 - Monitorizare continuă a performanței
 - Protocoale clare de intervenție umană
 - Formare continuă a personalului
 
-## 10. Indicatori de Performanță
+## 11. Indicatori de Performanță
 
-### 10.1 Indicatori Tehnici
+### 11.1 Indicatori Tehnici
 - Timp mediu de procesare: < 30 secunde
 - Disponibilitate sistem: > 99.5%
 - Acuratețe diagnostic: > 90%
 
-### 10.2 Indicatori Clinici
+### 11.2 Indicatori Clinici
 - Reducerea timpului de diagnostic cu 40%
 - Creșterea acurateței diagnosticului cu 15%
 - Reducerea repetărilor radiologice cu 25%
 
-### 10.3 Indicatori Operaționali
+### 11.3 Indicatori Operaționali
 - Satisfacția personalului medical (> 80%)
 - Reducerea timpului de așteptare în urgență (20%)
 - Eficiența fluxului de lucru în radiologie
 
-## 11. Buget și Resurse
+## 12. Buget și Resurse
 
-### 11.1 Resurse Hardware
+### 12.1 Resurse Hardware
 - Server dedicat pentru procesare AI
 - Stocare redundantă pentru imagini
 - Infrastructură de rețea dedicată
 
-### 11.2 Resurse Umane
+### 12.2 Resurse Umane
 - 1 inginer software pentru mentenanță
 - 1 specialist în integrări medicale
 - Personal medical pentru validare și formare
 
-### 11.3 Costuri Estimative
+### 12.3 Costuri Estimative
 - Dezvoltare și implementare: 50.000 EUR
 - Licențe software: 10.000 EUR/an
 - Mentenanță și suport: 15.000 EUR/an
 
-## 12. Concluzii
+## 13. Concluzii
 
-XRayVision reprezintă o oportunitate semnificativă de a îmbunătăți calitatea îngrijirii pediatricelor într-un mediu de urgență. Prin integrarea tehnologiei de inteligență artificială cu fluxurile de lucru clinice existente, sistemul poate contribui la diagnosticuri mai rapide și mai precise, în timp ce respectă cele mai înalte standarde de siguranță și etică medicală.
+XRayVision reprezintă o oportunitate semnificativă de a îmbunătăți calitatea îngrijirii pediatricelor într-un mediu de urgență. Prin integrarea tehnologiei de inteligență artificială cu fluxurile de lucru clinice existente, sistemul poate contribui la diagnosticuri mai rapide și mai precise, în timp ce respectă cele mai înalte standarde de siguranță, confidențialitate și etică medicală.
 
 Implementarea acestui sistem poate poziționa spitalul nostru ca lider în inovația medicală și poate îmbunătăți semnificativ rezultatele clinice pentru pacienții noștri pediatrici.
 
-## 13. Anexe
+## 14. Anexe
 
-### 13.1 Arhitectura Sistemului
+### 14.1 Arhitectura Sistemului
 Diagrama componentelor XRayVision și fluxul de date
 
-### 13.2 Interfața Utilizator
+### 14.2 Interfața Utilizator
 Capturi de ecran ale dashboard-ului și a rapoartelor
 
-### 13.3 Studii Clinice Referință
+### 14.3 Studii Clinice Referință
 Referințe la studii similare în alte instituții medicale
 
-### 13.4 Reglementări și Standarde
+### 14.4 Reglementări și Standarde
 Conformitatea cu standardele medicale internaționale
+
+### 14.5 Politici de Securitate și Confidențialitate
+Documentația privind protecția datelor și conformitatea GDPR
