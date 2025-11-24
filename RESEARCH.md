@@ -51,7 +51,7 @@ Sistemul utilizează modelul MedGemma-4B-IT, un LLM specializat în domeniul med
 
 ### 3.4 Fluxul de Procesare al Datelor
 
-#### 3.4.1 Recepcióna Imaginilor DICOM
+#### 3.4.1 Recepționarea Imaginilor DICOM
 Sistemul implementează un server DICOM SCP (Service Class Provider) care ascultă pe portul 4010 cu titlul de aplicație "XRAYVISION". Serverul acceptă imagini de tip Computed Radiography (CR) și Digital X-Ray (DX) prin protocolul C-STORE. Când o imagine este primită, aceasta este salvată în format DICOM în directorul local "images/" și procesată imediat.
 
 #### 3.4.2 Conversia și Preprocesarea Imaginilor
