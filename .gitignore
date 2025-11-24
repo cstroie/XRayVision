@@ -1,2 +1,8 @@
 .aider*
+.vscode*
+images/*
+backup/*
+__pycache__
 local.cfg
+*.db
+*.log
