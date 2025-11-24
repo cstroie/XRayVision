@@ -280,6 +280,13 @@ article>footer {
     flex-direction: column;
 }
 
+.image-card .xray figcaption {
+    text-align: center;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.5rem;
+    color: var(--pico-color-slate-400);
+}
+
 .image-card .xray img {
     border-radius: 0.25rem;
     max-width: 100%;
