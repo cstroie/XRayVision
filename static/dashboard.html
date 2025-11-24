@@ -593,7 +593,23 @@
                 // Set patient details
                 examClone.querySelector('.details summary strong').innerHTML = `${formattedPatientName}, ${item.patient.sex}, ${item.patient.age} years`;
                 examClone.querySelector('.details .patient-cnp').innerHTML = `<small><strong>CNP:</strong> ${item.patient.cnp}</small>`;
-                examClone.querySelector('.details .patient-his').innerHTML = `<small><strong>HIS:</strong> ${item.patient.id} ${item.report.rad.id}</small>`;
+                const hisId = item.patient.id;
+                const examId = item.report.rad.id;
+                let hisContent = '';
+                
+                if (hisId) {
+                    hisContent += `<strong>HIS:</strong> ${hisId}`;
+                }
+                
+                if (examId) {
+                    hisContent += hisContent ? ` ${examId}` : `<strong>HIS:</strong> ${examId}`;
+                }
+                
+                if (hisContent) {
+                    examClone.querySelector('.details .patient-his').innerHTML = `<small>${hisContent}</small>`;
+                } else {
+                    examClone.querySelector('.details .patient-his').style.display = 'none';
+                }
                 examClone.querySelector('.details .exam-time').innerHTML = `<small><strong>Time:</strong> <time datetime="${datetimeString}">${formattedDate} ${formattedTime}</time></small>`;
                 examClone.querySelector('.details .exam-region').innerHTML = `<small><strong>Region:</strong> ${item.exam.region}</small>`;
                 
