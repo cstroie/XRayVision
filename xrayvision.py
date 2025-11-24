@@ -3620,6 +3620,10 @@ async def send_exam_to_openai(exam, max_retries = 3):
         # Create the prompt
         prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
 
+        # Add justification if available
+        if exam['report']['rad'].get('justification'):
+            prompt += f"\n\nCLINICAL INFORMATION: {exam['report']['rad']['justification']}"
+
         # Append previous reports if any exist
         if previous_reports:
             prompt += "\n\nPRIOR STUDIES:"
