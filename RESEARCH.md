@@ -49,6 +49,87 @@ XRayVision este construit ca o aplicație Python asincronă care integrează mai
 ### 3.3 Modelul AI
 Sistemul utilizează modelul MedGemma-4B-IT, un LLM specializat în domeniul medical, antrenat pentru analiza imaginilor radiologice și generarea de rapoarte diagnostice.
 
+### 3.4 Fluxul de Procesare al Datelor
+
+#### 3.4.1 Recepcióna Imaginilor DICOM
+Sistemul implementează un server DICOM SCP (Service Class Provider) care ascultă pe portul 4010 cu titlul de aplicație "XRAYVISION". Serverul acceptă imagini de tip Computed Radiography (CR) și Digital X-Ray (DX) prin protocolul C-STORE. Când o imagine este primită, aceasta este salvată în format DICOM în directorul local "images/" și procesată imediat.
+
+#### 3.4.2 Conversia și Preprocesarea Imaginilor
+Imaginile DICOM sunt convertite în format PNG pentru procesarea eficientă de către modelul AI. Procesul de conversie include:
+- Redimensionarea imaginii la o dimensiune maximă de 800 pixeli păstrați proporțiile
+- Aplicarea unui algoritm de corecție gamma automată pentru optimizarea contrastului
+- Normalizarea valorilor pixelilor la intervalul 0-255
+- Eliminarea outlierilor prin clipping la percentila 1-99
+
+#### 3.4.3 Identificarea Regiunii Anatomice
+Sistemul analizează numele protocolului DICOM pentru a identifica regiunea anatomică examinată. Aceasta se face prin potrivirea cuvintelor cheie definite în fișierul de configurare. De exemplu, pentru identificarea toracelui, sistemul caută cuvinte precum "torace", "pulmon", "thorax" sau "chest".
+
+#### 3.4.4 Interogarea și Recuperarea Studiilor
+Sistemul poate interoga periodic serverul PACS remote pentru a identifica studii noi. Acest proces folosește protocolul C-FIND pentru a căuta studii CR realizate în ultima oră (implicit) și apoi solicită trimiterea acestora prin C-MOVE sau C-GET.
+
+#### 3.4.5 Analiza AI și Generarea Raportului
+Imaginile procesate sunt trimise către modelul AI (MedGemma-4B-IT) care generează un raport diagnostic în format JSON. Raportul include:
+- Clasificarea binară "da/nu" pentru prezența anomaliilor
+- Descrierea detaliată a constatărilor
+- Scorul de confidență (0-100)
+
+#### 3.4.6 Integrarea cu Sistemul FHIR
+Sistemul se conectează la serverul FHIR al spitalului pentru a obține informații suplimentare despre pacient și pentru a verifica rapoartele radiologilor. Aceasta include:
+- Căutarea pacientului după CNP
+- Recuperarea studiilor de imagistică asociate
+- Obținerea rapoartelor radiologilor pentru validare
+
+### 3.5 Gestionarea Datelor și Confidențialitatea
+
+#### 3.5.1 Anonimizarea Datelor
+Toate datele pacienților sunt anonimizate în interfețele de utilizator pentru utilizatorii non-administrativi. Numele pacienților sunt înlocuite cu inițiale, iar CNP-ul este parțial ascuns (afișând doar primele 7 cifre).
+
+#### 3.5.2 Criptarea Comunicațiilor
+Toate comunicațiile HTTP/HTTPS folosesc criptare SSL/TLS. Comunicațiile DICOM pot fi securizate prin configurarea adecvată a serverului PACS.
+
+#### 3.5.3 Accesul la Date
+Accesul la sistem este controlat prin autentificare HTTP Basic. Sunt definite două niveluri de acces:
+- Utilizator: Acces limitat la datele anonimizate
+- Administrator: Acces complet la toate datele
+
+### 3.6 Validarea și Evaluarea Performanței
+
+#### 3.6.1 Matricea de Confuzie
+Performanța sistemului este evaluată folosind o matrice de confuzie care compară predicțiile AI cu rapoartele radiologilor:
+- Adevărate pozitive (TP): AI și radiologul identifică amândoi anomalii
+- Adevărate negative (TN): Nici AI, nici radiologul nu identifică anomalii
+- False pozitive (FP): AI identifică anomalii, dar radiologul nu
+- False negative (FN): AI nu identifică anomalii, dar radiologul da
+
+#### 3.6.2 Indicatori de Performanță
+Sistemul calculează următorii indicatori pentru fiecare regiune anatomică:
+- Valoarea Predictivă Pozitivă (VPP) = TP / (TP + FP)
+- Valoarea Predictivă Negativă (VPN) = TN / (TN + FN)
+- Sensibilitate = TP / (TP + FN)
+- Specificitate = TN / (TN + FP)
+- Coeficientul de Corelație Matthews (MCC) = (TP×TN - FP×FN) / √[(TP+FP)(TP+FN)(TN+FP)(TN+FN)]
+
+#### 3.6.3 Monitorizarea în Timp Real
+Dashboard-ul web oferă statistici în timp real despre:
+- Numărul de examinări în coadă
+- Timpul mediu de procesare
+- Rata de throughput (examinări/oră)
+- Numărul de erori și examinări ignorate
+
+### 3.7 Feedback-ul și Învățarea Continuă
+
+#### 3.7.1 Revizuirea de către Radiologi
+Radiologii pot revizui rapoartele generate de AI și le pot marca ca "corecte" sau "incorecte". Aceste feedback-uri sunt stocate în baza de date și pot fi utilizate pentru îmbunătățirea modelului.
+
+#### 3.7.2 Reprocesarea Examinărilor
+Examinările pot fi retrimise în coadă pentru reprocesare în cazul în care radiologul consideră că raportul AI este incorect. Acest lucru permite sistemului să învețe din greșelile sale.
+
+#### 3.7.3 Analiza Rapoartelor Radiologilor
+Sistemul poate analiza rapoartele radiologilor folosind un LLM pentru a extrage informații structurate despre:
+- Prezența anomaliilor (da/nu)
+- Severitatea (scor 0-10)
+- Rezumatul diagnosticului (maxim 5 cuvinte)
+
 ## 4. Funcționalități Principale
 
 ### 4.1 Procesare Automată a Imaginilor
