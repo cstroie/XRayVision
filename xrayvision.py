@@ -3997,6 +3997,101 @@ async def process_fhir_report_with_llm(exam_uid):
     # Notify dashboard of the update
     await broadcast_dashboard_update(event="radreport_processed", payload={'uid': exam_uid})
 
+async def find_imaging_study(session, exam_uid, patient_id, exam_datetime):
+    """
+    Find imaging study for an exam in FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        exam_uid: Exam unique identifier
+        patient_id: Patient ID in HIS
+        exam_datetime: Exam datetime
+
+    Returns:
+        dict or None: Study resource if found, None otherwise
+    """
+    # Search for imaging studies
+    studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
+    if not studies:
+        logging.warning(f"No imaging studies found for exam {exam_uid}")
+        return None
+    elif len(studies) > 1:
+        logging.info(f"Multiple close imaging studies found for exam {exam_uid}, skipping.")
+        return None
+
+    # Get the single study
+    study = studies[0]
+    if 'id' not in study:
+        logging.warning(f"Imaging study for exam {exam_uid} has no ID, skipping.")
+        return None
+    
+    return study
+
+
+async def save_study_id(exam_uid, study):
+    """
+    Save study ID to database to avoid redundant searches later.
+
+    Args:
+        exam_uid: Exam unique identifier
+        study: Study resource from FHIR
+    """
+    db_insert('rad_reports',
+              uid=exam_uid,
+              id=study.get('id', ''),
+              type='radio')
+    logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
+
+
+async def extract_report_data(report, exam_uid):
+    """
+    Extract report text, radiologist name, and justification from FHIR diagnostic report.
+
+    Args:
+        report: FHIR diagnostic report resource
+        exam_uid: Exam unique identifier
+
+    Returns:
+        tuple: (report_text, radiologist, justification) or (None, None, None) if extraction fails
+    """
+    # Check if there's exactly one item in presentedForm
+    if len(report['presentedForm']) != 1:
+        logging.info(f"Skipping diagnostic report for exam {exam_uid} with {len(report['presentedForm'])} items in presentedForm")
+        return None, None, None
+        
+    # Extract the report text from the first (and only) item
+    report_text = report['presentedForm'][0].get('data', '').strip()
+    if not report_text:
+        logging.warning(f"No data found in presentedForm[0] for exam {exam_uid}")
+        return None, None, None
+        
+    # Extract radiologist name from resultsInterpreter if available
+    radiologist = 'rad'  # Default value
+    try:
+        if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
+            interpreter = report['resultsInterpreter'][0]
+            if 'display' in interpreter:
+                radiologist = interpreter['display']
+    except Exception as e:
+        logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
+    
+    # Extract justification from extensions if available
+    justification = ''  # Default value
+    try:
+        if 'extension' in report:
+            for ext in report['extension']:
+                if 'diagnostic-report-reason' in ext.get('url', ''):
+                    if 'extension' in ext:
+                        for nested_ext in ext['extension']:
+                            if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
+                                justification = nested_ext['valueString']
+                                break
+    except Exception as e:
+        logging.warning(f"Could not extract justification from FHIR report: {e}")
+
+    return report_text, radiologist, justification
+
+
 async def process_single_exam_without_rad_report(session, exam, patient_id):
     """
     Process a single exam that doesn't have a radiologist report yet.
@@ -4012,87 +4107,44 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     exam_uid = exam['uid']
     exam_datetime = exam['created']
     
-    # Search for imaging studies
-    studies = await get_fhir_imagingstudies(session, patient_id, exam_datetime)
-    if not studies:
-        logging.warning(f"No imaging studies found for exam {exam_uid}")
-        return
-    elif len(studies) > 1:
-        logging.info(f"Multiple close imaging studies found for exam {exam_uid}, skipping.")
-        return
-
-    # Get the single study
-    study = studies[0]
-    if not 'id' in study:
-        logging.warning(f"Imaging study for exam {exam_uid} has no ID, skipping.")
+    # Find imaging study
+    study = await find_imaging_study(session, exam_uid, patient_id, exam_datetime)
+    if not study:
         return
     
-    # Save the study ID early to avoid redundant searches later
-    db_insert('rad_reports',
-              uid=exam_uid,
-              id=study.get('id', ''),
-              type='radio'
-    )
-    logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
+    # Save study ID
+    await save_study_id(exam_uid, study)
     
-    # If exactly one study found, get its diagnostic report
+    # Get diagnostic report
     report = await get_fhir_diagnosticreport(session, study['id'])
-    if report and 'presentedForm' in report and report['presentedForm']:
-        # Check if there's exactly one item in presentedForm
-        if len(report['presentedForm']) != 1:
-            logging.info(f"Skipping diagnostic report for exam {exam_uid} with {len(report['presentedForm'])} items in presentedForm")
-            return
-            
-        # Extract the report text from the first (and only) item
-        report_text = report['presentedForm'][0].get('data', '').strip()
-        if not report_text:
-            logging.warning(f"No data found in presentedForm[0] for exam {exam_uid}")
-            return
-            
-        # Extract radiologist name from resultsInterpreter if available
-        radiologist = 'rad'  # Default value
-        try:
-            if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
-                interpreter = report['resultsInterpreter'][0]
-                if 'display' in interpreter:
-                    radiologist = interpreter['display']
-        except Exception as e:
-            logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
-        
-        # Extract justification from extensions if available
-        justification = ''  # Default value
-        try:
-            if 'extension' in report:
-                for ext in report['extension']:
-                    if 'diagnostic-report-reason' in ext.get('url', ''):
-                        if 'extension' in ext:
-                            for nested_ext in ext['extension']:
-                                if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
-                                    justification = nested_ext['valueString']
-                                    break
-        except Exception as e:
-            logging.warning(f"Could not extract justification from FHIR report: {e}")
-
-        # Log the retrieved report
-        logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
-        # Update the radiologist report in our database
-        db_update('rad_reports', 'uid = ?', (exam_uid,),
-                  text=report_text,
-                  radiologist=radiologist,
-                  justification=justification,
-                  positive=-1,
-                  severity=-1,
-                  summary='',
-                  type='radio',
-                  model=MODEL_NAME,
-                  latency=-1)
-
-        # Set the exam status to 'check' for LLM processing in queue
-        db_set_status(exam_uid, "check")
-        # Notify the queue
-        QUEUE_EVENT.set()
-    else:
+    if not report or 'presentedForm' not in report or not report['presentedForm']:
         logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
+        return
+
+    # Extract report data
+    report_text, radiologist, justification = await extract_report_data(report, exam_uid)
+    if not report_text:
+        return
+
+    # Log the retrieved report
+    logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
+    
+    # Update the radiologist report in our database
+    db_update('rad_reports', 'uid = ?', (exam_uid,),
+              text=report_text,
+              radiologist=radiologist,
+              justification=justification,
+              positive=-1,
+              severity=-1,
+              summary='',
+              type='radio',
+              model=MODEL_NAME,
+              latency=-1)
+
+    # Set the exam status to 'check' for LLM processing in queue
+    db_set_status(exam_uid, "check")
+    # Notify the queue
+    QUEUE_EVENT.set()
 
 
 async def get_patient_id_from_fhir(session, patient_cnp):
