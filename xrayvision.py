@@ -3573,7 +3573,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
     try:
         # Try to get additional patient and exam information from FHIR before processing
         patient_cnp = exam['patient']['cnp']
-        if patient_cnp:
+        if patient_cnp and not exam['patient']['id']:
             async with aiohttp.ClientSession() as session:
                 # Get patient information from FHIR
                 fhir_patient = await get_fhir_patient(session, patient_cnp)
@@ -3583,20 +3583,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         exam['patient']['id'] = fhir_patient['id']
                         # Update in database
                         db_update_patient_id(patient_cnp, fhir_patient['id'])
-                    
-                    # Get patient name if available
-                    if 'name' in fhir_patient and fhir_patient['name']:
-                        try:
-                            # FHIR name is typically an array with given/family elements
-                            names = fhir_patient['name'][0]
-                            if 'given' in names and 'family' in names:
-                                given_names = ' '.join(names['given'])
-                                family_name = names['family']
-                                # FIXME
-                                #exam['patient']['name'] = f"{family_name} {given_names}"
-                        except Exception as e:
-                            logging.debug(f"Could not extract patient name from FHIR: {e}")
-        
+                            
         # Read the PNG file
         with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
             image_bytes = f.read()
@@ -3638,7 +3625,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
             prompt += "\n\nPRIOR STUDIES:"
             for i, (report, date) in enumerate(previous_reports, 1):
                 prompt += f"\n\n[{date}] {report}"
-            prompt += "\n\nCompare to prior studies. Note new, stable, resolved, or progressive findings with dates."
+            prompt += "\n\nCompare to prior studies. Note any new, stable, resolved, or progressive findings with dates."
         prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question. Output JSON only."
 
         logging.debug(f"Prompt: {prompt}")
