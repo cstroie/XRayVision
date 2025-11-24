@@ -3586,7 +3586,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
                             if 'given' in names and 'family' in names:
                                 given_names = ' '.join(names['given'])
                                 family_name = names['family']
-                                exam['patient']['name'] = f"{given_names} {family_name}"
+                                # FIXME
+                                #exam['patient']['name'] = f"{family_name} {given_names}"
                         except Exception as e:
                             logging.debug(f"Could not extract patient name from FHIR: {e}")
         
