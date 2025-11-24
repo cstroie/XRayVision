@@ -278,6 +278,7 @@ article>footer {
     padding: 0.5rem 2px;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 .image-card .xray figcaption {
@@ -292,40 +293,41 @@ article>footer {
     max-width: 100%;
     height: auto;
     transition: transform 0.2s ease;
-}
-
-.image-card .xray div {
-    margin-bottom: 0;
-}
-
-.image-card .xray div button {
-    border-radius: 0.375rem;
-    font-size: 0.9rem;
-    padding: 0.5rem 0.75rem;
-    width: 100%;
-    margin-bottom: 0;
+    display: block;
 }
 
 .image-card .xray div[role="group"] {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    gap: 0;
+    gap: 5px;
+    background-color: rgba(15, 23, 42, 0.8);
+    padding: 5px;
+    border-radius: 0.375rem;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.image-card .xray:hover div[role="group"] {
+    opacity: 1;
 }
 
 .image-card .xray div[role="group"] button {
-    flex: 1;
-    border-radius: 0;
+    border-radius: 0.375rem;
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0;
+    min-width: 40px;
 }
 
 .image-card .xray div[role="group"] button:first-child {
-    border-radius: 0.375rem 0 0 0;
+    border-radius: 0.375rem;
 }
 
 .image-card .xray div[role="group"] button:last-child {
-    border-radius: 0 0.375rem 0 0;
-}
-
-.image-card .xray div[role="group"]:last-child button {
-    border-radius: 0 0 0.375rem 0.375rem;
+    border-radius: 0.375rem;
 }
 
 button.normal {
