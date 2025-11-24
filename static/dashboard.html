@@ -85,13 +85,17 @@
                 </optgroup>
             </select>
             <select id="filter-correct" onchange="loadPage(1)" aria-label="Select correct studies">
-                <option value="any">Correct: all</option>
-                <option value="yes">Correct</option>
-                <option value="no">Incorrect</option>
+                <optgroup label="Correct" id="correct-list">
+                    <option value="any">All exams</option>
+                    <option value="yes">Correct</option>
+                    <option value="no">Incorrect</option>
+                </optgroup>
             </select>
             <select id="filter-region" onchange="loadPage(1)" aria-label="Select the anatomic region">
-                <option value="any">Region: any</option>
-                <!-- Options will be populated dynamically -->
+                <optgroup label="Region" id="region-list">
+                    <option value="any">All regions</option>
+                    <!-- Options will be populated dynamically -->
+                </optgroup>
             </select>
             <select id="filter-status" onchange="loadPage(1)" aria-label="Select the study status">
                 <option value="done">Done</option>
@@ -656,7 +660,7 @@
         fetch('/api/regions')
             .then(res => res.json())
             .then(regions => {
-                const regionSelect = document.getElementById('filter-region');
+                const regionSelect = document.getElementById('region-list');
                 regions.forEach(region => {
                     const option = document.createElement('option');
                     option.value = region;
