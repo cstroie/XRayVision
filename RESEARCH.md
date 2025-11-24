@@ -384,6 +384,86 @@ Implementarea acestui sistem poate poziționa spitalul nostru ca lider în inova
 
 ## 14. Limitări și Constrângeri
 
+### 14.1 Limitările Tehnice ale Modelului AI Curent
+
+#### 14.1.1 Dependența de Calitatea Imaginii
+Sistemul XRayVision este sensibil la calitatea imaginilor DICOM primite. Imaginile cu artefacte, expunere incorectă sau rezoluție scăzută pot duce la diagnosticuri inexacte. Factorii care pot afecta performanța includ:
+- Artefacte de mișcare cauzate de pacienți care nu pot sta nemișcați
+- Expunere suboptimală (supraexpunere sau subexpunere)
+- Rezoluție scăzută care limitează capacitatea de a detecta leziuni fine
+- Poziționare incorectă a pacientului în timpul examinării
+- Echipamente radiologice necalibrate sau cu defecțiuni tehnice
+
+#### 14.1.2 Specializare Anatomică Limitată
+Modelul AI este optimizat în prezent pentru regiuni anatomice specifice (torace, abdomen, membri) și poate avea performanțe reduse pentru alte regiuni. Limitările includ:
+- Performanță redusă pentru regiuni complexe precum coloana vertebrală sau articulațiile complexe
+- Dificultăți în interpretarea imaginilor pentru regiuni cu anatomie suprapusă
+- Nevoia de antrenare suplimentară pentru regiuni anatomice specializate (craniu, pelvis etc.)
+
+#### 14.1.3 Lipsa Contextului Clinic
+Modelul AI analizează doar imaginea radiologică fără acces la istoricul clinic complet al pacientului, ceea ce poate limita acuratețea diagnosticului. Restricțiile includ:
+- Imposibilitatea de a corela simptomele clinice cu constatările radiologice
+- Lipsa informațiilor despre istoricul medical relevant (traume anterioare, intervenții chirurgicale)
+- Imposibilitatea de a integra rezultatele laboratorului în procesul decizional
+
+#### 14.1.4 Capacitate de Procesare Limitată
+Numărul de examinări procesate simultan este limitat de resursele hardware disponibile, ceea ce poate duce la întârzieri în perioadele de vârf. Constrângerile includ:
+- Limitări ale memoriei GPU care pot afecta procesarea imaginilor de înaltă rezoluție
+- Capacitate maximă de procesare paralelă care poate fi atinsă în situații de vârf
+- Nevoia de scalare hardware pentru a gestiona volumul crescut de examinări
+
+### 14.2 Constrângerile Cunoscute ale Sistemului
+
+#### 14.2.1 Dependența de Conectivitate
+Sistemul necesită conectivitate stabilă la rețea pentru integrarea cu PACS și FHIR. Întreruperile de rețea pot afecta funcționarea:
+- Necesitatea unei conexiuni stabile cu lățime de bandă suficientă pentru transferul imaginilor
+- Vulnerabilitatea la întreruperi ale serviciului de rețea
+- Dependența de disponibilitatea serverelor PACS și FHIR
+
+#### 14.2.2 Necesitatea Feedback-ului Uman
+Sistemul necesită feedback regulat de la radiologi pentru menținerea și îmbunătățirea performanței:
+- Dependența de disponibilitatea radiologilor pentru revizuirea rapoartelor
+- Nevoia de un volum minim de feedback pentru calibrarea continuă a modelului
+- Riscul de bias în feedback-ul uman care poate afecta performanța sistemului
+
+#### 14.2.3 Cerințe Resurse Hardware
+Procesarea AI necesită hardware specializat (GPU) care poate fi costisitor de menținut și actualizat:
+- Costuri semnificative pentru achiziția și întreținerea echipamentelor
+- Nevoia de actualizări periodice pentru a menține performanța
+- Consum energetic ridicat al echipamentelor de procesare AI
+
+#### 14.2.4 Timpul de Răspuns
+Deși rapid, timpul de procesare poate varia în funcție de complexitatea imaginii și încărcarea sistemului:
+- Variații ale timpului de procesare în funcție de complexitatea imaginii
+- Întârzieri posibile în perioadele de vârf de activitate
+- Nevoia de optimizare continuă pentru menținerea performanței
+
+### 14.3 Scenarii în Care Sistemul Poate să Nu Performeze Optim
+
+#### 14.3.1 Cazuri Rare sau Complex
+Pentru afecțiuni rare sau combinații complexe de patologii, sistemul poate avea dificultăți în oferirea unui diagnostic precis:
+- Afecțiuni congenitale rare care nu sunt bine reprezentate în datele de antrenament
+- Combinații complexe de patologii care necesită expertiză medicală specializată
+- Cazuri cu prezentări atipice ale afecțiunilor comune
+
+#### 14.3.2 Pacienți cu Condiții Speciale
+Copiii cu condiții medicale complexe sau multiple pot necesita analiză umană specializată:
+- Pacienți cu istoric medical complex și multiple intervenții anterioare
+- Copii cu afecțiuni cronice care pot complica interpretarea imaginilor
+- Pacienți imunocompromiși sau cu condiții hematologice speciale
+
+#### 14.3.3 Echipamente Radiologice Necalibrate
+Imagini provenite de la echipamente necalibrate pot afecta performanța sistemului:
+- Variații în calitatea imaginii între diferite echipamente radiologice
+- Necesitatea recalibrării sistemului pentru fiecare tip de echipament
+- Impactul degradării calității echipamentelor în timp
+
+#### 14.3.4 Schimbări în Protocolul de Examinare
+Modificări ale protocolului de examinare radiologică pot necesita reantrenarea modelului AI:
+- Schimbări în protocoalele de poziționare a pacientului
+- Actualizări ale echipamentelor radiologice care afectează calitatea imaginii
+- Modificări ale standardelor de examinare care necesită adaptarea sistemului
+
 ## 15. Plan de Management al Riscurilor
 
 ## 16. Managementul Datelor și Conformitatea cu Confidențialitatea
