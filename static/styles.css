@@ -284,7 +284,15 @@ article>footer {
     text-align: center;
     font-size: 0.8rem;
     padding: 0.25rem 0.5rem;
-    color: var(--pico-muted-color);
+    color: white;
+    background-color: rgba(0, 0, 0, 0.5);
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: 0;
+    border-bottom-left-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
 }
 
 .image-card .xray img {
@@ -293,6 +301,7 @@ article>footer {
     height: auto;
     transition: transform 0.2s ease;
     display: block;
+    position: relative;
 }
 
 .image-card .xray div[role="group"] {
