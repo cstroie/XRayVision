@@ -382,7 +382,23 @@ XRayVision reprezintă o oportunitate semnificativă de a îmbunătăți calitat
 
 Implementarea acestui sistem poate poziționa spitalul nostru ca lider în inovația medicală și poate îmbunătăți semnificativ rezultatele clinice pentru pacienții noștri pediatrici.
 
-## 14. Anexe
+## 14. Limitări și Constrângeri
+
+## 15. Plan de Management al Riscurilor
+
+## 16. Managementul Datelor și Conformitatea cu Confidențialitatea
+
+## 17. Instruire și Managementul Schimbării
+
+## 18. Asigurarea Calității și Monitorizare
+
+## 19. Considerații Reglementare și Juridice
+
+## 20. Susținabilitate și Dezvoltare Viitoare
+
+## 21. Referințe și Bibliografie
+
+## 22. Anexe
 
 ### 14.1 Arhitectura Sistemului
 
