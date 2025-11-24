@@ -1022,7 +1022,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
               created=exam['created'],
               protocol=exam["protocol"],
               region=exam['region'],
-              type=exam.get("type", ""),
+              type=exam.get("type", "CR"),
               status=status,
               study=exam.get("study"),
               series=exam.get("series"))
@@ -1800,7 +1800,7 @@ def db_backup():
         return None
 
 
-def db_rad_review(uid, normal, radiologist='rad'):
+def db_rad_review(uid, normal, radiologist=''):
     """
     Update radiologist report with normal/abnormal status.
 
@@ -1811,7 +1811,7 @@ def db_rad_review(uid, normal, radiologist='rad'):
     Args:
         uid: The unique identifier of the exam
         normal: Whether the radiologist marked the case as normal (True) or abnormal (False)
-        radiologist: Name/identifier of the radiologist (default: 'rad')
+        radiologist: Name/identifier of the radiologist (default: '')
 
     Returns:
         None
@@ -2810,8 +2810,8 @@ async def rad_review(request):
         # Get 'uid', 'normal', and optional 'radiologist' from request
         uid = data.get('uid')
         normal = data.get('normal', None)
-        # Use authenticated username as radiologist name, fallback to 'rad' if not available
-        radiologist = getattr(request, 'username', 'rad')
+        # Use authenticated username as radiologist name, fallback to '' if not available
+        radiologist = getattr(request, 'username', '')
         
         if uid is None or normal is None:
             return web.json_response({'status': 'error', 'message': 'UID and normal status are required'}, status=400)
@@ -4180,7 +4180,7 @@ async def extract_report_data(report, exam_uid):
         return None, None, None
         
     # Extract radiologist name from resultsInterpreter if available
-    radiologist = 'rad'  # Default value
+    radiologist = ''  # Default value
     try:
         if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
             interpreter = report['resultsInterpreter'][0]
