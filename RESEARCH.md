@@ -290,22 +290,91 @@ Sistemul poate analiza rapoartele radiologilor folosind un LLM pentru a extrage 
 - Reducerea timpului de așteptare în urgență (20%)
 - Eficiența fluxului de lucru în radiologie
 
-## 12. Buget și Resurse
+## 12. Resurse și Echipamente Necesare
 
-### 12.1 Resurse Hardware
-- Server dedicat pentru procesare AI
-- Stocare redundantă pentru imagini
-- Infrastructură de rețea dedicată
+### 12.1 Echipamente Hardware Necesare
 
-### 12.2 Resurse Umane
-- 1 inginer software pentru mentenanță
-- 1 specialist în integrări medicale
-- Personal medical pentru validare și formare
+#### 12.1.1 Server de Procesare AI
+- **Server dedicat** cu specificații avansate pentru procesarea imaginilor medicale:
+  - Procesor multi-core (minimum 16 cores, recomandat 32 cores)
+  - Memorie RAM minimum 64GB (recomandat 128GB sau mai mult)
+  - Placă grafică dedicată cu minim 24GB VRAM (NVIDIA RTX serie profesionistă)
+  - Stocare SSD NVMe de minimum 2TB pentru cache și procesare rapidă
+  - Conectivitate de rețea 10 Gigabit Ethernet
 
-### 12.3 Costuri Estimative
+#### 12.1.2 Infrastructură de Stocare
+- **Stocare redundantă** pentru imagini și date medicale:
+  - Sistem RAID 10 pentru protecție împotriva pierderii datelor
+  - Capacitate minimă 20TB pentru stocare imagini DICOM
+  - Backup automat zilnic pe medii separate
+  - Arhivare pe termen lung pentru conformitatea reglementară
+
+#### 12.1.3 Echipamente de Rețea
+- **Infrastructură de rețea dedicată** pentru securitate și performanță:
+  - Switch-uri de rețea gestionate cu VLAN-uri separate pentru DICOM, FHIR și administrație
+  - Firewall dedicat pentru protecția datelor medicale
+  - Conectivitate redundantă (dual ISP) pentru disponibilitate maximă
+  - Acces VPN securizat pentru administrare de la distanță
+
+#### 12.1.4 Stații de Lucru
+- **Stații de lucru pentru personalul medical**:
+  - Minimum 10 stații cu procesoare i7/i9 și 32GB RAM
+  - Monitoare de înaltă rezoluție pentru vizualizarea imaginilor radiologice
+  - Acces securizat la dashboard-ul XRayVision
+  - Conectivitate DICOM pentru vizualizarea directă a imaginilor
+
+### 12.2 Echipamente Radiologice Existente
+
+#### 12.2.1 Sisteme de Radiografie Digitală
+- **Aparatură DICOM compatibilă** deja existentă în spital:
+  - Sisteme de radiografie computerizată (CR) pentru examinări pediatricale
+  - Sisteme de radiografie digitală directă (DR) pentru imagini de înaltă calitate
+  - Echipamente pentru diverse regiuni anatomice (torace, abdomen, membri, etc.)
+
+#### 12.2.2 Infrastructura PACS
+- **Server PACS existent** pentru stocarea și distribuția imaginilor:
+  - Compatibilitate completă DICOM pentru integrare fără probleme
+  - Capacitate de a accepta conexiuni C-STORE, C-FIND, C-MOVE
+  - Interfață web pentru accesul radiologilor la imagini
+
+#### 12.2.3 Echipamente de Protecție
+- **Sisteme de monitorizare a expunerii la radiații**:
+  - Dozimetre personale pentru personalul medical
+  - Monitorizare automată a dozelor pacient pentru conformitate
+  - Raportare integrată în sistemul de informații medicale
+
+### 12.3 Integrări cu Sisteme Existente
+
+#### 12.3.1 Sistemul de Informații Medicale (HIS)
+- **Conectivitate FHIR** pentru acces la datele pacienților:
+  - Interogare pacient după CNP pentru identificare unică
+  - Acces la istoricul medical și examinările anterioare
+  - Integrare cu sistemul de programări și facturare
+
+#### 12.3.2 Sistemul de Arhivare și Comunicare a Imaginilor (PACS)
+- **Integrare DICOM completă** pentru fluxuri de lucru eficiente:
+  - Primire automată a imaginilor prin C-STORE
+  - Interogare și recuperare a studiilor prin C-FIND/C-MOVE
+  - Verificare conexiuni prin C-ECHO
+
+#### 12.3.3 Sistemul de Raportare Radiologică
+- **Integrare cu RIS** pentru fluxul de raportare:
+  - Acces la rapoartele radiologilor pentru validare
+  - Sincronizare a statusului examinărilor
+  - Notificări automate pentru cazurile critice
+
+### 12.4 Resurse Umane
+- 1 inginer software pentru mentenanță și dezvoltare continuă
+- 1 specialist în integrări medicale și DICOM
+- Personal medical pentru validare și formare (radiologi, medici de urgență)
+- Administrator de sistem pentru securitate și backup
+
+### 12.5 Costuri Estimative
 - Dezvoltare și implementare: 50.000 EUR
 - Licențe software: 10.000 EUR/an
 - Mentenanță și suport: 15.000 EUR/an
+- Echipamente hardware: 75.000 EUR (server AI, stocare, rețea)
+- Formare personal: 5.000 EUR
 
 ## 13. Concluzii
 
