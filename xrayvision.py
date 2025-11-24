@@ -1061,6 +1061,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             - search: Filter by patient name, CNP, or UID (case-insensitive
               partial match for name/CNP, exact for UID)
             - diagnostic: Filter by radiologist diagnostic summary
+            - radiologist: Filter by radiologist name (case-insensitive exact match)
+            - uid: Filter by exam UID (exact match)
+            - cnp: Filter by patient CNP (exact match)
 
     Returns:
         tuple: (exams_list, total_count) where exams_list is a list of
