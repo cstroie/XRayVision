@@ -2023,6 +2023,12 @@ def dicom_store(event):
     # Get the dataset
     ds = event.dataset
     ds.file_meta = event.file_meta
+    
+    # Validate SOP Instance UID
+    if 'SOPInstanceUID' not in ds or not ds.SOPInstanceUID or ds.SOPInstanceUID == 'NO_UID':
+        logging.error("Invalid or missing SOP Instance UID in received DICOM file")
+        return 0x0110  # Processing failure
+    
     uid = f"{ds.SOPInstanceUID}"
     # Check if already processed
     if db_check_already_processed(uid):
