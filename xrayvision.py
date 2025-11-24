@@ -3554,6 +3554,220 @@ async def send_to_openai(session, headers, payload):
     return None
 
 
+async def update_patient_info_from_fhir(exam):
+    """
+    Try to get additional patient information from FHIR before processing.
+    
+    Args:
+        exam: Dictionary containing exam information and metadata
+        
+    Returns:
+        None
+    """
+    patient_cnp = exam['patient']['cnp']
+    if patient_cnp and not exam['patient']['id']:
+        async with aiohttp.ClientSession() as session:
+            # Get patient information from FHIR
+            fhir_patient = await get_fhir_patient(session, patient_cnp)
+            if fhir_patient:
+                # Update patient ID if found
+                if 'id' in fhir_patient:
+                    exam['patient']['id'] = fhir_patient['id']
+                    # Update in database
+                    db_update_patient_id(patient_cnp, fhir_patient['id'])
+
+
+async def prepare_exam_data(exam):
+    """
+    Prepare exam data for AI processing by identifying region, projection, etc.
+    
+    Args:
+        exam: Dictionary containing exam information and metadata
+        
+    Returns:
+        tuple: (region, question, subject, anatomy, image_bytes) or (None, None, None, None, None) if exam should be ignored
+    """
+    # Read the PNG file
+    with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
+        image_bytes = f.read()
+    # Identify the region
+    region, question = identify_anatomic_region(exam)
+    # Filter on specific region
+    if not region in REGIONS:
+        logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
+        db_set_status(exam['uid'], 'ignore')
+        return None, None, None, None, None
+    # Identify the projection, gender and age
+    projection = identify_imaging_projection(exam)
+    gender = determine_patient_gender_description(exam)
+    age = exam["patient"]["age"]
+    if age > 1:
+        txtAge = f"{age} years old"
+    elif age > 0:
+        txtAge = f"{age} year old"
+    elif age == 0:
+        txtAge = "newborn"
+    else:
+        txtAge = ""
+    # Update exam info
+    exam['exam'].update({'region': region, 'projection': projection})
+    # Get the subject of the study and the studied region
+    subject = " ".join([txtAge, gender])
+    if region:
+        anatomy = " ".join([projection, region])
+    else:
+        anatomy = ""
+        
+    return region, question, subject, anatomy, image_bytes
+
+
+def create_ai_prompt(exam, region, question, subject, anatomy):
+    """
+    Create the AI prompt for the exam.
+    
+    Args:
+        exam: Dictionary containing exam information and metadata
+        region: Anatomic region
+        question: Clinical question
+        subject: Patient description
+        anatomy: Anatomic region description
+        
+    Returns:
+        str: Formatted prompt for AI
+    """
+    # Get previous reports for the same patient and region
+    previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
+
+    # Create the prompt
+    prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
+
+    # Add justification if available
+    if exam['report']['rad'].get('justification'):
+        prompt += f"\n\nCLINICAL INFORMATION: {exam['report']['rad']['justification']}"
+
+    # Append previous reports if any exist
+    if previous_reports:
+        prompt += "\n\nPRIOR STUDIES:"
+        for i, (report, date) in enumerate(previous_reports, 1):
+            prompt += f"\n\n[{date}] {report}"
+        prompt += "\n\nCompare to prior studies. Note any new, stable, resolved, or progressive findings with dates."
+    prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question. Output JSON only."
+    
+    return prompt
+
+
+def prepare_ai_request_data(prompt, image_bytes):
+    """
+    Prepare the request data for sending to AI API.
+    
+    Args:
+        prompt: Formatted prompt for AI
+        image_bytes: Image data as bytes
+        
+    Returns:
+        tuple: (headers, data) for the AI API request
+    """
+    # Base64 encode the PNG to comply with OpenAI Vision API
+    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+    image_url = f"data:image/png;base64,{image_b64}"
+    # Prepare the request headers
+    headers = {
+        'Authorization': f'Bearer {OPENAI_API_KEY}',
+        'Content-Type': 'application/json',
+    }
+    # Prepare the JSON data
+    data = {
+        "model": MODEL_NAME,
+        "timings_per_token": True,
+        "min_p": 0.05,
+        "top_k": 40,
+        "top_p": 0.95,
+        "temperature": 0.6,
+        "cache_prompt": True,
+        "stream": False,
+        "keep_alive": 1800,
+        "messages": [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": SYS_PROMPT}]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                ]
+            }
+        ]
+    }
+    
+    return headers, data
+
+
+def process_ai_response(response_text, exam_uid):
+    """
+    Process the AI response and extract relevant information.
+    
+    Args:
+        response_text: Raw response text from AI
+        exam_uid: Exam unique identifier
+        
+    Returns:
+        tuple: (short, report, confidence) or (None, None, None) if parsing failed
+    """
+    # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
+    response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags = re.IGNORECASE | re.MULTILINE)
+    response_text = re.sub(r"\s*```$", "", response_text, flags = re.MULTILINE)
+    # Clean up any text before '{'
+    response_text = re.sub(r"^[^{]*{", "{", response_text, flags = re.IGNORECASE | re.MULTILINE)
+    try:
+        parsed = json.loads(response_text)
+        short = parsed["short"].strip().lower()
+        report = parsed["report"].strip()
+        confidence = parsed.get("confidence", 0)
+        if short not in ("yes", "no") or not report:
+            raise ValueError("Invalid json format in OpenAI response")
+        return short, report, confidence
+    except Exception as e:
+        logging.error(f"Rejected malformed OpenAI response: {e}")
+        logging.error(response_text)
+        return None, None, None
+
+
+async def handle_ai_success(exam, short, report, confidence, processing_time):
+    """
+    Handle successful AI processing by updating database and sending notifications.
+    
+    Args:
+        exam: Dictionary containing exam information and metadata
+        short: AI response short field ("yes"/"no")
+        report: AI generated report text
+        confidence: AI confidence score
+        processing_time: Time taken to process the exam
+        
+    Returns:
+        bool: True if successful
+    """
+    # Save to exams database
+    is_positive = short == "yes"
+    # Update the AI report with the processing time
+    query = "UPDATE ai_reports SET latency = ? WHERE uid = ?"
+    params = (processing_time, exam['uid'])
+    db_execute_query_retry(query, params)
+    # Save to exams database
+    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
+    # Send notification for positive cases
+    if is_positive:
+        try:
+            await send_ntfy_notification(exam['uid'], report, exam)
+        except Exception as e:
+            logging.error(f"Failed to send ntfy notification: {e}")
+    # Notify the dashboard frontend to reload first page
+    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
+    # Success
+    return True
+
+
 async def send_exam_to_openai(exam, max_retries = 3):
     """
     Send an exam's PNG image to the OpenAI API for analysis.
@@ -3572,66 +3786,16 @@ async def send_exam_to_openai(exam, max_retries = 3):
     """
     try:
         # Try to get additional patient and exam information from FHIR before processing
-        patient_cnp = exam['patient']['cnp']
-        if patient_cnp and not exam['patient']['id']:
-            async with aiohttp.ClientSession() as session:
-                # Get patient information from FHIR
-                fhir_patient = await get_fhir_patient(session, patient_cnp)
-                if fhir_patient:
-                    # Update patient ID if found
-                    if 'id' in fhir_patient:
-                        exam['patient']['id'] = fhir_patient['id']
-                        # Update in database
-                        db_update_patient_id(patient_cnp, fhir_patient['id'])
+        await update_patient_info_from_fhir(exam)
                             
-        # Read the PNG file
-        with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
-            image_bytes = f.read()
-        # Identify the region
-        region, question = identify_anatomic_region(exam)
-        # Filter on specific region
-        if not region in REGIONS:
-            logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
-            db_set_status(exam['uid'], 'ignore')
+        # Prepare exam data
+        region, question, subject, anatomy, image_bytes = await prepare_exam_data(exam)
+        if region is None:  # Exam should be ignored
             return False
-        # Identify the prjection, gender and age
-        projection = identify_imaging_projection(exam)
-        gender = determine_patient_gender_description(exam)
-        age = exam["patient"]["age"]
-        if age > 1:
-            txtAge = f"{age} years old"
-        elif age > 0:
-            txtAge = f"{age} year old"
-        elif age == 0:
-            txtAge = "newborn"
-        else:
-            txtAge = ""
-        # Update exam info
-        exam['exam'].update({'region': region, 'projection': projection})
-        # Get the subject of the study and the studied region
-        subject = " ".join([txtAge, gender])
-        if region:
-            anatomy = " ".join([projection, region])
-        else:
-            anatomy = ""
-        # Get previous reports for the same patient and region
-        previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
-
+            
         # Create the prompt
-        prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
-
-        # Add justification if available
-        if exam['report']['rad'].get('justification'):
-            prompt += f"\n\nCLINICAL INFORMATION: {exam['report']['rad']['justification']}"
-
-        # Append previous reports if any exist
-        if previous_reports:
-            prompt += "\n\nPRIOR STUDIES:"
-            for i, (report, date) in enumerate(previous_reports, 1):
-                prompt += f"\n\n[{date}] {report}"
-            prompt += "\n\nCompare to prior studies. Note any new, stable, resolved, or progressive findings with dates."
-        prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question. Output JSON only."
-
+        prompt = create_ai_prompt(exam, region, question, subject, anatomy)
+        
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
         if exam['report']['ai']['text']:
@@ -3639,42 +3803,14 @@ async def send_exam_to_openai(exam, max_retries = 3):
                            'report': exam['report']['ai']['text']}
             exam['report']['json'] = json.dumps(json_report)
             logging.info(f"Previous report: {exam['report']['json']}")
-        # Base64 encode the PNG to comply with OpenAI Vision API
-        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        image_url = f"data:image/png;base64,{image_b64}"
-        # Prepare the request headers
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
-        # Prepare the JSON data
-        data = {
-            "model": MODEL_NAME,
-            "timings_per_token": True,
-            "min_p": 0.05,
-            "top_k": 40,
-            "top_p": 0.95,
-            "temperature": 0.6,
-            "cache_prompt": True,
-            "stream": False,
-            "keep_alive": 1800,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": SYS_PROMPT}]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_url}}
-                    ]
-                }
-            ]
-        }
+            
+        # Prepare request data
+        headers, data = prepare_ai_request_data(prompt, image_bytes)
+        
         if 'json' in exam['report']:
             data['messages'].append({'role': 'assistant', 'content': exam['report']['json']})
             data['messages'].append({'role': 'user', 'content': REV_PROMPT})
+            
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
         attempt = 1
         while attempt <= max_retries:
@@ -3685,26 +3821,15 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     result = await send_to_openai(session, headers, data)
                     if not result:
                         break
-                    response = result["choices"][0]["message"]["content"].strip()
-                    # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
-                    response = re.sub(r"^```(?:json)?\s*", "", response, flags = re.IGNORECASE | re.MULTILINE)
-                    response = re.sub(r"\s*```$", "", response, flags = re.MULTILINE)
-                    # Clean up any text before '{'
-                    response = re.sub(r"^[^{]*{", "{", response, flags = re.IGNORECASE | re.MULTILINE)
-                    try:
-                        parsed = json.loads(response)
-                        short = parsed["short"].strip().lower()
-                        report = parsed["report"].strip()
-                        confidence = parsed.get("confidence", 0)
-                        if short not in ("yes", "no") or not report:
-                            raise ValueError("Invalid json format in OpenAI response")
-                    except Exception as e:
-                        logging.error(f"Rejected malformed OpenAI response: {e}")
-                        logging.error(response)
+                    response_text = result["choices"][0]["message"]["content"].strip()
+                    
+                    # Process AI response
+                    short, report, confidence = process_ai_response(response_text, exam['uid'])
+                    if short is None:  # Parsing failed
                         break
+                        
                     logging.info(f"OpenAI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
-                    # Save to exams database
-                    is_positive = short == "yes"
+                    
                     # Calculate timing statistics
                     global timings
                     end_time = asyncio.get_event_loop().time()
@@ -3714,27 +3839,18 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
                     else:
                         timings['average'] = timings['total']
-                    # Update the AI report with the processing time
-                    query = "UPDATE ai_reports SET latency = ? WHERE uid = ?"
-                    params = (processing_time, exam['uid'])
-                    db_execute_query_retry(query, params)
-                    # Save to exams database
-                    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
-                    # Send notification for positive cases
-                    if is_positive:
-                        try:
-                            await send_ntfy_notification(exam['uid'], report, exam)
-                        except Exception as e:
-                            logging.error(f"Failed to send ntfy notification: {e}")
-                    # Notify the dashboard frontend to reload first page
-                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
-                    # Success
-                    return True
+                    
+                    # Handle success
+                    success = await handle_ai_success(exam, short, report, confidence, processing_time)
+                    if success:
+                        return True
+                        
             except Exception as e:
                 logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
                 # Exponential backoff
                 await asyncio.sleep(2 ** attempt)
                 attempt += 1
+                
         # Failure after max_retries
         db_set_status(exam['uid'], 'error')
         QUEUE_EVENT.clear()
