@@ -13,13 +13,19 @@ XRayVision este un sistem dezvoltat intern care integrează tehnologia de inteli
 ## 2. Obiectivele Cercetării
 
 ### 2.1 Obiectiv Principal
-Dezvoltarea și implementarea unui sistem de diagnostic asistat de IA pentru clasificarea și diagnosticarea automată a radiografiilor pediatricale într-un spital de urgență copii.
+Dezvoltarea și implementarea unui sistem de diagnostic asistat de IA pentru clasificarea și diagnosticarea automată a radiografiilor pediatricale într-un spital de urgență copii, cu scopul de a îmbunătăți eficiența diagnosticului și calitatea îngrijirii medicale acordate pacienților pediatrici.
 
 ### 2.2 Obiective Secundare
-- Reducerea timpului de diagnostic pentru radiografii pediatricale
-- Îmbunătățirea acurateței diagnosticului prin suport decizional AI
-- Integrarea cu sistemele existente de management al pacienților (FHIR/HIS)
-- Validarea clinică a performanței sistemului în condiții reale
+- Reducerea timpului de diagnostic pentru radiografii pediatricale prin automatizarea procesului de analiză și raportare
+- Îmbunătățirea acurateței diagnosticului prin suport decizional AI bazat pe modele avansate de limbaj
+- Integrarea fluidă cu sistemele existente de management al pacienților (FHIR/HIS) și infrastructura DICOM
+- Validarea clinică a performanței sistemului în condiții reale de urgență pediatrică
+- Asigurarea conformității cu reglementările medicale și standardele de confidențialitate ale datelor pacienților
+- Dezvoltarea unui mecanism eficient de feedback și învățare continuă pentru îmbunătățirea performanței sistemului
+- Crearea unui dashboard intuitiv pentru monitorizarea în timp real a activității sistemului și a indicatorilor de performanță
+- Implementarea unui sistem de notificare automată pentru cazurile critice identificate de IA
+- Stocarea și organizarea eficientă a imaginilor radiologice și a rapoartelor generate
+- Asigurarea scalabilității și fiabilității sistemului pentru operare continuă 24/7
 
 ## 3. Metodologie
 
