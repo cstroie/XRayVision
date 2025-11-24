@@ -550,7 +550,7 @@
               "type": "string",
               "enum": ["any", "yes", "no"]
             },
-            "description": "Filter by review status"
+            "description": "Filter by review status (yes = severity > -1, no = severity = -1)"
           },
           {
             "name": "positive",
@@ -592,7 +592,23 @@
             "schema": {
               "type": "string"
             },
-            "description": "Filter by patient name"
+            "description": "Filter by patient name, CNP, or UID"
+          },
+          {
+            "name": "diagnostic",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by radiologist diagnostic summary"
+          },
+          {
+            "name": "radiologist",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by radiologist name"
           }
         ],
         "responses": {
