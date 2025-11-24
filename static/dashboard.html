@@ -126,6 +126,7 @@
             <section class="grid image-card">
                 <figure class="xray">
                     <img src="" alt="Processed Image">
+                    <figcaption></figcaption>
                     <div role="group">
                         <button class="abnormal" title="Abnormal">&#x26A0;</button>
                         <button class="normal" title="Normal">&#x2713;</button>
@@ -140,7 +141,6 @@
                             <span class="patient-cnp"></span><br>
                             <span class="patient-his"></span><br>
                             <span class="exam-time"></span><br>
-                            <span class="exam-protocol"></span><br>
                             <span class="exam-region"></span><br>
                             <span class="exam-justification"></span>
                         </p>
@@ -595,8 +595,10 @@
                 examClone.querySelector('.details .patient-cnp').innerHTML = `<small><strong>CNP:</strong> ${item.patient.cnp}</small>`;
                 examClone.querySelector('.details .patient-his').innerHTML = `<small><strong>HIS:</strong> ${item.patient.id} ${item.report.rad.id}</small>`;
                 examClone.querySelector('.details .exam-time').innerHTML = `<small><strong>Time:</strong> <time datetime="${datetimeString}">${formattedDate} ${formattedTime}</time></small>`;
-                examClone.querySelector('.details .exam-protocol').innerHTML = `<small><strong>Protocol:</strong> ${item.exam.protocol}</small>`;
                 examClone.querySelector('.details .exam-region').innerHTML = `<small><strong>Region:</strong> ${item.exam.region}</small>`;
+                
+                // Set protocol in figcaption
+                examClone.querySelector('figcaption').textContent = item.exam.protocol;
                 
                 const justificationElement = examClone.querySelector('.details .exam-justification');
                 if (item.report.rad.justification) {
