@@ -2463,7 +2463,14 @@ async def exams_handler(request):
         for filter in ['region', 'status', 'search', 'diagnostic', 'radiologist']:
             value = request.query.get(filter, 'any')
             if value != 'any':
-                filters[filter] = value
+                if filter == 'status':
+                    # Handle status as a list if it contains commas
+                    if ',' in value:
+                        filters[filter] = [s.strip().lower() for s in value.split(',')]
+                    else:
+                        filters[filter] = value.lower()
+                else:
+                    filters[filter] = value
         offset = (page - 1) * PAGE_SIZE
         data, total = db_get_exams(limit = PAGE_SIZE, offset = offset, **filters)
         
