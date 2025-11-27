@@ -1137,7 +1137,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 ELSE 0
             END AS correct,
             CASE
-                WHEN rr.positive > -1 THEN 1
+                WHEN rr.severity > -1 THEN 1
                 ELSE 0
             END AS reviewed
         FROM exams e
