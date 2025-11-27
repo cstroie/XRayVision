@@ -1117,6 +1117,16 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if 'cnp' in filters:
         conditions.append("p.cnp = ?")
         params.append(filters['cnp'])
+    if 'severity' in filters and 'severity_op' in filters:
+        severity_value = filters['severity']
+        severity_op = filters['severity_op']
+        if severity_op == 'equal':
+            conditions.append("rr.severity = ?")
+        elif severity_op == 'lower':
+            conditions.append("rr.severity < ?")
+        elif severity_op == 'higher':
+            conditions.append("rr.severity > ?")
+        params.append(severity_value)
 
     # Build WHERE clause
     where = ""
@@ -2468,6 +2478,16 @@ async def exams_handler(request):
                         filters[filter] = value.lower()
                 else:
                     filters[filter] = value
+        # Handle severity filter with comparison operator
+        severity_value = request.query.get('severity', 'any')
+        severity_op = request.query.get('severity_op', 'any')
+        if severity_value != 'any' and severity_op != 'any':
+            try:
+                filters['severity'] = int(severity_value)
+                if severity_op in ['equal', 'lower', 'higher']:
+                    filters['severity_op'] = severity_op
+            except ValueError:
+                pass  # Ignore invalid severity value
         offset = (page - 1) * PAGE_SIZE
         data, total = db_get_exams(limit = PAGE_SIZE, offset = offset, **filters)
         
