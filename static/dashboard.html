@@ -321,6 +321,12 @@
                         loadPage(1);
                     } else if (data.event.name === "radreport") {
                         showToast(`Radiologist report available`);
+                    } else if (data.event.name === "config_reload") {
+                        if (data.event.payload.status === "success") {
+                            showToast("Configuration reloaded successfully");
+                        } else {
+                            showToast("Configuration reload failed");
+                        }
                     }
                 }
             };
