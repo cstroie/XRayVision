@@ -461,7 +461,6 @@
             if (correct && correct !== 'any') params.append('correct', correct);
             if (region && region !== 'any') params.append('region', region);
             if (status && status !== 'any') params.append('status', status);
-            else params.append('status', 'done');
             if (search === '') {
                 search = document.getElementById("search-input").value.trim();
             };

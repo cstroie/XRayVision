@@ -1147,18 +1147,11 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         ORDER BY e.created DESC
         LIMIT ? OFFSET ?
     """
-    # Insert SEVERITY_THRESHOLD parameters at the correct position (before limit and offset)
-    params_with_thresholds = params[:len(params)-2] if len(params) >= 2 else params
-    params_with_thresholds.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
-    params_with_thresholds.extend(params[len(params)-2:] if len(params) >= 2 else [])
-    params_with_thresholds.extend([limit, offset])
-
-    print(query)
-    print(params)
+    all_params = [SEVERITY_THRESHOLD, SEVERITY_THRESHOLD] + params + [limit, offset]
 
     # Get the exams
     exams = []
-    rows = db_execute_query(query, tuple(params), fetch_mode='all')
+    rows = db_execute_query(query, tuple(all_params), fetch_mode='all')
     if rows:
         for row in rows:
             # Unpack row into named variables for better readability
@@ -1230,10 +1223,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     count_params = []
     if conditions:
         count_query += ' WHERE ' + " AND ".join(conditions)
-        # For count query, we only need the filter parameters, not the SEVERITY_THRESHOLD, limit, and offset parameters
-        # The params list has: [filter_params..., SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, limit, offset]
-        count_params = params[:-4]  # Exclude the last 4 parameters
-    total_row = db_execute_query(count_query, tuple(count_params), fetch_mode='one')
+    total_row = db_execute_query(count_query, tuple(params), fetch_mode='one')
     total = total_row[0] if total_row else 0
     return exams, total
 
