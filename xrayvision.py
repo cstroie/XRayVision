@@ -1381,16 +1381,16 @@ async def db_get_stats():
             mcc = (tpos * tneg - fpos * fneg) / denominator
             stats["mcc"] = round(mcc, 2)
 
-    # Get processing time statistics (last day only)
+    # Get processing time statistics (last day only) - using AI report latency
     query = """
         SELECT
-            AVG(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) AS avg_processing_time,
-            COUNT(*) * 1.0 / (SUM(CAST(strftime('%s', ar.created) - strftime('%s', e.created) AS REAL)) + 1) AS throughput
+            AVG(CAST(ar.latency AS REAL)) AS avg_processing_time,
+            COUNT(*) * 1.0 / (SUM(CAST(ar.latency AS REAL)) + 1) AS throughput
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         WHERE e.status LIKE 'done'
-          AND ar.created IS NOT NULL
-          AND e.created IS NOT NULL
+          AND ar.latency IS NOT NULL
+          AND ar.latency >= 0
           AND e.created >= datetime('now', '-1 days')
     """
     timing_row = db_execute_query(query, fetch_mode='one')
