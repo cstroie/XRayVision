@@ -1078,11 +1078,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     # Update the conditions with proper parameterization
     if 'reviewed' in filters:
         if filters['reviewed'] == 1:
-            conditions.append("rr.severity > ?")
-            params.append("-1")
+            conditions.append("rr.severity > -1")
         else:
-            conditions.append("rr.severity = ?")
-            params.append("-1")
+            conditions.append("rr.severity = -1")
     if 'positive' in filters:
         conditions.append("ar.positive = ?")
         params.append(filters['positive'])
@@ -1150,6 +1148,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         LIMIT ? OFFSET ?
     """
     params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, limit, offset])
+
+    print(query)
+    print(params)
 
     # Get the exams
     exams = []
