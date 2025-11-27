@@ -1086,8 +1086,15 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("ar.positive = ?")
         params.append(filters['positive'])
     if 'correct' in filters:
-        conditions.append("correct = ?")
-        params.append(filters['correct'])
+        if filters['correct'] == 1:
+            # For correct = 'yes', we want exams where correct = 1
+            conditions.append("correct = ?")
+            params.append(filters['correct'])
+        else:
+            # For correct = 'no', we want exams where correct = 0 
+            # BUT only for exams that actually have radiologist reports (severity > -1)
+            conditions.append("correct = ? AND rr.severity > -1")
+            params.append(filters['correct'])
     if 'region' in filters:
         conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
