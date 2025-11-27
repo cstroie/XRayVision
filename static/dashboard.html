@@ -633,7 +633,7 @@
                 // Set AI report
                 const aiReportElement = examClone.querySelector('.ai-report');
                 if (text) {
-                    aiReportElement.querySelector('summary').innerHTML = `AI Report: ${isPositive ? 'Positive' : 'Negative'}`;
+                    aiReportElement.querySelector('summary').innerHTML = `AI Report: ${isPositive ? 'Positive' : 'Negative'}${item.report.ai.confidence !== null && item.report.ai.confidence > -1 ? ` (Confidence: ${item.report.ai.confidence}%)` : ''}`;
                     aiReportElement.querySelector('summary').nextSibling.textContent = text;
                     aiReportElement.open = true;
                 } else {
@@ -644,7 +644,7 @@
                 const radReportElement = examClone.querySelector('.rad-report');
                 if (item.report.rad.text) {
                     radReportElement.className = `report rad-report severity-${item.report.rad.severity}`;
-                    radReportElement.querySelector('summary').innerHTML = `${item.report.rad.radiologist}: ${item.report.rad.summary}`;
+                    radReportElement.querySelector('summary').innerHTML = `${item.report.rad.radiologist}: ${item.report.rad.summary}${item.report.rad.severity !== null && item.report.rad.severity > -1 ? ` (Severity: ${item.report.rad.severity}/10)` : ''}`;
                     radReportElement.querySelector('summary').nextSibling.textContent = item.report.rad.text;
                     radReportElement.open = true;
                 } else {
