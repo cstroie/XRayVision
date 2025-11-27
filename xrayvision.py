@@ -2646,6 +2646,35 @@ async def radiologists_handler(request):
         return web.json_response({}, status = 500)
 
 
+async def severity_handler(request):
+    """Provide severity levels and their report counts.
+
+    Returns a dictionary mapping severity levels (0-10) to their report counts
+    for use in filtering or display in the frontend.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with severity levels and report counts in {severity: count} format
+    """
+    try:
+        # Get severity levels and their report counts from the database
+        query = """
+            SELECT severity, COUNT(*) as report_count 
+            FROM rad_reports 
+            WHERE severity IS NOT NULL AND severity >= 0
+            GROUP BY severity 
+            ORDER BY severity
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        severity_counts = {str(severity): count for severity, count in rows} if rows else {}
+        return web.json_response(severity_counts)
+    except Exception as e:
+        logging.error(f"Severity endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
+
 async def patients_handler(request):
     """Provide paginated patient data with optional filters.
 
@@ -3922,6 +3951,7 @@ async def start_dashboard():
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/diagnostics', diagnostics_handler)
     app.router.add_get('/api/radiologists', radiologists_handler)
+    app.router.add_get('/api/severity', severity_handler)
     app.router.add_get('/api/config', config_handler)
     
     # API endpoints - Actions
