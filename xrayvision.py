@@ -1332,7 +1332,7 @@ async def db_get_stats():
             COUNT(*) AS total,
             SUM(CASE WHEN rr.severity > -1 THEN 1 ELSE 0 END) AS reviewed
         FROM exams e
-        LEFT JOIN rad_reports rr ON e.uid = rr.uid AND rr.severity > -1
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done'
     """
     row = db_execute_query(query, fetch_mode='one')
@@ -1350,7 +1350,7 @@ async def db_get_stats():
             SUM(CASE WHEN (ar.positive = 0 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS fneg
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
-        LEFT JOIN rad_reports rr ON e.uid = rr.uid AND rr.severity > -1
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done'
           AND ar.positive > -1
           AND rr.severity > -1;
@@ -1410,7 +1410,7 @@ async def db_get_stats():
                 COUNT(*) AS total,
                 SUM(CASE WHEN rr.severity > -1 THEN 1 ELSE 0 END) AS reviewed,
                 SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
-                SUM(CASE WHEN ((ar.positive = 1 AND rr.severity < ?) OR (ar.positive = 0 AND rr.severity >= ?)) AND ar.positive > -1 AND rr.severity > -1 THEN 1 ELSE 0 END) AS wrong,
+                SUM(CASE WHEN ((ar.positive = 1 AND rr.severity < ?) OR (ar.positive = 0 AND rr.severity >= ?)) AND ar.positive > -1 THEN 1 ELSE 0 END) AS wrong,
                 SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS tpos,
                 SUM(CASE WHEN (ar.positive = 0 AND rr.severity < ?) THEN 1 ELSE 0 END) AS tneg,
                 SUM(CASE WHEN (ar.positive = 1 AND rr.severity < ?) THEN 1 ELSE 0 END) AS fpos,
