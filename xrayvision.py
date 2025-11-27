@@ -304,7 +304,7 @@ LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load ex
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
 QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')  # Base interval for query/retrieve in seconds
-SEVERITY_THRESHOLD = config.getint('processing', 'SEVERITY_THRESHOLD', fallback=5)  # Severity threshold for correctness calculation
+SEVERITY_THRESHOLD = config.getint('processing', 'SEVERITY_THRESHOLD')  # Severity threshold for correctness calculation
 
 # Load region identification rules from config
 REGION_RULES = {}
