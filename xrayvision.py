@@ -1081,20 +1081,13 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         if filters['reviewed'] == 1:
             conditions.append("rr.severity > -1")
         else:
-            conditions.append("rr.severity = -1")
+            conditions.append("(rr.severity = -1 OR rr.severity IS NULL)")
     if 'positive' in filters:
         conditions.append("ar.positive = ?")
         params.append(filters['positive'])
     if 'correct' in filters:
-        if filters['correct'] == 1:
-            # For correct = 'yes', we want exams where correct = 1
-            conditions.append("correct = ?")
-            params.append(filters['correct'])
-        else:
-            # For correct = 'no', we want exams where correct = 0 
-            # BUT only for exams that actually have radiologist reports (severity > -1)
-            conditions.append("correct = ? AND rr.severity > -1")
-            params.append(filters['correct'])
+        conditions.append("correct = ?")
+        params.append(filters['correct'])
     if 'region' in filters:
         conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
@@ -1110,9 +1103,9 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             conditions.append("LOWER(e.status) = ?")
             params.append(status_value.lower())
     if 'search' in filters:
-        conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.cnp) LIKE ? OR e.uid LIKE ?)")
+        conditions.append("(LOWER(p.name) LIKE ? OR LOWER(p.cnp) LIKE ? OR LOWER(p.id) LIKE ? OR e.uid LIKE ?)")
         search_term = f"%{filters['search']}%"
-        params.extend([search_term, search_term, search_term])
+        params.extend([search_term, search_term, search_term, search_term])
     if 'diagnostic' in filters:
         conditions.append("LOWER(rr.summary) = LOWER(?)")
         params.append(filters['diagnostic'])
@@ -1149,7 +1142,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.model, ar.latency,
             rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
             CASE 
-                WHEN rr.severity = -1 THEN -1
+                WHEN (rr.severity = -1 OR rr.severity IS NULL) THEN -1
                 WHEN (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?) THEN 1
                 ELSE 0
             END AS correct,
