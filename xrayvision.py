@@ -1458,7 +1458,6 @@ async def db_get_stats():
     if region_data:
         for row in region_data:
             (region, total, reviewed, positive, tpos, tneg, fpos, fneg) = row
-            print(row)
             region = region or 'unknown'
             stats["region"][region] = {
                 "total": total,
