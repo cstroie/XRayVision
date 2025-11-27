@@ -1118,16 +1118,41 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if 'cnp' in filters:
         conditions.append("p.cnp = ?")
         params.append(filters['cnp'])
-    if 'severity' in filters and 'severity_op' in filters:
-        severity_value = filters['severity']
-        severity_op = filters['severity_op']
-        if severity_op == 'equal':
-            conditions.append("rr.severity = ?")
-        elif severity_op == 'lower':
-            conditions.append("rr.severity < ?")
-        elif severity_op == 'higher':
-            conditions.append("rr.severity > ?")
-        params.append(severity_value)
+    if 'severity' in filters:
+        severity_value = str(filters['severity']).strip()
+        # Handle interval notation: "3-6", "-8", "2-"
+        if '-' in severity_value and severity_value != '-':
+            parts = severity_value.split('-', 1)
+            try:
+                if parts[0] == '':  # "-8" format (0 to 8)
+                    upper = int(parts[1])
+                    conditions.append("rr.severity >= ? AND rr.severity <= ?")
+                    params.extend([0, upper])
+                elif parts[1] == '':  # "2-" format (2 to 10)
+                    lower = int(parts[0])
+                    conditions.append("rr.severity >= ? AND rr.severity <= ?")
+                    params.extend([lower, 10])
+                else:  # "3-6" format (3 to 6)
+                    lower = int(parts[0])
+                    upper = int(parts[1])
+                    conditions.append("rr.severity >= ? AND rr.severity <= ?")
+                    params.extend([lower, upper])
+            except ValueError:
+                # If parsing fails, treat as exact value
+                try:
+                    exact_val = int(severity_value)
+                    conditions.append("rr.severity = ?")
+                    params.append(exact_val)
+                except ValueError:
+                    pass  # Invalid severity value, ignore filter
+        else:
+            # Handle single number
+            try:
+                exact_val = int(severity_value)
+                conditions.append("rr.severity = ?")
+                params.append(exact_val)
+            except ValueError:
+                pass  # Invalid severity value, ignore filter
 
     # Build WHERE clause
     where = ""
