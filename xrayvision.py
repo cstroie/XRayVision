@@ -4668,8 +4668,9 @@ def signal_handler(signum, frame):
                 )
     elif signum == signal.SIGTERM or signum == signal.SIGINT:
         logging.info("Received termination signal, shutting down...")
-        # This would normally trigger the shutdown process
-        # The main loop handles SIGINT/SIGTERM already
+        # Stop the main loop to trigger shutdown
+        if MAIN_LOOP:
+            MAIN_LOOP.stop()
 
 
 async def main():
@@ -4731,6 +4732,14 @@ async def main():
         await asyncio.gather(*tasks)
     except asyncio.CancelledError:
         logging.info("Main task cancelled. Shutting down...")
+        # Cancel all tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        # Wait for tasks to finish cancellation
+        await asyncio.gather(*tasks, return_exceptions=True)
+    except KeyboardInterrupt:
+        logging.info("Received KeyboardInterrupt, shutting down...")
         # Cancel all tasks
         for task in tasks:
             if not task.done():
