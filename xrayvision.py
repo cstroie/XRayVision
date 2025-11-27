@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import re
+import signal
 import sqlite3
 import random
 from datetime import datetime, timedelta
@@ -4558,6 +4559,119 @@ def handle_error(e, context="", default_return=None, raise_on_error=False):
     return default_return
 
 
+def reload_configuration():
+    """Reload configuration from files"""
+    global config, USERS, OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY, OPENAI_API_KEY
+    global NTFY_URL, DASHBOARD_PORT, AE_TITLE, AE_PORT, REMOTE_AE_TITLE, REMOTE_AE_IP
+    global REMOTE_AE_PORT, RETRIEVAL_METHOD, FHIR_URL, FHIR_USERNAME, FHIR_PASSWORD
+    global DB_FILE, BACKUP_DIR, MODEL_NAME, REGION_RULES
+    global REGION_QUESTIONS, REGIONS, PAGE_SIZE, KEEP_DICOM, LOAD_DICOM, NO_QUERY
+    global ENABLE_NTFY, QUERY_INTERVAL, SEVERITY_THRESHOLD
+    
+    try:
+        # Create a new config parser
+        new_config = configparser.ConfigParser()
+        new_config.read_dict(DEFAULT_CONFIG)
+        
+        # Read main config file
+        new_config.read('xrayvision.cfg')
+        logging.info("Configuration reloaded from xrayvision.cfg")
+        
+        # Check for local configuration file to override settings
+        local_config_files = new_config.read('local.cfg')
+        if local_config_files:
+            logging.debug("Local configuration reloaded from local.cfg")
+        
+        # Update the global config
+        config = new_config
+        
+        # Reload user roles configuration
+        USERS.clear()
+        if 'users' in config:
+            for user in config['users']:
+                password, role = config.get('users', user).split(',', 1)
+                USERS[user.strip()] = {
+                    'password': password.strip(),
+                    'role': role.strip()
+                }
+        
+        # Extract configuration values
+        OPENAI_URL_PRIMARY = config.get('openai', 'OPENAI_URL_PRIMARY')
+        OPENAI_URL_SECONDARY = config.get('openai', 'OPENAI_URL_SECONDARY')
+        OPENAI_API_KEY = config.get('openai', 'OPENAI_API_KEY')
+        NTFY_URL = config.get('notifications', 'NTFY_URL')
+        DASHBOARD_PORT = config.getint('dashboard', 'DASHBOARD_PORT')
+        AE_TITLE = config.get('dicom', 'AE_TITLE')
+        AE_PORT = config.getint('dicom', 'AE_PORT')
+        REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
+        REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
+        REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
+        RETRIEVAL_METHOD = config.get('dicom', 'RETRIEVAL_METHOD')
+        FHIR_URL = config.get('fhir', 'FHIR_URL')
+        FHIR_USERNAME = config.get('fhir', 'FHIR_USERNAME')
+        FHIR_PASSWORD = config.get('fhir', 'FHIR_PASSWORD')
+        DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
+        BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
+        MODEL_NAME = config.get('openai', 'MODEL_NAME')
+        
+        # Reload processing parameters
+        PAGE_SIZE = config.getint('processing', 'PAGE_SIZE')
+        KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')
+        LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')
+        NO_QUERY = config.getboolean('processing', 'NO_QUERY')
+        ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY')
+        QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')
+        SEVERITY_THRESHOLD = config.getint('processing', 'SEVERITY_THRESHOLD')
+        
+        # Reload region identification rules
+        REGION_RULES.clear()
+        region_config = config['regions']
+        for key in region_config:
+            REGION_RULES[key] = [word.strip() for word in region_config[key].split(',')]
+        
+        # Reload region-specific questions
+        REGION_QUESTIONS.clear()
+        question_config = config['questions']
+        for key in question_config:
+            REGION_QUESTIONS[key] = question_config[key]
+        
+        # Reload supported regions
+        REGIONS.clear()
+        region_config = config['supported_regions']
+        for key in region_config:
+            if config.getboolean('supported_regions', key):
+                REGIONS.append(key)
+        
+        logging.info("Configuration successfully reloaded")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to reload configuration: {e}")
+        return False
+
+
+def signal_handler(signum, frame):
+    """Handle incoming signals"""
+    if signum == signal.SIGHUP:
+        logging.info("Received SIGHUP signal, reloading configuration...")
+        if reload_configuration():
+            # Notify dashboard of configuration reload
+            if MAIN_LOOP:
+                asyncio.run_coroutine_threadsafe(
+                    broadcast_dashboard_update(event="config_reload", payload={"status": "success"}),
+                    MAIN_LOOP
+                )
+        else:
+            if MAIN_LOOP:
+                asyncio.run_coroutine_threadsafe(
+                    broadcast_dashboard_update(event="config_reload", payload={"status": "error"}),
+                    MAIN_LOOP
+                )
+    elif signum == signal.SIGTERM or signum == signal.SIGINT:
+        logging.info("Received termination signal, shutting down...")
+        # This would normally trigger the shutdown process
+        # The main loop handles SIGINT/SIGTERM already
+
+
 async def main():
     """
     Main application entry point and orchestrator.
@@ -4568,6 +4682,11 @@ async def main():
     and manages the asyncio event loop. Handles graceful shutdown on
     KeyboardInterrupt.
     """
+    # Register signal handlers
+    signal.signal(signal.SIGHUP, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
     # Main event loop
     global MAIN_LOOP
     MAIN_LOOP = asyncio.get_running_loop()
