@@ -1344,18 +1344,18 @@ async def db_get_stats():
     # Calculate correct (TP + TN) and wrong (FP + FN) predictions
     query = """
         SELECT
-            SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 1) THEN 1 ELSE 0 END) AS tpos,
-            SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 0) THEN 1 ELSE 0 END) AS tneg,
-            SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 0) THEN 1 ELSE 0 END) AS fpos,
-            SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 1) THEN 1 ELSE 0 END) AS fneg
+            SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS tpos,
+            SUM(CASE WHEN (ar.positive = 0 AND rr.severity < ?) THEN 1 ELSE 0 END) AS tneg,
+            SUM(CASE WHEN (ar.positive = 1 AND rr.severity < ?) THEN 1 ELSE 0 END) AS fpos,
+            SUM(CASE WHEN (ar.positive = 0 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS fneg
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done'
           AND ar.positive > -1
-          AND rr.positive > -1;
+          AND rr.severity > -1;
     """
-    metrics_row = db_execute_query(query, fetch_mode='one')
+    metrics_row = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='one')
     if metrics_row:
         (tpos, tneg, fpos, fneg) = metrics_row
         tpos = tpos or 0
@@ -1408,20 +1408,20 @@ async def db_get_stats():
     query = """
         SELECT e.region,
                 COUNT(*) AS total,
-                SUM(CASE WHEN rr.positive > -1 THEN 1 ELSE 0 END) AS reviewed,
+                SUM(CASE WHEN rr.severity > -1 THEN 1 ELSE 0 END) AS reviewed,
                 SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
-                SUM(CASE WHEN (ar.positive != rr.positive AND ar.positive > -1 AND rr.positive > -1) THEN 1 ELSE 0 END) AS wrong,
-                SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 1) THEN 1 ELSE 0 END) AS tpos,
-                SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 0) THEN 1 ELSE 0 END) AS tneg,
-                SUM(CASE WHEN (ar.positive = 1 AND rr.positive = 0) THEN 1 ELSE 0 END) AS fpos,
-                SUM(CASE WHEN (ar.positive = 0 AND rr.positive = 1) THEN 1 ELSE 0 END) AS fneg
+                SUM(CASE WHEN ((ar.positive = 1 AND rr.severity < ?) OR (ar.positive = 0 AND rr.severity >= ?)) AND ar.positive > -1 AND rr.severity > -1 THEN 1 ELSE 0 END) AS wrong,
+                SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS tpos,
+                SUM(CASE WHEN (ar.positive = 0 AND rr.severity < ?) THEN 1 ELSE 0 END) AS tneg,
+                SUM(CASE WHEN (ar.positive = 1 AND rr.severity < ?) THEN 1 ELSE 0 END) AS fpos,
+                SUM(CASE WHEN (ar.positive = 0 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS fneg
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done' AND ar.positive > -1
         GROUP BY e.region
     """
-    region_data = db_execute_query(query, fetch_mode='all')
+    region_data = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
     if region_data:
         for row in region_data:
             (region, total, reviewed, positive, wrong, tpos, tneg, fpos, fneg) = row
