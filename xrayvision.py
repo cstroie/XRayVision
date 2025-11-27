@@ -986,7 +986,7 @@ def db_update_patient_id(cnp, patient_id):
     db_update('patients', 'cnp = ?', (cnp,), id=patient_id)
 
 
-def db_add_exam(info, report=None, positive=None, confidence=None, justification=None):
+def db_add_exam(info, report=None, positive=None, confidence=None, justification=None, latency=None):
     """
     Add or update an exam entry in the database.
 
@@ -1001,6 +1001,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
         positive: Optional AI positive finding indicator (True/False)
         confidence: Optional AI confidence score (0-100)
         justification: Optional clinical justification text
+        latency: Optional processing time in seconds
     """
     # Add or update patient information
     patient = info["patient"]
@@ -1031,7 +1032,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
 
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
-        db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, -1)
+        db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, latency if latency is not None else -1)
     
     # If justification is provided, add it to rad_reports table
     if justification is not None:
@@ -3810,12 +3811,8 @@ async def handle_ai_success(exam, short, report, confidence, processing_time):
     """
     # Save to exams database
     is_positive = short == "yes"
-    # Update the AI report with the processing time
-    query = "UPDATE ai_reports SET latency = ? WHERE uid = ?"
-    params = (processing_time, exam['uid'])
-    db_execute_query_retry(query, params)
-    # Save to exams database
-    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence)
+    # Save to exams database with processing time
+    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence, latency = processing_time)
     # Send notification for positive cases
     if is_positive:
         try:
