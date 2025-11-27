@@ -303,6 +303,7 @@ LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load ex
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
 QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')  # Base interval for query/retrieve in seconds
+SEVERITY_THRESHOLD = config.getint('processing', 'SEVERITY_THRESHOLD')  # Severity threshold for correctness calculation
 
 # Load region identification rules from config
 REGION_RULES = {}
@@ -1131,8 +1132,8 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.model, ar.latency,
             rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
             CASE 
-                WHEN rr.positive = -1 THEN -1
-                WHEN ar.positive = rr.positive THEN 1
+                WHEN rr.severity = -1 THEN -1
+                WHEN (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?) THEN 1
                 ELSE 0
             END AS correct,
             CASE
@@ -1147,7 +1148,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         ORDER BY e.created DESC
         LIMIT ? OFFSET ?
     """
-    params.extend([limit, offset])
+    params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, limit, offset])
 
     # Get the exams
     exams = []
@@ -1223,7 +1224,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     count_params = []
     if conditions:
         count_query += ' WHERE ' + " AND ".join(conditions)
-        count_params = params[:-2]  # Exclude limit and offset parameters
+        count_params = params[:-4]  # Exclude limit and offset parameters and the two threshold parameters
     total_row = db_execute_query(count_query, tuple(count_params), fetch_mode='one')
     total = total_row[0] if total_row else 0
     return exams, total
