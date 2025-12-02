@@ -3505,7 +3505,7 @@ async def get_fhir_patient(session, cnp):
         logging.error(f"FHIR patient search error: {e}")
     return None
 
-async def get_fhir_servicerequests(session, patient_id, exam_datetime):
+async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_region):
     """
     Search for service requests for a patient in FHIR system.
 
@@ -3566,6 +3566,8 @@ async def get_fhir_servicerequests(session, patient_id, exam_datetime):
             'type': 'radio',
             'dt': exam_datetime
         }
+        if exam_region:
+            params['region'] = exam_region
         
         # First try without full=yes parameter
         srv_reqs = await _fetch_fhir_servicerequests(session, auth, url, params)
@@ -4206,7 +4208,7 @@ async def process_fhir_report_with_llm(exam_uid):
     # Notify dashboard of the update
     await broadcast_dashboard_update(event="radreport_processed", payload={'uid': exam_uid})
 
-async def find_service_request(session, exam_uid, patient_id, exam_datetime):
+async def find_service_request(session, exam_uid, patient_id, exam_datetime, exam_region):
     """
     Find service request for an exam in FHIR system.
 
@@ -4220,7 +4222,7 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime):
         dict or None: Study resource if found, None otherwise
     """
     # Search for service requests
-    srv_reqs = await get_fhir_servicerequests(session, patient_id, exam_datetime)
+    srv_reqs = await get_fhir_servicerequests(session, patient_id, exam_datetime, exam_region)
     if not srv_reqs:
         logging.warning(f"No service requests found for exam {exam_uid}")
         return None
@@ -4253,7 +4255,7 @@ async def save_study_id(exam_uid, study):
     logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
 
 
-async def extract_report_data(report, exam_uid):
+async def extract_report_data(report, exam_uid, exam_region = ""):
     """
     Extract report text, radiologist name, and justification from FHIR diagnostic report.
 
@@ -4320,9 +4322,10 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         
     exam_uid = exam['uid']
     exam_datetime = exam['created']
-    
+    exam_region = exam['region']
+
     # Find service request
-    study = await find_service_request(session, exam_uid, patient_id, exam_datetime)
+    study = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_region)
     if not study:
         return
     
@@ -4336,7 +4339,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         return
 
     # Extract report data
-    report_text, radiologist, justification = await extract_report_data(report, exam_uid)
+    report_text, radiologist, justification = await extract_report_data(report, exam_uid, exam_region=exam_region)
     if not report_text:
         return
 
