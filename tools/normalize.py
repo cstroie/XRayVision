@@ -115,7 +115,7 @@ def main():
     """Main function to process PNG files."""
     parser = argparse.ArgumentParser(description="Normalize PNG images for better visualization")
     parser.add_argument("input", help="Input PNG file path")
-    parser.add_argument("-o", "--output", help="Output PNG file path (default: add '_normalized' suffix)")
+    parser.add_argument("-o", "--output", help="Output PNG file path (default: save in 'output' subdirectory with same name)")
     parser.add_argument("--max-size", type=int, default=800, help="Maximum dimension for output image")
     
     args = parser.parse_args()
@@ -129,8 +129,13 @@ def main():
     if args.output:
         output_file = args.output
     else:
-        name, ext = os.path.splitext(args.input)
-        output_file = f"{name}_normalized{ext}"
+        # Create output directory if it doesn't exist
+        output_dir = "output"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Use the same filename as input but in output directory
+        filename = os.path.basename(args.input)
+        output_file = os.path.join(output_dir, filename)
     
     # Process the image
     if normalize_png(args.input, output_file, args.max_size):
