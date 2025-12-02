@@ -4262,19 +4262,35 @@ async def extract_report_data(report, exam_uid, exam_region = ""):
     Args:
         report: FHIR diagnostic report resource
         exam_uid: Exam unique identifier
+        exam_region: Expected region for the exam
 
     Returns:
         tuple: (report_text, radiologist, justification) or (None, None, None) if extraction fails
     """
-    # Check if there's exactly one item in presentedForm
-    if len(report['presentedForm']) != 1:
-        logging.info(f"Skipping diagnostic report for exam {exam_uid} with {len(report['presentedForm'])} items in presentedForm")
-        return None, None, None
+    # Handle multiple presentedForm items by finding the one with the matching region
+    report_text = None
+    presented_form = None
+    
+    if len(report['presentedForm']) == 1:
+        # Single presented form - use it directly
+        presented_form = report['presentedForm'][0]
+    else:
+        # Multiple presented forms - find the one matching the exam region
+        logging.info(f"Found {len(report['presentedForm'])} items in presentedForm for exam {exam_uid}, looking for region '{exam_region}'")
+        for form in report['presentedForm']:
+            if form.get('region', '').lower() == exam_region.lower():
+                presented_form = form
+                break
         
-    # Extract the report text from the first (and only) item
-    report_text = report['presentedForm'][0].get('data', '').strip()
+        # If no matching region found, log and return None
+        if not presented_form:
+            logging.warning(f"No presentedForm found with region '{exam_region}' for exam {exam_uid}")
+            return None, None, None
+    
+    # Extract the report text from the selected presented form
+    report_text = presented_form.get('data', '').strip()
     if not report_text:
-        logging.warning(f"No data found in presentedForm[0] for exam {exam_uid}")
+        logging.warning(f"No data found in presentedForm for exam {exam_uid}")
         return None, None, None
         
     # Extract radiologist name from resultsInterpreter if available
