@@ -4259,13 +4259,21 @@ async def extract_report_data(report, exam_uid, exam_region = ""):
     """
     Extract report text, radiologist name, and justification from FHIR diagnostic report.
 
+    This function handles FHIR diagnostic reports that may contain multiple presented forms
+    and selects the one that matches the expected exam region. It also extracts metadata
+    like the radiologist name and clinical justification.
+
     Args:
-        report: FHIR diagnostic report resource
-        exam_uid: Exam unique identifier
-        exam_region: Expected region for the exam
+        report (dict): FHIR diagnostic report resource containing presented forms and metadata
+        exam_uid (str): Exam unique identifier for logging and error tracking
+        exam_region (str, optional): Expected anatomic region to match in presented forms. Defaults to ""
 
     Returns:
-        tuple: (report_text, radiologist, justification) or (None, None, None) if extraction fails
+        tuple: (report_text, radiologist, justification) where:
+            - report_text (str): Extracted report text content, or None if extraction fails
+            - radiologist (str): Radiologist name from resultsInterpreter, or empty string if not found
+            - justification (str): Clinical justification from extensions, or empty string if not found
+            Returns (None, None, None) if extraction fails
     """
     # Handle multiple presentedForm items by finding the one with the matching region
     report_text = None
@@ -4324,13 +4332,18 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     """
     Process a single exam that doesn't have a radiologist report yet.
 
-    This function retrieves the radiologist report for a specific exam
-    from the FHIR system and prepares it for LLM analysis.
+    This function retrieves the radiologist report for a specific exam from the FHIR system
+    and prepares it for LLM analysis. It performs the following steps:
+    1. Finds the corresponding service request in FHIR
+    2. Retrieves the diagnostic report
+    3. Extracts report data (text, radiologist name, justification)
+    4. Updates the local database with the report information
+    5. Sets the exam status to 'check' to trigger LLM processing
 
     Args:
-        session: aiohttp ClientSession instance
-        exam: Dictionary containing exam information
-        patient_id: Patient ID in the HIS system
+        session (aiohttp.ClientSession): Active HTTP session for FHIR API calls
+        exam (dict): Dictionary containing exam information including uid, created timestamp, and region
+        patient_id (str): Patient ID in the Hospital Information System (HIS)
     """
     # Check if HIS integration is enabled
     if not ENABLE_HIS:
