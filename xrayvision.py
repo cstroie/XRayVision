@@ -303,6 +303,7 @@ KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DI
 LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
 NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
 ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
+ENABLE_HIS = config.getboolean('processing', 'ENABLE_HIS')   # Whether to enable HIS/FHIR integration
 QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')  # Base interval for query/retrieve in seconds
 SEVERITY_THRESHOLD = config.getint('processing', 'SEVERITY_THRESHOLD')  # Severity threshold for correctness calculation
 
@@ -3650,6 +3651,10 @@ async def update_patient_info_from_fhir(exam):
     Returns:
         None
     """
+    # Check if HIS integration is enabled
+    if not ENABLE_HIS:
+        return
+        
     patient_cnp = exam['patient']['cnp']
     if patient_cnp and not exam['patient']['id']:
         async with aiohttp.ClientSession() as session:
@@ -4109,6 +4114,11 @@ async def fhir_loop():
     Tests FHIR endpoint health and processes exams without radiologist reports.
     """
     while True:
+        # Check if HIS integration is enabled
+        if not ENABLE_HIS:
+            await asyncio.sleep(60)  # Check again in a minute
+            continue
+            
         try:
             async with aiohttp.ClientSession() as session:
                 # Test FHIR connectivity using the proper metadata endpoint
@@ -4303,6 +4313,10 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         exam: Dictionary containing exam information
         patient_id: Patient ID in the HIS system
     """
+    # Check if HIS integration is enabled
+    if not ENABLE_HIS:
+        return
+        
     exam_uid = exam['uid']
     exam_datetime = exam['created']
     
