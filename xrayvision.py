@@ -3517,45 +3517,6 @@ async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_regi
     Returns:
         list: List of service requests from FHIR (exactly one study) or empty list
     """
-    async def _fetch_fhir_servicerequests(session, auth, url, params):
-        """
-        Helper function to fetch service requests from FHIR.
-        
-        Args:
-            session: aiohttp ClientSession instance
-            auth: BasicAuth object for authentication
-            url: FHIR endpoint URL
-            params: Query parameters
-            
-        Returns:
-            list: List of service requests or empty list
-        """
-        try:
-            async with session.get(url, auth=auth, params=params, timeout=30) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get('resourceType') == 'Bundle' and 'entry' in data:
-                        srv_reqs = []
-                        for entry in data['entry']:
-                            if 'resource' in entry and entry['resource'].get('resourceType') == 'ServiceRequest':
-                                # Only add resources that have an 'id' field
-                                if 'id' in entry['resource']:
-                                    srv_reqs.append(entry['resource'])
-                                else:
-                                    logging.warning("FHIR service request resource missing 'id' field")
-                        # We need exactly one study
-                        if len(srv_reqs) == 1:
-                            return srv_reqs
-                        elif len(srv_reqs) > 1:
-                            logging.warning(f"FHIR service requests search returned {len(srv_reqs)} service requests, expected exactly one")
-                        # Return empty list if no service requests or more than one
-                        return []
-                else:
-                    logging.warning(f"FHIR service requests search failed with status {resp.status}")
-        except Exception as e:
-            logging.error(f"FHIR service requests fetch error: {e}")
-        return []
-
     try:
         # Use basic authentication
         auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
@@ -3569,15 +3530,28 @@ async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_regi
         if exam_region:
             params['region'] = exam_region
         
-        # First try without full=yes parameter
-        srv_reqs = await _fetch_fhir_servicerequests(session, auth, url, params)
-        if srv_reqs:
-            return srv_reqs
-            
-        # If no service requests found, try with full=yes parameter
-        params['full'] = 'yes'
-        srv_reqs = await _fetch_fhir_servicerequests(session, auth, url, params)
-        return srv_reqs
+        # Try without full=yes parameter
+        async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data.get('resourceType') == 'Bundle' and 'entry' in data:
+                    srv_reqs = []
+                    for entry in data['entry']:
+                        if 'resource' in entry and entry['resource'].get('resourceType') == 'ServiceRequest':
+                            # Only add resources that have an 'id' field
+                            if 'id' in entry['resource']:
+                                srv_reqs.append(entry['resource'])
+                            else:
+                                logging.warning("FHIR service request resource missing 'id' field")
+                    # We need exactly one study
+                    if len(srv_reqs) == 1:
+                        return srv_reqs
+                    elif len(srv_reqs) > 1:
+                        logging.warning(f"FHIR service requests search returned {len(srv_reqs)} service requests, expected exactly one")
+                    # Return empty list if no service requests or more than one
+                    return []
+            else:
+                logging.warning(f"FHIR service requests search failed with status {resp.status}")
     except Exception as e:
         logging.error(f"FHIR service requests search error: {e}")
     return []
