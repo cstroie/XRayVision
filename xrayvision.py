@@ -2957,16 +2957,21 @@ async def requeue_exam(request):
 
 
 async def get_report_handler(request):
-    """Trigger checking of radiologist report for an exam.
+    """Retrieve radiologist report for an exam from FHIR and queue for LLM processing.
 
-    Sets an exam's status to 'check' so its radiologist report will be processed.
+    This function retrieves the radiologist report for a specific exam from the FHIR system
+    and prepares it for LLM analysis. It performs the following steps:
+    1. Gets exam details from the database
+    2. Retrieves patient ID from FHIR if not already known
+    3. Processes the exam to fetch the radiologist report from FHIR
+    4. Sets the exam status to 'check' to trigger LLM processing
     
     Args:
         request: aiohttp request object with JSON body containing:
-            - uid: The unique identifier of the exam to check
+            - uid: The unique identifier of the exam to process
 
     Returns:
-        web.json_response: JSON response with check status
+        web.json_response: JSON response with retrieval status
     """
     try:
         data = await request.json()
