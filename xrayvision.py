@@ -4240,7 +4240,7 @@ async def save_study_id(exam_uid, study):
     logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
 
 
-async def extract_report_data(report, exam_uid, exam_region = "", exam_type = ""):
+async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region = ""):
     """
     Extract report text and radiologist name from FHIR diagnostic report.
 
@@ -4251,8 +4251,8 @@ async def extract_report_data(report, exam_uid, exam_region = "", exam_type = ""
     Args:
         report (dict): FHIR diagnostic report resource containing presented forms and metadata
         exam_uid (str): Exam unique identifier for logging and error tracking
+        exam_type (str, optional): Expected exam type to match in presented forms. Defaults to "radio"
         exam_region (str, optional): Expected anatomic region to match in presented forms. Defaults to ""
-        exam_type (str, optional): Expected exam type to match in presented forms. Defaults to ""
 
     Returns:
         tuple: (report_text, radiologist) where:
@@ -4269,21 +4269,13 @@ async def extract_report_data(report, exam_uid, exam_region = "", exam_type = ""
         presented_form = report['presentedForm'][0]
     else:
         # Multiple presented forms - find the one matching both the exam region and type
-        logging.info(f"Found {len(report['presentedForm'])} items in presentedForm for exam {exam_uid}, looking for region '{exam_region}' and type '{exam_type}'")
+        logging.info(f"Found {len(report['presentedForm'])} items in presentedForm for '{exam_type}' exam {exam_uid}, looking for region '{exam_region}'")
         for form in report['presentedForm']:
-            region_match = form.get('region', '').lower() == exam_region.lower()
             type_match = form.get('type', '').lower() == exam_type.lower()
+            region_match = form.get('region', '').lower() == exam_region.lower()
             if region_match and type_match:
                 presented_form = form
                 break
-        
-        # If no matching region and type found, try just region matching as fallback
-        if not presented_form:
-            logging.debug(f"No presentedForm found with both region '{exam_region}' and type '{exam_type}' for exam {exam_uid}, trying region-only match")
-            for form in report['presentedForm']:
-                if form.get('region', '').lower() == exam_region.lower():
-                    presented_form = form
-                    break
         
         # If still no matching form found, log and return None
         if not presented_form:
@@ -4306,6 +4298,7 @@ async def extract_report_data(report, exam_uid, exam_region = "", exam_type = ""
     except Exception as e:
         logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
 
+    # Return the extracted report text and radiologist name
     return report_text, radiologist
 
 
@@ -4332,7 +4325,8 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         
     exam_uid = exam['uid']
     exam_datetime = exam['created']
-    exam_region = exam['region']
+    exam_type = exam.get('type', 'radio')
+    exam_region = exam.get('region', '')
 
     # Find service request
     study = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_region)
@@ -4349,7 +4343,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         return
 
     # Extract report data
-    report_text, radiologist = await extract_report_data(report, exam_uid, exam_region=exam_region, exam_type=exam.get('type', ''))
+    report_text, radiologist = await extract_report_data(report, exam_uid, exam_type=exam_type, exam_region=exam_region)
     if not report_text:
         return
 
