@@ -4307,6 +4307,27 @@ async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region
     return report_text, radiologist
 
 
+def translate_exam_type_to_fhir(exam_type):
+    """
+    Translate database exam type to FHIR-compatible values.
+    
+    Args:
+        exam_type (str): Exam type from database (Modality)
+        
+    Returns:
+        str: FHIR-compatible exam type
+    """
+    translation_map = {
+        'CR': 'radio',
+        'DX': 'radio',
+        'CT': 'ct',
+        'MR': 'irm',
+        'US': 'eco',
+        'RF': 'rads'
+    }
+    return translation_map.get(exam_type.upper(), 'radio')
+
+
 async def process_single_exam_without_rad_report(session, exam, patient_id):
     """
     Process a single exam that doesn't have a radiologist report yet.
@@ -4330,7 +4351,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         
     exam_uid = exam['uid']
     exam_datetime = exam['created']
-    exam_type = exam.get('type', 'radio')
+    exam_type = translate_exam_type_to_fhir(exam.get('type', 'radio'))
     exam_region = exam.get('region', '')
 
     # Find service request
@@ -4362,7 +4383,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
               positive=-1,
               severity=-1,
               summary='',
-              type='radio',
+              type=exam_type,
               model=MODEL_NAME,
               latency=-1)
 
