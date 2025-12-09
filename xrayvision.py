@@ -4182,7 +4182,7 @@ async def process_fhir_report_with_llm(exam_uid):
     # Notify dashboard of the update
     await broadcast_dashboard_update(event="radreport_processed", payload={'uid': exam_uid})
 
-async def find_service_request(session, exam_uid, patient_id, exam_datetime, exam_region):
+async def find_service_request(session, exam_uid, patient_id, exam_datetime, exam_region, exam_type='radio'):
     """
     Find service request for an exam in FHIR system.
 
@@ -4191,6 +4191,8 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime, exa
         exam_uid: Exam unique identifier
         patient_id: Patient ID in HIS
         exam_datetime: Exam datetime
+        exam_region: Exam region
+        exam_type: Exam type (default: 'radio')
 
     Returns:
         dict or None: Study resource if found, None otherwise
@@ -4329,7 +4331,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     exam_region = exam.get('region', '')
 
     # Find service request
-    study = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_region)
+    study = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_region, exam_type)
     if not study:
         return
     
