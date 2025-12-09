@@ -3505,7 +3505,7 @@ async def get_fhir_patient(session, cnp):
         logging.error(f"FHIR patient search error: {e}")
     return None
 
-async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_region):
+async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_region, exam_type='radio'):
     """
     Search for service requests for a patient in FHIR system.
 
@@ -3513,6 +3513,8 @@ async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_regi
         session: aiohttp ClientSession instance
         patient_id: Patient ID from HIS
         exam_datetime: Exam datetime to search around
+        exam_region: Exam region to filter by
+        exam_type: Exam type to filter by (default: 'radio')
 
     Returns:
         list: List of service requests from FHIR (exactly one study) or empty list
@@ -3524,7 +3526,7 @@ async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_regi
         url = f"{FHIR_URL}/fhir/ServiceRequest"
         params = {
             'patient': patient_id,
-            'type': 'radio',
+            'type': exam_type,
             'dt': exam_datetime
         }
         if exam_region:
@@ -4198,7 +4200,7 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime, exa
         dict or None: Study resource if found, None otherwise
     """
     # Search for service requests
-    srv_reqs = await get_fhir_servicerequests(session, patient_id, exam_datetime, exam_region)
+    srv_reqs = await get_fhir_servicerequests(session, patient_id, exam_datetime, exam_region, exam_type)
     if not srv_reqs:
         logging.warning(f"No service requests found for exam {exam_uid}")
         return None
