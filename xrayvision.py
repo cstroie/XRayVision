@@ -4230,7 +4230,7 @@ async def save_study_id(exam_uid, study):
             if 'display' in supporting_info:
                 justification = supporting_info['display']
     except Exception as e:
-        logging.warning(f"Could not extract justification from supportingInfo: {e}")
+        logging.debug(f"Could not extract justification from supportingInfo: {e}")
     
     db_insert('rad_reports',
               uid=exam_uid,
@@ -4242,11 +4242,11 @@ async def save_study_id(exam_uid, study):
 
 async def extract_report_data(report, exam_uid, exam_region = ""):
     """
-    Extract report text, radiologist name, and justification from FHIR diagnostic report.
+    Extract report text and radiologist name from FHIR diagnostic report.
 
     This function handles FHIR diagnostic reports that may contain multiple presented forms
     and selects the one that matches the expected exam region. It also extracts metadata
-    like the radiologist name and clinical justification.
+    like the radiologist name.
 
     Args:
         report (dict): FHIR diagnostic report resource containing presented forms and metadata
@@ -4254,11 +4254,10 @@ async def extract_report_data(report, exam_uid, exam_region = ""):
         exam_region (str, optional): Expected anatomic region to match in presented forms. Defaults to ""
 
     Returns:
-        tuple: (report_text, radiologist, justification) where:
+        tuple: (report_text, radiologist) where:
             - report_text (str): Extracted report text content, or None if extraction fails
             - radiologist (str): Radiologist name from resultsInterpreter, or empty string if not found
-            - justification (str): Clinical justification from extensions, or empty string if not found
-            Returns (None, None, None) if extraction fails
+            Returns (None, None) if extraction fails
     """
     # Handle multiple presentedForm items by finding the one with the matching region
     report_text = None
@@ -4278,13 +4277,13 @@ async def extract_report_data(report, exam_uid, exam_region = ""):
         # If no matching region found, log and return None
         if not presented_form:
             logging.warning(f"No presentedForm found with region '{exam_region}' for exam {exam_uid}")
-            return None, None, None
+            return None, None
     
     # Extract the report text from the selected presented form
     report_text = presented_form.get('data', '').strip()
     if not report_text:
         logging.warning(f"No data found in presentedForm for exam {exam_uid}")
-        return None, None, None
+        return None, None
         
     # Extract radiologist name from resultsInterpreter if available
     radiologist = ''  # Default value
@@ -4295,22 +4294,8 @@ async def extract_report_data(report, exam_uid, exam_region = ""):
                 radiologist = interpreter['display']
     except Exception as e:
         logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
-    
-    # Extract justification from extensions if available
-    justification = ''  # Default value
-    try:
-        if 'extension' in report:
-            for ext in report['extension']:
-                if 'diagnostic-report-reason' in ext.get('url', ''):
-                    if 'extension' in ext:
-                        for nested_ext in ext['extension']:
-                            if nested_ext.get('url') == 'text' and 'valueString' in nested_ext:
-                                justification = nested_ext['valueString']
-                                break
-    except Exception as e:
-        logging.warning(f"Could not extract justification from FHIR report: {e}")
 
-    return report_text, radiologist, justification
+    return report_text, radiologist
 
 
 async def process_single_exam_without_rad_report(session, exam, patient_id):
@@ -4353,7 +4338,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         return
 
     # Extract report data
-    report_text, radiologist, justification = await extract_report_data(report, exam_uid, exam_region=exam_region)
+    report_text, radiologist = await extract_report_data(report, exam_uid, exam_region=exam_region)
     if not report_text:
         return
 
@@ -4364,7 +4349,6 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     db_update('rad_reports', 'uid = ?', (exam_uid,),
               text=report_text,
               radiologist=radiologist,
-              justification=justification,
               positive=-1,
               severity=-1,
               summary='',
