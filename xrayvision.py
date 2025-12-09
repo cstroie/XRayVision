@@ -4222,10 +4222,21 @@ async def save_study_id(exam_uid, study):
         exam_uid: Exam unique identifier
         study: Study resource from FHIR
     """
+    # Extract justification from supportingInfo if available
+    justification = ''
+    try:
+        if 'supportingInfo' in study and len(study['supportingInfo']) > 0:
+            supporting_info = study['supportingInfo'][0]
+            if 'display' in supporting_info:
+                justification = supporting_info['display']
+    except Exception as e:
+        logging.warning(f"Could not extract justification from supportingInfo: {e}")
+    
     db_insert('rad_reports',
               uid=exam_uid,
               id=study.get('id', ''),
-              type='radio')
+              type='radio',
+              justification=justification)
     logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
 
 
