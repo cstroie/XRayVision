@@ -321,6 +321,12 @@
                         loadPage(1);
                     } else if (data.event.name === "radreport") {
                         showToast(`Radiologist report available`);
+                        // Update specific exam if it's on the current page
+                        updateExamCard(data.event.payload.uid);
+                    } else if (data.event.name === "radcheck") {
+                        showToast(`Radiologist report processed`);
+                        // Update specific exam if it's on the current page
+                        updateExamCard(data.event.payload.uid);
                     }
                 }
             };
@@ -435,6 +441,103 @@
         document.getElementById('lightbox').addEventListener('click', function () {
             this.style.display = 'none';
         });
+
+        function updateExamCard(uid) {
+            // Check if the exam card exists on the current page
+            const card = document.getElementById(`card-${uid}`);
+            if (!card) {
+                // If not on current page, reload the page to show the updated exam
+                loadPage(currentPage);
+                return;
+            }
+
+            // Fetch the updated exam data
+            fetch(`/api/exams/${uid}`)
+                .then(res => res.json())
+                .then(exam => {
+                    // Update the card with new data
+                    renderSingleExam(card, exam);
+                })
+                .catch(err => {
+                    console.error("Failed to fetch exam:", err);
+                });
+        }
+
+        function renderSingleExam(cardElement, exam) {
+            let isPositive = exam.report.ai.positive;
+            let isReviewed = exam.report.reviewed;
+            let isCorrect = exam.report.correct;
+            let text = exam.report.ai.text || "";
+
+            let date = exam.exam.date;
+            let time = exam.exam.time;
+            let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
+            let formattedTime = `${time.substring(0,2)}:${time.substring(2,4)}:${time.substring(4,6)}`;
+            let datetimeString = `${formattedDate}T${formattedTime}`;
+
+            let patientNameParts = exam.patient.name.split('^');
+            let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : exam.patient.name;
+
+            // Update card classes
+            cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status || ''}`;
+
+            // Update patient details
+            cardElement.querySelector('.details summary strong').innerHTML = `${formattedPatientName}, ${exam.patient.sex}, ${exam.patient.age} years, ${exam.exam.region}`;
+            cardElement.querySelector('.details .patient-cnp').innerHTML = `<small><strong>CNP:</strong> ${exam.patient.cnp}</small>`;
+            
+            const hisId = exam.patient.id;
+            const examId = exam.report.rad.id;
+            let hisContent = '';
+            
+            if (hisId) {
+                hisContent += `<strong>HIS:</strong> ${hisId}`;
+            }
+            
+            if (examId) {
+                hisContent += hisContent ? ` ${examId}` : `<strong>HIS:</strong> ${examId}`;
+            }
+            
+            if (hisContent) {
+                cardElement.querySelector('.details .patient-his').innerHTML = `<small>${hisContent}</small>`;
+                cardElement.querySelector('.details .patient-his').style.display = 'block';
+            } else {
+                cardElement.querySelector('.details .patient-his').style.display = 'none';
+            }
+            
+            cardElement.querySelector('.details .exam-time').innerHTML = `<small><strong>Time:</strong> <time datetime="${datetimeString}">${formattedDate} ${formattedTime}</time></small>`;
+            
+            // Update protocol in figcaption
+            cardElement.querySelector('figcaption').textContent = exam.exam.protocol;
+            
+            const justificationElement = cardElement.querySelector('.details .exam-justification');
+            if (exam.report.rad.justification) {
+                justificationElement.innerHTML = `<small><strong>Justification:</strong> ${exam.report.rad.justification}</small>`;
+                justificationElement.style.display = 'block';
+            } else {
+                justificationElement.style.display = 'none';
+            }
+
+            // Update AI report
+            const aiReportElement = cardElement.querySelector('.ai-report');
+            if (text) {
+                aiReportElement.querySelector('summary').innerHTML = `AI Report: ${isPositive ? 'Positive' : 'Negative'}${exam.report.ai.confidence !== null && exam.report.ai.confidence > -1 ? ` (Confidence: ${exam.report.ai.confidence}%)` : ''}`;
+                aiReportElement.querySelector('summary').nextSibling.textContent = text;
+                aiReportElement.style.display = 'block';
+            } else {
+                aiReportElement.style.display = 'none';
+            }
+
+            // Update radiologist report
+            const radReportElement = cardElement.querySelector('.rad-report');
+            if (exam.report.rad.text) {
+                radReportElement.className = `report rad-report severity-${exam.report.rad.severity}`;
+                radReportElement.querySelector('summary').innerHTML = `${exam.report.rad.radiologist}: ${exam.report.rad.summary}${exam.report.rad.severity !== null && exam.report.rad.severity > -1 ? ` (Severity: ${exam.report.rad.severity}/10)` : ''}`;
+                radReportElement.querySelector('summary').nextSibling.textContent = exam.report.rad.text;
+                radReportElement.style.display = 'block';
+            } else {
+                radReportElement.style.display = 'none';
+            }
+        }
 
         function loadPage(page, search = '') {
             const reviewed = document.getElementById("filter-reviewed").value;
