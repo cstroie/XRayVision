@@ -475,6 +475,11 @@
             // Update card classes
             cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status || ''}`;
 
+            // Update image
+            const imgElement = cardElement.querySelector('.xray img');
+            imgElement.src = `/images/${exam.uid}.png`;
+            imgElement.alt = 'Processed Image';
+
             // Update patient details
             cardElement.querySelector('.details summary strong').innerHTML = `${formattedPatientName}, ${exam.patient.sex}, ${exam.patient.age} years, ${exam.exam.region}`;
             cardElement.querySelector('.details .patient-cnp').innerHTML = `<small><strong>CNP:</strong> ${exam.patient.cnp}</small>`;
