@@ -654,101 +654,33 @@
             }
 
             data.forEach(item => {
+                // Create a container element for the exam card
+                const cardContainer = document.createElement('div');
+                examsElement.appendChild(cardContainer);
+                
                 // Clone the template content
                 const examClone = examTemplate.content.cloneNode(true);
+                const cardElement = examClone.querySelector('.image-card');
+                cardElement.id = `card-${item.uid}`;
                 
+                // Append the cloned template to the container
+                cardContainer.appendChild(examClone);
+                
+                // Use renderSingleExam to populate the card
+                renderSingleExam(cardElement, item);
+                
+                // Add event listeners for buttons
+                const text = item.report.ai.text || "";
                 let isPositive = item.report.ai.positive;
-                let isReviewed = item.report.reviewed;
                 let isCorrect = item.report.correct;
-                let text = item.report.ai.text || "";
-                
-                let date = item.exam.date;
-                let time = item.exam.time;
-                let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
-                let formattedTime = `${time.substring(0,2)}:${time.substring(2,4)}:${time.substring(4,6)}`;
-                let datetimeString = `${formattedDate}T${formattedTime}`;
-
                 let patientNameParts = item.patient.name.split('^');
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : item.patient.name;
-
-                let clsReviewed = isReviewed ? 'reviewed' : '';
-                let clsCorrect = isCorrect ? '' : 'incorrect';
-                let clsPositive = isPositive ? 'positive' : '';
-                let clsStatus = item.exam.status || '';
-
-                // Set card attributes
-                const card = examClone.querySelector('.image-card');
-                card.id = `card-${item.uid}`;
-                card.className = `grid image-card ${clsReviewed} ${clsPositive} ${clsCorrect} ${clsStatus}`;
-
-                // Set image attributes
-                const img = examClone.querySelector('.xray img');
-                img.src = `/images/${item.uid}.png`;
-                img.alt = 'Processed Image';
-                img.onclick = () => openLightbox(`/images/${item.uid}.png`, sanitize(formattedPatientName), sanitize(text), isCorrect, isPositive);
-
-                // Set button attributes
-                examClone.querySelector('.abnormal').onclick = () => radreview(item.uid, false);
-                examClone.querySelector('.normal').onclick = () => radreview(item.uid, true);
-                examClone.querySelector('.secondary:nth-child(3)').onclick = () => lookagain(item.uid);
-                examClone.querySelector('.secondary:nth-child(4)').onclick = () => getrad(item.uid);
-
-                // Set patient details
-                examClone.querySelector('.details summary strong').innerHTML = `${formattedPatientName}, ${item.patient.sex}, ${item.patient.age} years, ${item.exam.region}`;
-                examClone.querySelector('.details .patient-cnp').innerHTML = `<small><strong>CNP:</strong> ${item.patient.cnp}</small>`;
-                const hisId = item.patient.id;
-                const examId = item.report.rad.id;
-                let hisContent = '';
                 
-                if (hisId) {
-                    hisContent += `<strong>HIS:</strong> ${hisId}`;
-                }
-                
-                if (examId) {
-                    hisContent += hisContent ? ` ${examId}` : `<strong>HIS:</strong> ${examId}`;
-                }
-                
-                if (hisContent) {
-                    examClone.querySelector('.details .patient-his').innerHTML = `<small>${hisContent}</small>`;
-                } else {
-                    examClone.querySelector('.details .patient-his').style.display = 'none';
-                }
-                examClone.querySelector('.details .exam-time').innerHTML = `<small><strong>Time:</strong> <time datetime="${datetimeString}">${formattedDate} ${formattedTime}</time></small>`;
-                
-                // Set protocol in figcaption
-                examClone.querySelector('figcaption').textContent = item.exam.protocol;
-                
-                const justificationElement = examClone.querySelector('.details .exam-justification');
-                if (item.report.rad.justification) {
-                    justificationElement.innerHTML = `<small><strong>Justification:</strong> ${item.report.rad.justification}</small>`;
-                    justificationElement.style.display = 'block';
-                } else {
-                    justificationElement.style.display = 'none';
-                }
-
-                // Set AI report
-                const aiReportElement = examClone.querySelector('.ai-report');
-                if (text) {
-                    aiReportElement.querySelector('summary').innerHTML = `AI Report: ${isPositive ? 'Positive' : 'Negative'}${item.report.ai.confidence !== null && item.report.ai.confidence > -1 ? ` (Confidence: ${item.report.ai.confidence}%)` : ''}`;
-                    aiReportElement.querySelector('summary').nextSibling.textContent = text;
-                    aiReportElement.open = true;
-                } else {
-                    aiReportElement.style.display = 'none';
-                }
-
-                // Set radiologist report
-                const radReportElement = examClone.querySelector('.rad-report');
-                if (item.report.rad.text) {
-                    radReportElement.className = `report rad-report severity-${item.report.rad.severity}`;
-                    radReportElement.querySelector('summary').innerHTML = `${item.report.rad.radiologist}: ${item.report.rad.summary}${item.report.rad.severity !== null && item.report.rad.severity > -1 ? ` (Severity: ${item.report.rad.severity}/10)` : ''}`;
-                    radReportElement.querySelector('summary').nextSibling.textContent = item.report.rad.text;
-                    radReportElement.open = true;
-                } else {
-                    radReportElement.style.display = 'none';
-                }
-
-                // Append the cloned template to the exams container
-                examsElement.appendChild(examClone);
+                cardElement.querySelector('.xray img').onclick = () => openLightbox(`/images/${item.uid}.png`, sanitize(formattedPatientName), sanitize(text), isCorrect, isPositive);
+                cardElement.querySelector('.abnormal').onclick = () => radreview(item.uid, false);
+                cardElement.querySelector('.normal').onclick = () => radreview(item.uid, true);
+                cardElement.querySelector('.secondary:nth-child(3)').onclick = () => lookagain(item.uid);
+                cardElement.querySelector('.secondary:nth-child(4)').onclick = () => getrad(item.uid);
             });
         }
 
