@@ -4479,8 +4479,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
               summary='',
               type=exam_type,
               model=MODEL_NAME,
-              latency=-1,
-              region=exam_region)
+              latency=-1)
 
     # Set the exam status to 'check' for LLM processing in queue
     db_set_status(exam_uid, "check")
