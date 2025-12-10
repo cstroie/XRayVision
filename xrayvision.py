@@ -4391,6 +4391,11 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
                 justification=justification)
         logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid}")
     
+    # Check if srv_req is valid before accessing its ID
+    if not srv_req or 'id' not in srv_req:
+        logging.warning(f"No valid service request found for exam {exam_uid}")
+        return
+    
     # Get diagnostic report
     report = await get_fhir_diagnosticreport(session, srv_req['id'])
     if not report or 'presentedForm' not in report or not report['presentedForm']:
