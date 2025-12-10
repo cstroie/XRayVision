@@ -4350,10 +4350,20 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     rad_report = db_get_rad_report(exam_uid)
     srv_req = None
     
-    if rad_report and rad_report.get('id') and rad_report['id'] > 0:
-        # We already have the service request ID, use it directly
-        srv_req = {'id': rad_report['id']}
-        logging.info(f"Using existing service request ID {srv_req['id']} for exam {exam_uid}")
+    if rad_report and rad_report.get('id'):
+        try:
+            # Convert to int for comparison to avoid string vs int comparison errors
+            service_id = int(rad_report['id'])
+            if service_id > 0:
+                # We already have the service request ID, use it directly
+                srv_req = {'id': service_id}
+                logging.info(f"Using existing service request ID {srv_req['id']} for exam {exam_uid}")
+            else:
+                # Find service request in FHIR
+                srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
+        except (ValueError, TypeError):
+            # If conversion fails, treat as if no valid ID exists
+            srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
     else:
         # Find service request in FHIR
         srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
