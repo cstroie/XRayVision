@@ -3890,7 +3890,7 @@ async def handle_ai_success(exam, short, report, confidence, processing_time):
     # Save to exams database
     is_positive = short == "yes"
     # Save to exams database with processing time
-    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence, latency = processing_time)
+    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence, latency = int(processing_time))
     # Send notification for positive cases
     if is_positive:
         try:
@@ -4248,7 +4248,7 @@ async def process_fhir_report_with_llm(exam_uid):
         severity=severity,
         summary=summary,
         model=MODEL_NAME,
-        latency=processing_time
+        latency=int(processing_time)
     )
     logging.info(f"Updated FHIR report for exam {exam_uid} with summary '{summary}'")
     
