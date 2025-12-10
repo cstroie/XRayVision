@@ -2176,14 +2176,8 @@ def extract_dicom_metadata(ds):
     else:
         created = now
 
-    # Create temporary info dict to identify region
-    temp_info = {
-        'exam': {
-            'protocol': str(ds.ProtocolName),
-        }
-    }
     # Identify the region from the protocol name
-    region, _ = identify_anatomic_region(temp_info)
+    region, _ = identify_anatomic_region(str(ds.ProtocolName))
 
     info = {
         'uid': str(ds.SOPInstanceUID),
