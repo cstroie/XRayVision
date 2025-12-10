@@ -2176,6 +2176,15 @@ def extract_dicom_metadata(ds):
     else:
         created = now
 
+    # Create temporary info dict to identify region
+    temp_info = {
+        'exam': {
+            'protocol': str(ds.ProtocolName),
+        }
+    }
+    # Identify the region from the protocol name
+    region, _ = identify_anatomic_region(temp_info)
+
     info = {
         'uid': str(ds.SOPInstanceUID),
         'patient': {
@@ -2188,7 +2197,7 @@ def extract_dicom_metadata(ds):
         'exam': {
             'protocol': str(ds.ProtocolName),
             'created':  created,
-            'region':   str(ds.ProtocolName),
+            'region':   region,
             'study':    str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
             'series':   str(ds.SeriesInstanceUID) if 'SeriesInstanceUID' in ds else None,
             'id':       None,
