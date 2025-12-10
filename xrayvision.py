@@ -3634,8 +3634,15 @@ async def get_fhir_diagnosticreport(session, report_id):
         async with session.get(url, auth=auth, timeout=30) as resp:
             if resp.status == 200:
                 data = await resp.json()
+                # Check if response is an OperationOutcome (error)
+                if data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.warning(f"FHIR diagnostic report returned OperationOutcome: {error_details}")
+                    return None
                 # Ensure the resource type is DiagnosticReport
-                if data.get('resourceType') == 'DiagnosticReport':
+                elif data.get('resourceType') == 'DiagnosticReport':
                     return data
                 else:
                     logging.warning(f"FHIR diagnostic report has incorrect resource type: {data.get('resourceType')}")
