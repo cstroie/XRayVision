@@ -3599,6 +3599,15 @@ async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_type
                         logging.warning(f"FHIR service requests search returned {len(srv_reqs)} service requests, expected exactly one")
                     # Return empty list if no service requests or more than one
                     return []
+                elif data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.warning(f"FHIR service requests search returned OperationOutcome: {error_details}")
+                    return []
+                else:
+                    logging.error(f"FHIR service requests search error: unexpected response format")
+                    return []
             else:
                 logging.warning(f"FHIR service requests search failed with status {resp.status}")
     except Exception as e:
