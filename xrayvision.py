@@ -4460,6 +4460,16 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     # Log the retrieved report
     logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
     
+    # If the exam region is not in our supported regions, try to identify it again from the report text
+    if exam_region not in REGIONS:
+        # Try to identify the region from the report text
+        identified_region, _ = identify_anatomic_region(report_text)
+        if identified_region in REGIONS:
+            logging.info(f"Re-identified region for exam {exam_uid}: {identified_region}")
+            exam_region = identified_region
+        else:
+            logging.warning(f"Could not identify valid region for exam {exam_uid} from report text")
+    
     # Update the radiologist report in our database
     db_update('rad_reports', 'uid = ?', (exam_uid,),
               text=report_text,
@@ -4469,7 +4479,8 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
               summary='',
               type=exam_type,
               model=MODEL_NAME,
-              latency=-1)
+              latency=-1,
+              region=exam_region)
 
     # Set the exam status to 'check' for LLM processing in queue
     db_set_status(exam_uid, "check")
