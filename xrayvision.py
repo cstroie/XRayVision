@@ -4236,32 +4236,6 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime, exa
     return req
 
 
-async def save_study_id(exam_uid, study):
-    """
-    Save study ID to database to avoid redundant searches later.
-
-    Args:
-        exam_uid: Exam unique identifier
-        study: Study resource from FHIR
-    """
-    # Extract justification from supportingInfo if available
-    justification = ''
-    try:
-        if 'supportingInfo' in study and len(study['supportingInfo']) > 0:
-            supporting_info = study['supportingInfo'][0]
-            if 'display' in supporting_info:
-                justification = supporting_info['display']
-    except Exception as e:
-        logging.debug(f"Could not extract justification from supportingInfo: {e}")
-    
-    db_insert('rad_reports',
-              uid=exam_uid,
-              id=study.get('id', ''),
-              type='radio',
-              justification=justification)
-    logging.debug(f"Saving the study id {study.get('id', '')} for exam {exam_uid}")
-
-
 async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region = ""):
     """
     Extract report text and radiologist name from FHIR diagnostic report.
@@ -4374,23 +4348,41 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
 
     # Check if we already have the service request ID in the database
     rad_report = db_get_rad_report(exam_uid)
-    study = None
+    srv_req = None
     
-    if rad_report and rad_report.get('id'):
+    if rad_report and rad_report.get('id') and rad_report['id'] > 0:
         # We already have the service request ID, use it directly
-        study = {'id': rad_report['id']}
-        logging.debug(f"Using existing service request ID {study['id']} for exam {exam_uid}")
+        srv_req = {'id': rad_report['id']}
+        logging.debug(f"Using existing service request ID {srv_req['id']} for exam {exam_uid}")
     else:
         # Find service request in FHIR
-        study = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
-        if not study:
+        srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
+        if not srv_req:
+            if not rad_report:
+                # Insert a negative service request ID into our database to mark as not found
+                db_insert('rad_reports', uid=exam_uid, id=-1)
+                logging.info(f"Service request missing for exam {exam_uid}")
+            # Return if no service request found
             return
-    
-    # Save study ID
-    await save_study_id(exam_uid, study)
+        # Extract justification from supportingInfo if available
+        justification = ''
+        try:
+            if 'supportingInfo' in srv_req and len(srv_req['supportingInfo']) > 0:
+                supporting_info = srv_req['supportingInfo'][0]
+                if 'display' in supporting_info:
+                    justification = supporting_info['display']
+        except Exception as e:
+            logging.debug(f"Could not extract justification from supportingInfo: {e}")
+        # Insert the service request ID into our database
+        db_insert('rad_reports',
+                uid=exam_uid,
+                id=srv_req['id'],
+                type=exam_type,
+                justification=justification)
+        logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid}")
     
     # Get diagnostic report
-    report = await get_fhir_diagnosticreport(session, study['id'])
+    report = await get_fhir_diagnosticreport(session, srv_req['id'])
     if not report or 'presentedForm' not in report or not report['presentedForm']:
         logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
         return
