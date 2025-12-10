@@ -4351,11 +4351,12 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
 
     This function retrieves the radiologist report for a specific exam from the FHIR system
     and prepares it for LLM analysis. It performs the following steps:
-    1. Finds the corresponding service request in FHIR
-    2. Retrieves the diagnostic report
-    3. Extracts report data (text, radiologist name, justification)
-    4. Updates the local database with the report information
-    5. Sets the exam status to 'check' to trigger LLM processing
+    1. Checks if service request ID is already in database
+    2. If not found, finds the corresponding service request in FHIR
+    3. Retrieves the diagnostic report
+    4. Extracts report data (text, radiologist name, justification)
+    5. Updates the local database with the report information
+    6. Sets the exam status to 'check' to trigger LLM processing
 
     Args:
         session (aiohttp.ClientSession): Active HTTP session for FHIR API calls
@@ -4371,10 +4372,19 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     exam_type = translate_exam_type_to_fhir(exam.get('type', 'radio'))
     exam_region = exam.get('region', '')
 
-    # Find service request
-    study = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
-    if not study:
-        return
+    # Check if we already have the service request ID in the database
+    rad_report = db_get_rad_report(exam_uid)
+    study = None
+    
+    if rad_report and rad_report.get('id'):
+        # We already have the service request ID, use it directly
+        study = {'id': rad_report['id']}
+        logging.debug(f"Using existing service request ID {study['id']} for exam {exam_uid}")
+    else:
+        # Find service request in FHIR
+        study = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
+        if not study:
+            return
     
     # Save study ID
     await save_study_id(exam_uid, study)
