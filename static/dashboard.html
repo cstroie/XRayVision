@@ -317,8 +317,8 @@
                         }
                     } else if (data.event.name === "requeue") {
                         showToast(`Exam re-queued`);
-                        // Load page 1
-                        loadPage(1);
+                        // Reload current page to reflect status change
+                        loadPage(currentPage);
                     } else if (data.event.name === "radreport") {
                         showToast(`Radiologist report available`);
                         // Update specific exam if it's on the current page
@@ -445,12 +445,6 @@
         function updateExamCard(uid) {
             // Check if the exam card exists on the current page
             const card = document.getElementById(`card-${uid}`);
-            if (!card) {
-                // If not on current page, reload the page to show the updated exam
-                loadPage(currentPage);
-                return;
-            }
-
             // Fetch the updated exam data
             fetch(`/api/exams/${uid}`)
                 .then(res => res.json())
