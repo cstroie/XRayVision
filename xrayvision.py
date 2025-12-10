@@ -4200,7 +4200,7 @@ async def process_fhir_report_with_llm(exam_uid):
     logging.info(f"Updated FHIR report for exam {exam_uid} with summary '{summary}'")
     
     # Notify dashboard of the update
-    await broadcast_dashboard_update(event="radreport_processed", payload={'uid': exam_uid})
+    await broadcast_dashboard_update(event="radcheck", payload={'uid': exam_uid})
 
 async def find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type='radio', exam_region=''):
     """
