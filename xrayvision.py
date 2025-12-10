@@ -4403,6 +4403,8 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         if identified_region in REGIONS:
             logging.info(f"Re-identified region for exam {exam_uid}: {identified_region}")
             exam_region = identified_region
+            # Update the region in the exams table
+            db_update('exams', 'uid = ?', (exam_uid,), region=exam_region)
         else:
             logging.warning(f"Could not identify valid region for exam {exam_uid} from report text")
 
