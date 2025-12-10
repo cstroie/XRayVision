@@ -3423,13 +3423,17 @@ def identify_anatomic_region(info):
     in naming conventions.
 
     Args:
-        info: Dictionary containing exam information with protocol name
+        info: Dictionary containing exam information with protocol name or string with protocol name
 
     Returns:
         tuple: (region, question) where region is the identified anatomic region
                and question is the region-specific query for AI analysis
     """
-    desc = info["exam"]["protocol"].lower()
+    # Handle both string and dict inputs
+    if isinstance(info, str):
+        desc = info.lower()
+    else:
+        desc = info["exam"]["protocol"].lower()
 
     # Check each region rule from config
     for region_key, keywords in REGION_RULES.items():
