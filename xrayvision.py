@@ -3537,6 +3537,12 @@ async def get_fhir_patient(session, cnp):
                         return patients[0]
                     else:
                         logging.error(f"FHIR patient search error: no valid patients found in bundle for CNP {cnp}")
+                elif data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.warning(f"FHIR patient search returned OperationOutcome for CNP {cnp}: {error_details}")
+                    return None
                 else:
                     logging.error(f"FHIR patient search error: unexpected response format for CNP {cnp}")
             else:
