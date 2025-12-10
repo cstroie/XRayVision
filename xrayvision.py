@@ -2351,7 +2351,7 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
         # Save as 8 bit
         image = image.astype(np.uint8)
         # Auto adjust gamma
-        image = apply_gamma_correction(image, None)
+        image = apply_gamma_correction(image)
         # Save the PNG file
         cv2.imwrite(png_file, image)
         logging.debug(f"Converted PNG saved to {png_file}")
@@ -4148,6 +4148,7 @@ async def openai_health_check():
         # Sleep for 5 minutes
         await asyncio.sleep(300)
 
+
 async def fhir_loop():
     """
     Periodically check the health status of FHIR API endpoint and process exams.
@@ -4280,7 +4281,6 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime, exa
     # Return the service request
     return req
 
-
 async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region = ""):
     """
     Extract report text and radiologist name from FHIR diagnostic report.
@@ -4342,7 +4342,6 @@ async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region
     # Return the extracted report text and radiologist name
     return report_text, radiologist
 
-
 def translate_exam_type_to_fhir(exam_type):
     """
     Translate database exam type to FHIR-compatible values.
@@ -4362,7 +4361,6 @@ def translate_exam_type_to_fhir(exam_type):
         'RF': 'rads'
     }
     return translation_map.get(exam_type.upper(), 'radio')
-
 
 async def process_single_exam_without_rad_report(session, exam, patient_id):
     """
@@ -4470,7 +4468,6 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     db_set_status(exam_uid, "check")
     # Notify the queue
     QUEUE_EVENT.set()
-
 
 async def get_patient_id_from_fhir(session, patient_cnp):
     """
