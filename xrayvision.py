@@ -3522,6 +3522,12 @@ async def get_fhir_patient(session, cnp):
                             patients.append(entry['resource'])
                     
                     if patients:
+                        # Validate CNP before proceeding
+                        cnp_result = validate_romanian_cnp(cnp)
+                        if not cnp_result['valid']:
+                            logging.warning(f"Invalid CNP {cnp}, skipping patient selection")
+                            return None
+                        
                         # Log warning about multiple patients
                         logging.warning(f"Multiple patients found for CNP {cnp}, selecting the one with the greatest ID")
                         
