@@ -3514,8 +3514,25 @@ async def get_fhir_patient(session, cnp):
                 if data.get('resourceType') == 'Patient':
                     # Single patient returned
                     return data
-                # Multiple patients returned
-                logging.error(f"FHIR patient search error: multiple patients found for CNP {cnp}")
+                elif data.get('resourceType') == 'Bundle' and 'entry' in data:
+                    # Multiple patients returned in a bundle
+                    patients = []
+                    for entry in data['entry']:
+                        if 'resource' in entry and entry['resource'].get('resourceType') == 'Patient':
+                            patients.append(entry['resource'])
+                    
+                    if patients:
+                        # Log warning about multiple patients
+                        logging.warning(f"Multiple patients found for CNP {cnp}, selecting the one with the greatest ID")
+                        
+                        # Sort patients by ID (assuming IDs are numeric or comparable)
+                        # and select the one with the greatest ID
+                        patients.sort(key=lambda p: p.get('id', ''), reverse=True)
+                        return patients[0]
+                    else:
+                        logging.error(f"FHIR patient search error: no valid patients found in bundle for CNP {cnp}")
+                else:
+                    logging.error(f"FHIR patient search error: unexpected response format for CNP {cnp}")
             else:
                 logging.warning(f"FHIR patient search failed with status {resp.status}")
     except Exception as e:
