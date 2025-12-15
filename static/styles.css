@@ -325,6 +325,12 @@ article>footer {
     opacity: 1;
 }
 
+@media (max-width: 768px) {
+    .image-card .xray div[role="group"] {
+        opacity: 1;
+    }
+}
+
 .image-card .xray div[role="group"] button {
     font-size: 0.9rem;
     padding: 0.3rem 0.3rem;
