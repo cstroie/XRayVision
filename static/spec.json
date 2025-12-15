@@ -1122,6 +1122,60 @@
         }
       }
     },
+    "/api/getrad": {
+      "post": {
+        "summary": "Get radiologist report",
+        "description": "Retrieve radiologist report for an exam from FHIR and queue for LLM processing",
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "uid": {
+                    "type": "string",
+                    "description": "Unique identifier of the exam"
+                  }
+                },
+                "required": ["uid"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Retrieval status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/api/spec": {
       "get": {
         "summary": "Get API specification",
