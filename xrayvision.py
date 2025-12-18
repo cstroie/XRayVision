@@ -4185,7 +4185,7 @@ async def start_dashboard():
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
     app.router.add_get('/about', serve_about_page)
-    app.router.add_get('/radiologists', serve_radiologists_page)
+    app.router.add_get('/stats/radiologists', serve_radiologists_page)
     app.router.add_get('/stats/diagnostics', serve_diagnostics_page)
     app.router.add_get('/check', serve_check_page)
     app.router.add_get('/favicon.ico', serve_favicon)
