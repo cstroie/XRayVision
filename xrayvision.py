@@ -2400,6 +2400,18 @@ async def serve_about_page(request):
     return web.FileResponse(path=os.path.join(STATIC_DIR, "about.html"))
 
 
+async def serve_radiologists_page(request):
+    """Serve the radiologists HTML page.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.FileResponse: Radiologists HTML file response
+    """
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "radiologists.html"))
+
+
 async def serve_check_page(request):
     """Serve the report check HTML page.
 
@@ -2673,6 +2685,79 @@ async def radiologists_handler(request):
         return web.json_response(radiologists)
     except Exception as e:
         logging.error(f"Radiologists endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
+
+async def radiologist_stats_handler(request):
+    """Provide detailed statistics for radiologists.
+
+    Returns detailed statistics for each radiologist including:
+    - Report counts
+    - Average severity scores
+    - AI validation rates
+    - Preferred diagnostics
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with detailed radiologist statistics
+    """
+    try:
+        # Get user role from request (set by auth_middleware)
+        user_role = getattr(request, 'user_role', 'user')
+        
+        # Get detailed radiologist statistics
+        query = """
+            SELECT 
+                rr.radiologist,
+                COUNT(*) as report_count,
+                AVG(CAST(rr.severity AS FLOAT)) as avg_severity,
+                SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?) THEN 1 ELSE 0 END) as correct_predictions,
+                COUNT(CASE WHEN ar.positive IS NOT NULL THEN 1 END) as ai_compared,
+                GROUP_CONCAT(rr.summary, ', ') as all_diagnostics
+            FROM rad_reports rr
+            LEFT JOIN exams e ON rr.uid = e.uid
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE rr.radiologist IS NOT NULL AND rr.radiologist != ''
+            GROUP BY rr.radiologist
+            ORDER BY report_count DESC
+        """
+        rows = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
+        
+        radiologist_stats = {}
+        if rows:
+            for row in rows:
+                radiologist, report_count, avg_severity, correct_predictions, ai_compared, all_diagnostics = row
+                
+                # Process diagnostics to get frequency
+                diagnostics = {}
+                if all_diagnostics:
+                    for diag in all_diagnostics.split(', '):
+                        diag = diag.strip().lower()
+                        if diag:
+                            diagnostics[diag] = diagnostics.get(diag, 0) + 1
+                
+                # Sort diagnostics by frequency
+                sorted_diagnostics = sorted(diagnostics.items(), key=lambda x: x[1], reverse=True)
+                top_diagnostics = dict(sorted_diagnostics[:5])  # Top 5 diagnostics
+                
+                # Calculate accuracy if AI comparisons exist
+                accuracy = 0
+                if ai_compared and ai_compared > 0:
+                    accuracy = round((correct_predictions / ai_compared) * 100, 1)
+                
+                radiologist_stats[radiologist] = {
+                    'report_count': report_count,
+                    'avg_severity': round(avg_severity, 1) if avg_severity else 0,
+                    'ai_accuracy': accuracy,
+                    'ai_compared': ai_compared,
+                    'top_diagnostics': top_diagnostics
+                }
+        
+        return web.json_response(radiologist_stats)
+    except Exception as e:
+        logging.error(f"Radiologist stats endpoint error: {e}")
         return web.json_response({}, status = 500)
 
 
@@ -4013,6 +4098,7 @@ async def start_dashboard():
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
     app.router.add_get('/about', serve_about_page)
+    app.router.add_get('/radiologists', serve_radiologists_page)
     app.router.add_get('/check', serve_check_page)
     app.router.add_get('/favicon.ico', serve_favicon)
     app.router.add_get('/ws', websocket_handler)
@@ -4026,6 +4112,7 @@ async def start_dashboard():
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/diagnostics', diagnostics_handler)
     app.router.add_get('/api/radiologists', radiologists_handler)
+    app.router.add_get('/api/radiologist-stats', radiologist_stats_handler)
     app.router.add_get('/api/severity', severity_handler)
     app.router.add_get('/api/config', config_handler)
     
