@@ -2758,6 +2758,171 @@ async def diagnostics_stats_handler(request):
         return web.json_response({}, status = 500)
 
 
+async def insights_handler(request):
+    """Provide advanced insights and correlations from the database.
+
+    Returns various advanced statistics including:
+    - Processing time analysis by region
+    - Severity distribution
+    - Patient demographics insights
+    - Temporal patterns
+    - Re-queue analysis
+    - Radiologist consistency metrics
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with advanced insights
+    """
+    try:
+        insights = {}
+        
+        # 1. Processing time analysis by region
+        query = """
+            SELECT 
+                e.region,
+                AVG(CAST(ar.latency AS FLOAT)) as avg_processing_time,
+                COUNT(*) as exam_count
+            FROM exams e
+            LEFT JOIN ai_reports ar ON e.uid = ar.uid
+            WHERE e.status = 'done' 
+            AND ar.latency IS NOT NULL 
+            AND ar.latency >= 0
+            GROUP BY e.region
+            ORDER BY avg_processing_time DESC
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        insights['processing_times'] = {}
+        if rows:
+            for row in rows:
+                region, avg_time, count = row
+                insights['processing_times'][region] = {
+                    'avg_time': round(avg_time, 2),
+                    'count': count
+                }
+        
+        # 2. Severity distribution
+        query = """
+            SELECT 
+                severity,
+                COUNT(*) as count
+            FROM rad_reports
+            WHERE severity >= 0
+            GROUP BY severity
+            ORDER BY severity
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        insights['severity_distribution'] = {}
+        if rows:
+            for row in rows:
+                severity, count = row
+                insights['severity_distribution'][str(severity)] = count
+        
+        # 3. Patient demographics insights (positive findings by age group)
+        query = """
+            SELECT 
+                CASE 
+                    WHEN p.age < 18 THEN '0-17'
+                    WHEN p.age < 35 THEN '18-34'
+                    WHEN p.age < 50 THEN '35-49'
+                    WHEN p.age < 65 THEN '50-64'
+                    ELSE '65+'
+                END as age_group,
+                COUNT(*) as total_exams,
+                SUM(CASE WHEN rr.severity >= ? THEN 1 ELSE 0 END) as positive_findings
+            FROM patients p
+            JOIN exams e ON p.cnp = e.cnp
+            JOIN rad_reports rr ON e.uid = rr.uid
+            WHERE p.age >= 0
+            GROUP BY age_group
+            ORDER BY 
+                CASE age_group
+                    WHEN '0-17' THEN 1
+                    WHEN '18-34' THEN 2
+                    WHEN '35-49' THEN 3
+                    WHEN '50-64' THEN 4
+                    WHEN '65+' THEN 5
+                END
+        """
+        rows = db_execute_query(query, (SEVERITY_THRESHOLD,), fetch_mode='all')
+        insights['age_distribution'] = {}
+        if rows:
+            for row in rows:
+                age_group, total_exams, positive_findings = row
+                insights['age_distribution'][age_group] = {
+                    'total_exams': total_exams,
+                    'positive_findings': positive_findings,
+                    'positive_rate': round((positive_findings / total_exams) * 100, 1) if total_exams > 0 else 0
+                }
+        
+        # 4. Temporal patterns (exams by hour of day)
+        query = """
+            SELECT 
+                CAST(strftime('%H', created) AS INTEGER) as hour,
+                COUNT(*) as exam_count
+            FROM exams
+            WHERE status = 'done'
+            GROUP BY hour
+            ORDER BY hour
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        insights['hourly_patterns'] = {}
+        if rows:
+            for row in rows:
+                hour, count = row
+                insights['hourly_patterns'][str(hour)] = count
+        
+        # 5. Re-queue analysis
+        query = """
+            SELECT 
+                COUNT(*) as total_requeued,
+                AVG(CAST(ai2.latency AS FLOAT) - CAST(ai1.latency AS FLOAT)) as avg_latency_improvement
+            FROM exams e
+            JOIN ai_reports ai1 ON e.uid = ai1.uid
+            JOIN ai_reports ai2 ON e.uid = ai2.uid
+            WHERE e.status = 'done'
+            AND ai1.created < ai2.created
+        """
+        row = db_execute_query(query, fetch_mode='one')
+        if row:
+            total_requeued, avg_improvement = row
+            insights['requeue_analysis'] = {
+                'total_requeued': total_requeued or 0,
+                'avg_latency_improvement': round(avg_improvement, 2) if avg_improvement else 0
+            }
+        
+        # 6. Radiologist consistency (if we have multiple reports for same exam)
+        query = """
+            SELECT 
+                radiologist,
+                COUNT(*) as reports_count,
+                AVG(CAST(severity AS FLOAT)) as avg_severity,
+                COUNT(DISTINCT uid) as unique_exams
+            FROM rad_reports
+            WHERE radiologist IS NOT NULL AND radiologist != ''
+            GROUP BY radiologist
+            HAVING reports_count > 5
+            ORDER BY reports_count DESC
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        insights['radiologist_metrics'] = {}
+        if rows:
+            for row in rows:
+                radiologist, reports_count, avg_severity, unique_exams = row
+                insights['radiologist_metrics'][radiologist] = {
+                    'reports_count': reports_count,
+                    'avg_severity': round(avg_severity, 1) if avg_severity else 0,
+                    'unique_exams': unique_exams,
+                    'avg_reports_per_exam': round(reports_count / unique_exams, 1) if unique_exams > 0 else 0
+                }
+        
+        return web.json_response(insights)
+    except Exception as e:
+        logging.error(f"Insights endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
+
 async def radiologists_handler(request):
     """Provide distinct radiologist names from radiologist reports along with their report counts.
 
