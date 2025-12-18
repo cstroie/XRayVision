@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html data-theme="dark" lang="en">
+<!--
+  XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+  Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  any later version.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>XRayVision Diagnostics</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="/static/favicon-64x64.png" type="image/png" sizes="64x64">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="container">
+    <nav>
+        <ul>
+            <li><strong>XRayVision Diagnostics</strong></li>
+        </ul>
+        <ul>
+            <li><a href="/">Dashboard</a></li>
+            <li><a href="/stats">Statistics</a></li>
+            <li><a href="/stats/diagnostics" class="contrast">Diagnostics</a></li>
+            <li><a href="/check">Check</a></li>
+            <li><a href="/about">About</a></li>
+            <li>
+                <button id="refreshBtn" class="secondary outline" style="margin-left: 1rem; padding: 0.25rem 0.5rem; font-size: 0.9rem;">Refresh</button>
+            </li>
+        </ul>
+    </nav>
+
+    <header class="grid stats-grid">
+        <article>
+            <strong>Total Diagnostics</strong>
+            <span id="totalDiagnostics">0</span>
+        </article>
+        <article>
+            <strong>Total Reports</strong>
+            <span id="totalReports">0</span>
+        </article>
+        <article>
+            <strong>Avg. Severity</strong>
+            <span id="avgSeverity">0</span>
+        </article>
+        <article>
+            <strong>AI Validated</strong>
+            <span id="aiValidated">0%</span>
+        </article>
+    </header>
+
+    <main>
+        <div id="loadingIndicator" class="loading">
+            <p>Loading diagnostic statistics...</p>
+        </div>
+
+        <div id="errorContainer" style="display: none;">
+            <div class="error">
+                <p id="errorMessage">Failed to load diagnostic statistics. Please try again later.</p>
+            </div>
+        </div>
+
+        <section id="statsContent" style="display: none;">
+            <section class="charts-grid">
+                <article class="chart-container">
+                    <h3>
+                        Reports by Diagnostic
+                        <button class="secondary outline" onclick="downloadChart('reportsChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 600px;">
+                        <canvas id="reportsChart"></canvas>
+                    </div>
+                </article>
+
+                <article class="chart-container">
+                    <h3>
+                        AI Validation Accuracy
+                        <button class="secondary outline" onclick="downloadChart('accuracyChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 600px;">
+                        <canvas id="accuracyChart"></canvas>
+                    </div>
+                </article>
+            </section>
+
+            <section>
+                <h2>Diagnostic Details</h2>
+                <div class="overflow-auto">
+                    <table id="diagnosticStats" role="grid">
+                        <thead>
+                            <tr>
+                                <th>Diagnostic</th>
+                                <th style="text-align: right;">Reports</th>
+                                <th style="text-align: right;">Avg Severity</th>
+                                <th style="text-align: right;">AI Accuracy</th>
+                                <th style="text-align: right;">AI Validated</th>
+                                <th>Top Regions</th>
+                                <th>First/Last Seen</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        // Chart instances
+        let reportsChart, accuracyChart;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDiagnosticStats();
+            document.getElementById('refreshBtn').addEventListener('click', loadDiagnosticStats);
+        });
+
+        function showLoading() {
+            document.getElementById('loadingIndicator').style.display = 'block';
+            document.getElementById('statsContent').style.display = 'none';
+            document.getElementById('errorContainer').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingIndicator').style.display = 'none';
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message || 'Failed to load diagnostic statistics. Please try again later.';
+            document.getElementById('errorContainer').style.display = 'block';
+            document.getElementById('statsContent').style.display = 'none';
+        }
+
+        function showContent() {
+            document.getElementById('statsContent').style.display = 'block';
+            document.getElementById('errorContainer').style.display = 'none';
+        }
+
+        function loadDiagnosticStats() {
+            showLoading();
+
+            fetch('/api/stats/diagnostics')
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                return res.json();
+            })
+            .then(data => {
+                hideLoading();
+                updateStats(data);
+                showContent();
+            })
+            .catch(error => {
+                console.error('Error loading diagnostic stats:', error);
+                hideLoading();
+                showError('Failed to load diagnostic statistics. Please check your connection and try again.');
+            });
+        }
+
+        function updateStats(data) {
+            // Calculate totals
+            let totalDiagnostics = Object.keys(data).length;
+            let totalReports = 0;
+            let totalSeverity = 0;
+            let totalCompared = 0;
+            let totalCorrect = 0;
+            
+            for (const diagnostic in data) {
+                totalReports += data[diagnostic].report_count;
+                totalSeverity += data[diagnostic].avg_severity * data[diagnostic].report_count;
+                totalCompared += data[diagnostic].ai_compared;
+                // Recalculate accuracy based on totals
+                const correct = (data[diagnostic].ai_accuracy / 100) * data[diagnostic].ai_compared;
+                totalCorrect += correct;
+            }
+            
+            const avgSeverity = totalReports > 0 ? (totalSeverity / totalReports).toFixed(1) : 0;
+            const aiValidated = totalCompared > 0 ? ((totalCorrect / totalCompared) * 100).toFixed(1) : 0;
+            
+            // Update header stats
+            document.getElementById('totalDiagnostics').textContent = totalDiagnostics;
+            document.getElementById('totalReports').textContent = totalReports;
+            document.getElementById('avgSeverity').textContent = avgSeverity;
+            document.getElementById('aiValidated').textContent = aiValidated + '%';
+            
+            // Prepare data for charts
+            const diagnostics = Object.keys(data);
+            const reportCounts = diagnostics.map(d => data[d].report_count);
+            const accuracies = diagnostics.map(d => data[d].ai_accuracy);
+            
+            // Limit to top 20 diagnostics for charts to avoid clutter
+            const topDiagnostics = diagnostics.slice(0, 20);
+            const topReportCounts = reportCounts.slice(0, 20);
+            const topAccuracies = accuracies.slice(0, 20);
+            
+            // Destroy existing charts if they exist
+            if (reportsChart) reportsChart.destroy();
+            if (accuracyChart) accuracyChart.destroy();
+            
+            // Chart: Reports by Diagnostic
+            reportsChart = new Chart(document.getElementById("reportsChart"), {
+                type: 'bar',
+                data: {
+                    labels: topDiagnostics,
+                    datasets: [{
+                        label: 'Number of Reports',
+                        data: topReportCounts,
+                        backgroundColor: '#0ea5e9',
+                        borderColor: '#0ea5e9',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    },
+                    indexAxis: 'y'
+                }
+            });
+            
+            // Chart: AI Validation Accuracy
+            accuracyChart = new Chart(document.getElementById("accuracyChart"), {
+                type: 'bar',
+                data: {
+                    labels: topDiagnostics,
+                    datasets: [{
+                        label: 'AI Validation Accuracy (%)',
+                        data: topAccuracies,
+                        backgroundColor: '#2dd4bf',
+                        borderColor: '#2dd4bf',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        }
+                    },
+                    indexAxis: 'y'
+                }
+            });
+            
+            // Populate table
+            const tbody = document.querySelector('#diagnosticStats tbody');
+            tbody.innerHTML = '';
+            
+            // Sort diagnostics by report count
+            const sortedDiagnostics = Object.keys(data).sort((a, b) => data[b].report_count - data[a].report_count);
+            
+            for (const diagnostic of sortedDiagnostics) {
+                const stats = data[diagnostic];
+                
+                // Format top regions
+                let regionsHtml = '';
+                if (Object.keys(stats.top_regions).length > 0) {
+                    const regions = Object.entries(stats.top_regions)
+                        .map(([region, count]) => `${region} (${count})`)
+                        .join(', ');
+                    regionsHtml = `<small>${regions}</small>`;
+                }
+                
+                // Format dates
+                let datesHtml = '';
+                if (stats.first_seen && stats.last_seen) {
+                    const firstDate = new Date(stats.first_seen).toLocaleDateString();
+                    const lastDate = new Date(stats.last_seen).toLocaleDateString();
+                    datesHtml = `<small>${firstDate} → ${lastDate}</small>`;
+                }
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <th scope="row">${diagnostic}</th>
+                    <td style="text-align: right;">${stats.report_count}</td>
+                    <td style="text-align: right;">${stats.avg_severity}</td>
+                    <td style="text-align: right;">${stats.ai_accuracy}%</td>
+                    <td style="text-align: right;">${stats.ai_compared}</td>
+                    <td>${regionsHtml}</td>
+                    <td>${datesHtml}</td>
+                `;
+                tbody.appendChild(row);
+            }
+        }
+
+        function downloadChart(chartId) {
+            const canvas = document.getElementById(chartId);
+            const url = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `xrayvision-${chartId}-${new Date().toISOString().slice(0, 10)}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+
+</html>
