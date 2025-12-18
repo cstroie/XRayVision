@@ -4215,6 +4215,7 @@ async def start_dashboard():
     app.router.add_get('/api/radiologists', radiologists_handler)
     app.router.add_get('/api/stats/radiologists', radiologist_stats_handler)
     app.router.add_get('/api/stats/diagnostics', diagnostics_stats_handler)
+    app.router.add_get('/api/stats/insights', insights_handler)
     app.router.add_get('/api/severity', severity_handler)
     app.router.add_get('/api/config', config_handler)
     
