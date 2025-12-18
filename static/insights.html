@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html data-theme="dark" lang="en">
+<!--
+  XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+  Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  any later version.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>XRayVision Insights</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="/static/favicon-64x64.png" type="image/png" sizes="64x64">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="container">
+    <nav>
+        <ul>
+            <li><strong>XRayVision Insights</strong></li>
+        </ul>
+        <ul>
+            <li><a href="/">Dashboard</a></li>
+            <li><a href="/stats">Statistics</a></li>
+            <li><a href="/stats/insights" class="contrast">Insights</a></li>
+            <li><a href="/check">Check</a></li>
+            <li><a href="/about">About</a></li>
+            <li>
+                <button id="refreshBtn" class="secondary outline" style="margin-left: 1rem; padding: 0.25rem 0.5rem; font-size: 0.9rem;">Refresh</button>
+            </li>
+        </ul>
+    </nav>
+
+    <main>
+        <div id="loadingIndicator" class="loading">
+            <p>Loading advanced insights...</p>
+        </div>
+
+        <div id="errorContainer" style="display: none;">
+            <div class="error">
+                <p id="errorMessage">Failed to load insights. Please try again later.</p>
+            </div>
+        </div>
+
+        <section id="insightsContent" style="display: none;">
+            <section class="charts-grid">
+                <article class="chart-container">
+                    <h3>
+                        AI Processing Times by Region
+                        <button class="secondary outline" onclick="downloadChart('processingTimeChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 400px;">
+                        <canvas id="processingTimeChart"></canvas>
+                    </div>
+                </article>
+
+                <article class="chart-container">
+                    <h3>
+                        Severity Distribution
+                        <button class="secondary outline" onclick="downloadChart('severityChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 400px;">
+                        <canvas id="severityChart"></canvas>
+                    </div>
+                </article>
+            </section>
+
+            <section class="charts-grid">
+                <article class="chart-container">
+                    <h3>
+                        Positive Findings by Age Group
+                        <button class="secondary outline" onclick="downloadChart('ageChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 400px;">
+                        <canvas id="ageChart"></canvas>
+                    </div>
+                </article>
+
+                <article class="chart-container">
+                    <h3>
+                        Exam Volume by Hour of Day
+                        <button class="secondary outline" onclick="downloadChart('hourlyChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 400px;">
+                        <canvas id="hourlyChart"></canvas>
+                    </div>
+                </article>
+            </section>
+
+            <section>
+                <h2>Radiologist Metrics</h2>
+                <div class="overflow-auto">
+                    <table id="radiologistMetrics" role="grid">
+                        <thead>
+                            <tr>
+                                <th>Radiologist</th>
+                                <th style="text-align: right;">Reports</th>
+                                <th style="text-align: right;">Avg Severity</th>
+                                <th style="text-align: right;">Unique Exams</th>
+                                <th style="text-align: right;">Avg Reports/Exam</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- dynamically populated -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section>
+                <h2>System Metrics</h2>
+                <div class="grid">
+                    <article>
+                        <strong>Total Re-queued Exams</strong>
+                        <span id="totalRequeued">0</span>
+                    </article>
+                    <article>
+                        <strong>Avg Latency Improvement</strong>
+                        <span id="latencyImprovement">0s</span>
+                    </article>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        // Chart instances
+        let processingTimeChart, severityChart, ageChart, hourlyChart;
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadInsights();
+            document.getElementById('refreshBtn').addEventListener('click', loadInsights);
+        });
+
+        function showLoading() {
+            document.getElementById('loadingIndicator').style.display = 'block';
+            document.getElementById('insightsContent').style.display = 'none';
+            document.getElementById('errorContainer').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingIndicator').style.display = 'none';
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message || 'Failed to load insights. Please try again later.';
+            document.getElementById('errorContainer').style.display = 'block';
+            document.getElementById('insightsContent').style.display = 'none';
+        }
+
+        function showContent() {
+            document.getElementById('insightsContent').style.display = 'block';
+            document.getElementById('errorContainer').style.display = 'none';
+        }
+
+        function loadInsights() {
+            showLoading();
+
+            fetch('/api/stats/insights')
+            .then(res => {
+                if (!res.ok) {
+                    throw new Error(`HTTP error! status: ${res.status}`);
+                }
+                return res.json();
+            })
+            .then(data => {
+                hideLoading();
+                updateInsights(data);
+                showContent();
+            })
+            .catch(error => {
+                console.error('Error loading insights:', error);
+                hideLoading();
+                showError('Failed to load insights. Please check your connection and try again.');
+            });
+        }
+
+        function updateInsights(data) {
+            // Update system metrics
+            if (data.requeue_analysis) {
+                document.getElementById('totalRequeued').textContent = data.requeue_analysis.total_requeued || 0;
+                document.getElementById('latencyImprovement').textContent = 
+                    data.requeue_analysis.avg_latency_improvement ? 
+                    `${data.requeue_analysis.avg_latency_improvement}s` : '0s';
+            }
+
+            // Chart: Processing times by region
+            const regions = Object.keys(data.processing_times || {});
+            const avgTimes = regions.map(region => data.processing_times[region].avg_time);
+            
+            if (processingTimeChart) processingTimeChart.destroy();
+            processingTimeChart = new Chart(document.getElementById("processingTimeChart"), {
+                type: 'bar',
+                data: {
+                    labels: regions,
+                    datasets: [{
+                        label: 'Average Processing Time (seconds)',
+                        data: avgTimes,
+                        backgroundColor: '#0ea5e9',
+                        borderColor: '#0ea5e9',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Seconds'
+                            }
+                        }
+                    },
+                    indexAxis: 'y'
+                }
+            });
+
+            // Chart: Severity distribution
+            const severities = Object.keys(data.severity_distribution || {});
+            const severityCounts = severities.map(sev => data.severity_distribution[sev]);
+            
+            if (severityChart) severityChart.destroy();
+            severityChart = new Chart(document.getElementById("severityChart"), {
+                type: 'bar',
+                data: {
+                    labels: severities,
+                    datasets: [{
+                        label: 'Number of Reports',
+                        data: severityCounts,
+                        backgroundColor: '#2dd4bf',
+                        borderColor: '#2dd4bf',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Severity Score'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Number of Reports'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Chart: Age distribution
+            const ageGroups = Object.keys(data.age_distribution || {});
+            const positiveRates = ageGroups.map(group => data.age_distribution[group].positive_rate);
+            const totalExams = ageGroups.map(group => data.age_distribution[group].total_exams);
+            
+            if (ageChart) ageChart.destroy();
+            ageChart = new Chart(document.getElementById("ageChart"), {
+                type: 'bar',
+                data: {
+                    labels: ageGroups,
+                    datasets: [
+                        {
+                            label: 'Positive Finding Rate (%)',
+                            data: positiveRates,
+                            backgroundColor: '#f59e0b',
+                            borderColor: '#f59e0b',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Total Exams',
+                            data: totalExams,
+                            backgroundColor: 'rgba(156, 163, 175, 0.5)',
+                            borderColor: 'rgba(156, 163, 175, 1)',
+                            borderWidth: 1,
+                            type: 'line',
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Age Group'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Positive Finding Rate (%)'
+                            }
+                        },
+                        y1: {
+                            beginAtZero: true,
+                            position: 'right',
+                            grid: {
+                                drawOnChartArea: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Total Exams'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Chart: Hourly patterns
+            const hours = Object.keys(data.hourly_patterns || {});
+            const examCounts = hours.map(hour => data.hourly_patterns[hour]);
+            
+            if (hourlyChart) hourlyChart.destroy();
+            hourlyChart = new Chart(document.getElementById("hourlyChart"), {
+                type: 'line',
+                data: {
+                    labels: hours,
+                    datasets: [{
+                        label: 'Number of Exams',
+                        data: examCounts,
+                        backgroundColor: '#8b5cf6',
+                        borderColor: '#8b5cf6',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Hour of Day'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Number of Exams'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Populate radiologist metrics table
+            const tbody = document.querySelector('#radiologistMetrics tbody');
+            tbody.innerHTML = '';
+            
+            if (data.radiologist_metrics) {
+                // Sort radiologists by reports count
+                const sortedRadiologists = Object.keys(data.radiologist_metrics)
+                    .sort((a, b) => data.radiologist_metrics[b].reports_count - data.radiologist_metrics[a].reports_count);
+                
+                for (const radiologist of sortedRadiologists) {
+                    const metrics = data.radiologist_metrics[radiologist];
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <th scope="row">${radiologist}</th>
+                        <td style="text-align: right;">${metrics.reports_count}</td>
+                        <td style="text-align: right;">${metrics.avg_severity}</td>
+                        <td style="text-align: right;">${metrics.unique_exams}</td>
+                        <td style="text-align: right;">${metrics.avg_reports_per_exam}</td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            }
+        }
+
+        function downloadChart(chartId) {
+            const canvas = document.getElementById(chartId);
+            const url = canvas.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `xrayvision-${chartId}-${new Date().toISOString().slice(0, 10)}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</body>
+
+</html>

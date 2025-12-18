@@ -2424,6 +2424,18 @@ async def serve_diagnostics_page(request):
     return web.FileResponse(path=os.path.join(STATIC_DIR, "diagnostics.html"))
 
 
+async def serve_insights_page(request):
+    """Serve the insights HTML page.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.FileResponse: Insights HTML file response
+    """
+    return web.FileResponse(path=os.path.join(STATIC_DIR, "insights.html"))
+
+
 async def serve_check_page(request):
     """Serve the report check HTML page.
 
@@ -4187,6 +4199,7 @@ async def start_dashboard():
     app.router.add_get('/about', serve_about_page)
     app.router.add_get('/stats/radiologists', serve_radiologists_page)
     app.router.add_get('/stats/diagnostics', serve_diagnostics_page)
+    app.router.add_get('/stats/insights', serve_insights_page)
     app.router.add_get('/check', serve_check_page)
     app.router.add_get('/favicon.ico', serve_favicon)
     app.router.add_get('/ws', websocket_handler)
