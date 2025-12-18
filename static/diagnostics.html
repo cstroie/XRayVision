@@ -104,7 +104,6 @@
                                 <th style="text-align: right;">AI Accuracy</th>
                                 <th style="text-align: right;">AI Validated</th>
                                 <th>Top Regions</th>
-                                <th>First/Last Seen</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -324,14 +323,6 @@
                     regionsHtml = `<small>${regions}</small>`;
                 }
                 
-                // Format dates
-                let datesHtml = '';
-                if (stats.first_seen && stats.last_seen) {
-                    const firstDate = new Date(stats.first_seen).toLocaleDateString();
-                    const lastDate = new Date(stats.last_seen).toLocaleDateString();
-                    datesHtml = `<small>${firstDate} → ${lastDate}</small>`;
-                }
-                
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <th scope="row">${diagnostic}</th>
@@ -340,7 +331,6 @@
                     <td style="text-align: right;">${stats.ai_accuracy}%</td>
                     <td style="text-align: right;">${stats.ai_compared}</td>
                     <td>${regionsHtml}</td>
-                    <td>${datesHtml}</td>
                 `;
                 tbody.appendChild(row);
             }
