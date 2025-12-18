@@ -169,7 +169,7 @@
         function loadRadiologistStats() {
             showLoading();
 
-            fetch('/api/radiologist-stats')
+            fetch('/api/stats/radiologists')
             .then(res => {
                 if (!res.ok) {
                     throw new Error(`HTTP error! status: ${res.status}`);

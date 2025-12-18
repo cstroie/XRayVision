@@ -4112,7 +4112,7 @@ async def start_dashboard():
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/diagnostics', diagnostics_handler)
     app.router.add_get('/api/radiologists', radiologists_handler)
-    app.router.add_get('/api/radiologist-stats', radiologist_stats_handler)
+    app.router.add_get('/api/stats/radiologists', radiologist_stats_handler)
     app.router.add_get('/api/severity', severity_handler)
     app.router.add_get('/api/config', config_handler)
     
