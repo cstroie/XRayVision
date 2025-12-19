@@ -219,6 +219,18 @@
         let ws;
         let currentPage = 1;
         let totalPages = 1;
+        let dashboardData = {
+            processing: 'Idle',
+            queue_size: 0,
+            check_queue_size: 0
+        };
+
+        function updatePageTitle() {
+            const processing = dashboardData.processing || 'Idle';
+            const queue = dashboardData.queue_size || 0;
+            const checkQueue = dashboardData.check_queue_size || 0;
+            document.title = `XRayVision - ${processing} (Q:${queue}/C:${checkQueue})`;
+        }
 
         function sanitize(text) {
             return text;
@@ -277,11 +289,13 @@
             ws.onmessage = function (event) {
                 let data = JSON.parse(event.data);
                 if (data.dashboard !== undefined) {
+                    dashboardData = data.dashboard;
                     document.getElementById('queue').innerHTML = data.dashboard.queue_size;
                     document.getElementById('processing').innerHTML = data.dashboard.processing || 'Idle';
                     document.getElementById('success').innerHTML = data.dashboard.success_count || 0;
                     document.getElementById('errors').innerHTML = data.dashboard.error_count || 0;
                     document.getElementById('check_queue').innerHTML = data.dashboard.check_queue_size || 0;
+                    updatePageTitle();
                 }
                 if (data.openai !== undefined) {
                     if (data.openai.health.pri)
