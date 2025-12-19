@@ -1006,7 +1006,7 @@ def db_update_patient_id(cnp, patient_id):
     db_update('patients', 'cnp = ?', (cnp,), id=patient_id)
 
 
-def db_add_exam(info, report=None, positive=None, confidence=None, justification=None, latency=None):
+def db_add_exam(info, report=None, positive=None, confidence=None, justification=None, latency=None, severity=None, summary=None):
     """
     Add or update an exam entry in the database.
 
@@ -1022,6 +1022,8 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
         confidence: Optional AI confidence score (0-100)
         justification: Optional clinical justification text
         latency: Optional processing time in seconds
+        severity: Optional AI severity score (0-10, -1 if not assessed)
+        summary: Optional AI summary of findings
     """
     # Add or update patient information
     patient = info["patient"]
@@ -1052,7 +1054,7 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
 
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
-        db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, latency if latency is not None else -1)
+        db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, latency if latency is not None else -1, severity, summary)
     
     # If justification is provided, add it to rad_reports table
     if justification is not None:
