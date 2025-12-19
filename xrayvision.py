@@ -4481,8 +4481,11 @@ async def relay_to_openai_loop():
                     # Remove the DICOM file
                     if not KEEP_DICOM:
                         try:
-                            os.remove(dicom_file)
-                            logging.debug(f"DICOM file {dicom_file} deleted after processing.")
+                            if os.path.exists(dicom_file):
+                                os.remove(dicom_file)
+                                logging.debug(f"DICOM file {dicom_file} deleted after processing.")
+                            else:
+                                logging.debug(f"DICOM file {dicom_file} not found, skipping deletion.")
                         except Exception as e:
                             logging.warning(f"Error removing DICOM file {dicom_file}: {e}")
                     else:
