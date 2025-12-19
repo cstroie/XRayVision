@@ -217,9 +217,11 @@ CONFIDENCE SCORING:
 
 Remember: Output ONLY the JSON object with no other text.
 """)
+
 USR_PROMPT = ("""
 {question} in this {anatomy} X-ray of a {subject}?
 """)
+
 REV_PROMPT = ("""
 Your previous report was incorrect. Carefully re-examine the image.
 
