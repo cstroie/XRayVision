@@ -61,6 +61,11 @@ article>footer {
 }
 
 /* Dashboard Specific Styles */
+.overflow-auto {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
 .image-card {
     position: relative;
     border-radius: var(--card-border-radius);
