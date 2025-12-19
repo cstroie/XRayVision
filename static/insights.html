@@ -302,7 +302,14 @@
             });
 
             // Chart: Age distribution
-            const ageGroups = Object.keys(data.age_distribution || {});
+            const ageGroups = Object.keys(data.age_distribution || {}).sort((a, b) => {
+                // Sort age groups numerically
+                if (a === '> 20') return 1;
+                if (b === '> 20') return -1;
+                const aStart = parseInt(a.split('-')[0]);
+                const bStart = parseInt(b.split('-')[0]);
+                return aStart - bStart;
+            });
             const positiveRates = ageGroups.map(group => data.age_distribution[group].positive_rate);
             const totalExams = ageGroups.map(group => data.age_distribution[group].total_exams);
             

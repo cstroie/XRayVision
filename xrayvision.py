@@ -2823,11 +2823,18 @@ async def insights_handler(request):
         query = """
             SELECT 
                 CASE 
-                    WHEN p.age < 18 THEN '0-17'
-                    WHEN p.age < 35 THEN '18-34'
-                    WHEN p.age < 50 THEN '35-49'
-                    WHEN p.age < 65 THEN '50-64'
-                    ELSE '65+'
+                    WHEN p.age < 0 THEN 'Unknown'
+                    WHEN p.age <= 2 THEN '0-2'
+                    WHEN p.age <= 4 THEN '2-4'
+                    WHEN p.age <= 6 THEN '4-6'
+                    WHEN p.age <= 8 THEN '6-8'
+                    WHEN p.age <= 10 THEN '8-10'
+                    WHEN p.age <= 12 THEN '10-12'
+                    WHEN p.age <= 14 THEN '12-14'
+                    WHEN p.age <= 16 THEN '14-16'
+                    WHEN p.age <= 18 THEN '16-18'
+                    WHEN p.age <= 20 THEN '18-20'
+                    ELSE '> 20'
                 END as age_group,
                 COUNT(*) as total_exams,
                 SUM(CASE WHEN rr.severity >= ? THEN 1 ELSE 0 END) as positive_findings
@@ -2838,11 +2845,18 @@ async def insights_handler(request):
             GROUP BY age_group
             ORDER BY 
                 CASE age_group
-                    WHEN '0-17' THEN 1
-                    WHEN '18-34' THEN 2
-                    WHEN '35-49' THEN 3
-                    WHEN '50-64' THEN 4
-                    WHEN '65+' THEN 5
+                    WHEN '0-2' THEN 1
+                    WHEN '2-4' THEN 2
+                    WHEN '4-6' THEN 3
+                    WHEN '6-8' THEN 4
+                    WHEN '8-10' THEN 5
+                    WHEN '10-12' THEN 6
+                    WHEN '12-14' THEN 7
+                    WHEN '14-16' THEN 8
+                    WHEN '16-18' THEN 9
+                    WHEN '18-20' THEN 10
+                    WHEN '> 20' THEN 11
+                    ELSE 12
                 END
         """
         rows = db_execute_query(query, (SEVERITY_THRESHOLD,), fetch_mode='all')
