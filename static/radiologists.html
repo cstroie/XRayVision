@@ -344,6 +344,183 @@
                 }
             });
             
+            // Chart: Monthly trends for top radiologists
+            // Fetch the monthly trends data
+            fetch('/api/stats/radiologists/monthly_trends')
+            .then(res => res.json())
+            .then(trendsData => {
+                // Generate last 12 months labels
+                const months = [];
+                const now = new Date();
+                for (let i = 11; i >= 0; i--) {
+                    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    months.push(date.toISOString().slice(0, 7)); // YYYY-MM format
+                }
+                
+                // Format month labels for display (e.g., "2024-01" -> "Jan 2024")
+                const monthLabels = months.map(month => {
+                    const [year, monthNum] = month.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[parseInt(monthNum) - 1]} ${year}`;
+                });
+                
+                // Get all unique radiologists across all months
+                const allRadiologists = new Set();
+                if (trendsData.trends) {
+                    for (const month in trendsData.trends) {
+                        trendsData.trends[month].forEach(item => {
+                            allRadiologists.add(item.radiologist);
+                        });
+                    }
+                }
+                
+                // Create a color map for radiologists
+                const radiologistColors = [
+                    '#0ea5e9', '#2dd4bf', '#f59e0b', '#ef4444', '#8b5cf6', 
+                    '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#10b981',
+                    '#06b6d4', '#8b5cf6', '#f472b6', '#60a5fa', '#34d399'
+                ];
+                
+                const colorMap = {};
+                let colorIndex = 0;
+                Array.from(allRadiologists).forEach(radiologist => {
+                    colorMap[radiologist] = radiologistColors[colorIndex % radiologistColors.length];
+                    colorIndex++;
+                });
+                
+                // Create datasets for each radiologist
+                const datasets = {};
+                Array.from(allRadiologists).forEach(radiologist => {
+                    datasets[radiologist] = {
+                        label: radiologist,
+                        data: new Array(months.length).fill(0),
+                        borderColor: colorMap[radiologist],
+                        backgroundColor: colorMap[radiologist] + '20',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3
+                    };
+                });
+                
+                // Populate data points
+                if (trendsData.trends) {
+                    months.forEach((month, monthIndex) => {
+                        if (trendsData.trends[month]) {
+                            trendsData.trends[month].forEach(item => {
+                                if (datasets[item.radiologist]) {
+                                    datasets[item.radiologist].data[monthIndex] = item.count;
+                                }
+                            });
+                        }
+                    });
+                }
+                
+                // Convert to array and filter out datasets with all zero values
+                const monthlyRadiologistDatasets = Object.values(datasets).filter(dataset => 
+                    dataset.data.some(count => count > 0)
+                );
+                
+                // Create the chart
+                monthlyRadiologistsChart = new Chart(document.getElementById("monthlyRadiologistsChart"), {
+                    type: 'line',
+                    data: {
+                        labels: monthLabels,
+                        datasets: monthlyRadiologistDatasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 20
+                                }
+                            },
+                            title: {
+                                display: false
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Number of Reports',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading monthly radiologist trends:', error);
+                // Create a chart with empty data as fallback
+                monthlyRadiologistsChart = new Chart(document.getElementById("monthlyRadiologistsChart"), {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: []
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 20
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Number of Reports',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+            
             // Populate table
             const tbody = document.querySelector('#radiologistStats tbody');
             tbody.innerHTML = '';
