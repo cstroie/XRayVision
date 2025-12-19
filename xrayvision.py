@@ -4241,7 +4241,7 @@ def process_ai_response(response_text, exam_uid):
         exam_uid: Exam unique identifier
         
     Returns:
-        tuple: (short, report, confidence) or (None, None, None) if parsing failed
+        tuple: (short, report, confidence, severity, summary) or (None, None, None, None, None) if parsing failed
     """
     # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
     response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags = re.IGNORECASE | re.MULTILINE)
@@ -4253,16 +4253,18 @@ def process_ai_response(response_text, exam_uid):
         short = parsed["short"].strip().lower()
         report = parsed["report"].strip()
         confidence = parsed.get("confidence", 0)
+        severity = parsed.get("severity", -1)
+        summary = parsed.get("summary", "").strip()
         if short not in ("yes", "no") or not report:
             raise ValueError("Invalid json format in AI response")
-        return short, report, confidence
+        return short, report, confidence, severity, summary
     except Exception as e:
         logging.error(f"Rejected malformed AI response: {e}")
         logging.error(response_text)
-        return None, None, None
+        return None, None, None, None, None
 
 
-async def handle_ai_success(exam, short, report, confidence, processing_time):
+async def handle_ai_success(exam, short, report, confidence, severity, summary, processing_time):
     """
     Handle successful AI processing by updating database and sending notifications.
     
@@ -4271,6 +4273,8 @@ async def handle_ai_success(exam, short, report, confidence, processing_time):
         short: AI response short field ("yes"/"no")
         report: AI generated report text
         confidence: AI confidence score
+        severity: AI severity score
+        summary: AI summary text
         processing_time: Time taken to process the exam
         
     Returns:
@@ -4280,6 +4284,8 @@ async def handle_ai_success(exam, short, report, confidence, processing_time):
     is_positive = short == "yes"
     # Save to exams database with processing time
     db_add_exam(exam, report = report, positive = is_positive, confidence = confidence, latency = int(processing_time))
+    # Update AI report with severity and summary
+    db_add_ai_report(exam['uid'], report, is_positive, confidence, MODEL_NAME, int(processing_time), severity, summary)
     # Send notification for positive cases
     if is_positive:
         try:
@@ -4348,11 +4354,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     response_text = result["choices"][0]["message"]["content"].strip()
                     
                     # Process AI response
-                    short, report, confidence = process_ai_response(response_text, exam['uid'])
+                    short, report, confidence, severity, summary = process_ai_response(response_text, exam['uid'])
                     if short is None:  # Parsing failed
                         break
                         
-                    logging.info(f"AI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence})")
+                    logging.info(f"AI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence}, severity: {severity}, summary: {summary})")
                     
                     # Calculate timing statistics
                     global timings
@@ -4365,7 +4371,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         timings['average'] = timings['total']
                     
                     # Handle success
-                    success = await handle_ai_success(exam, short, report, confidence, processing_time)
+                    success = await handle_ai_success(exam, short, report, confidence, severity, summary, processing_time)
                     if success:
                         return True
                         
