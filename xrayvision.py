@@ -3595,8 +3595,9 @@ async def check_rad_report_and_update(uid):
                   positive=positive,
                   severity=severity,
                   summary=summary,
+                  model=MODEL_NAME,
                   latency=int(processing_time))
-        
+
         logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {int(processing_time)}s")
         return True
         
@@ -4692,71 +4693,6 @@ async def fhir_loop():
         # Random delay between 1 and 5 minutes
         delay = random.randint(30, 120)
         await asyncio.sleep(delay)
-
-async def process_fhir_report_with_llm(exam_uid):
-    """
-    Process a FHIR diagnostic report with the LLM and update the database.
-
-    Args:
-        exam_uid: The exam UID to process
-    """
-    # Get the radiologist report from the database
-    rad_report = db_get_rad_report(exam_uid)
-    
-    if not rad_report:
-        logging.warning(f"No radiologist report found for exam {exam_uid}")
-        return
-    
-    # If the report has already been assessed (severity > -1), skip processing
-    if rad_report.get('severity', -1) > -1:
-        logging.debug(f"Radiologist report for exam {exam_uid} already assessed, skipping LLM processing")
-        return
-    
-    # Extract the report text
-    report_text = rad_report.get('text', "").strip()
-    if not report_text:
-        logging.warning(f"No text in radiologist report for exam {exam_uid}")
-        return
-    
-    # Log the current status before sending to LLM
-    logging.info(f"Sending FHIR report for exam {exam_uid} to LLM for analysis")
-    
-    # Use LLM to analyze the diagnostic report and fill positive, severity, and summary fields
-    start_time = asyncio.get_event_loop().time()
-    analysis_result = await check_report(report_text)
-    end_time = asyncio.get_event_loop().time()
-    processing_time = end_time - start_time  # In seconds
-    
-    # Set default values in case of analysis failure
-    positive = -1
-    severity = -1
-    summary = ''
-    
-    # Extract values from analysis result if successful
-    if 'error' not in analysis_result:
-        try:
-            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
-            severity = analysis_result['severity']
-            summary = analysis_result['summary'].lower()
-        except Exception as e:
-            logging.warning(f"Could not extract analysis results from LLM: {e}")
-    else:
-        logging.warning(f"LLM failed for exam {exam_uid}: {analysis_result['error']}")
-        processing_time = -1  # Set to -1 if failed
-    
-    # Update the radiologist report in our database
-    db_update_rad_report(
-        uid=exam_uid,
-        positive=positive,
-        severity=severity,
-        summary=summary,
-        model=MODEL_NAME,
-        latency=int(processing_time)
-    )
-    logging.info(f"Updated FHIR report for exam {exam_uid} with summary '{summary}'")
-    
-    # Notify dashboard of the update
-    await broadcast_dashboard_update(event="radcheck", payload={'uid': exam_uid})
 
 async def find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type='radio', exam_region=''):
     """
