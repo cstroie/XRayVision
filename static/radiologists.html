@@ -29,13 +29,19 @@
         </ul>
         <ul>
             <li><a href="/">Dashboard</a></li>
-            <li><a href="/stats">Statistics</a></li>
-            <li><a href="/stats/radiologists" class="contrast">Radiologists</a></li>
+            <li>
+                <details class="dropdown">
+                    <summary>Statistics</summary>
+                    <ul dir="rtl">
+                        <li><a href="/stats">Statistics</a></li>
+                        <li><a href="/stats/radiologists" class="contrast">Radiologists</a></li>
+                        <li><a href="/stats/diagnostics">Diagnostics</a></li>
+                        <li><a href="/stats/insights">Insights</a></li>
+                    </ul>
+                </details>
+            </li>
             <li><a href="/check">Check</a></li>
             <li><a href="/about">About</a></li>
-            <li>
-                <button id="refreshBtn" class="secondary outline" style="margin-left: 1rem; padding: 0.25rem 0.5rem; font-size: 0.9rem;">Refresh</button>
-            </li>
         </ul>
     </nav>
 

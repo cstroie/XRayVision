@@ -687,3 +687,16 @@ footer {
     color: var(--pico-muted-color);
     font-size: 0.9rem;
 }
+
+
+nav details.dropdown>summary:not([role]),
+nav details.dropdown>summary:not([role]):active,
+nav details.dropdown>summary:not([role]):focus {
+    height: var(--pico-line-height);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: inherit;
+    color: var(--pico-primary);
+    box-shadow: none;
+}
