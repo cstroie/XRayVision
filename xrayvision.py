@@ -170,7 +170,8 @@ You must respond with ONLY valid JSON in this exact format:
 {
   "short": "yes" or "no",
   "report": "detailed findings as a string",
-  "confidence": integer from 0 to 100
+  "confidence": integer from 0 to 100,
+  "summary": "diagnosis in maximum 5 words"
 }
 
 CRITICAL RULES:
@@ -179,6 +180,7 @@ CRITICAL RULES:
 - "yes" means pathological findings are present
 - "no" means no significant findings detected
 - The "confidence" field must be a number between 0-100 (no quotes)
+- The "summary" field must be a brief diagnosis in maximum 5 words (e.g., "pneumonia", "fracture", "normal")
 - Use double quotes for all keys and string values
 - Properly escape special characters in the report string
 
@@ -186,15 +188,15 @@ EXAMPLES:
 
 Example 1 - Chest X-ray with pneumonia:
 Input: Chest X-ray, patient with cough and fever
-Output: {"short": "yes", "report": "Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.", "confidence": 92}
+Output: {"short": "yes", "report": "Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.", "confidence": 92, "summary": "pneumonia"}
 
 Example 2 - Normal chest X-ray:
 Input: Chest X-ray, routine screening
-Output: {"short": "no", "report": "Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.", "confidence": 95}
+Output: {"short": "no", "report": "Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.", "confidence": 95, "summary": "normal"}
 
 Example 3 - Abdominal X-ray with uncertain findings:
 Input: Abdominal X-ray, abdominal pain
-Output: {"short": "yes", "report": "Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.", "confidence": 78}
+Output: {"short": "yes", "report": "Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.", "confidence": 78, "summary": "bowel obstruction"}
 
 ANALYSIS APPROACH:
 - Systematically examine the entire image for all abnormalities
