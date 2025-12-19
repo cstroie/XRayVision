@@ -3571,7 +3571,10 @@ async def check_rad_report_and_update(uid):
         
         # Send to CHECK prompt for analysis
         logging.info(f"Sending radiologist report for exam {uid} to CHECK prompt")
+        start_time = asyncio.get_event_loop().time()
         analysis_result = await check_report(report_text)
+        end_time = asyncio.get_event_loop().time()
+        processing_time = end_time - start_time  # In seconds
         
         # Check if analysis was successful
         if 'error' in analysis_result:
@@ -3587,13 +3590,14 @@ async def check_rad_report_and_update(uid):
             logging.error(f"Could not extract analysis results for exam {uid}: {e}")
             return False
         
-        # Update the radiologist report in database with severity and summary
+        # Update the radiologist report in database with severity, summary, and latency
         db_update('rad_reports', 'uid = ?', (uid,),
                   positive=positive,
                   severity=severity,
-                  summary=summary)
+                  summary=summary,
+                  latency=int(processing_time))
         
-        logging.info(f"Updated radiologist report for exam {uid} with severity {severity} and summary '{summary}'")
+        logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {int(processing_time)}s")
         return True
         
     except Exception as e:
