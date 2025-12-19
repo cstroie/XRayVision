@@ -443,6 +443,8 @@ def db_init():
                 text TEXT,
                 positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                 confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
+                severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
+                summary TEXT,
                 model TEXT,
                 latency INTEGER DEFAULT -1,
                 FOREIGN KEY (uid) REFERENCES exams(uid)
@@ -823,7 +825,7 @@ def db_add_patient(cnp, id, name, age, sex):
     return db_execute_query_retry(query, params)
 
 
-def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
+def db_add_ai_report(uid, report_text, positive, confidence, model, latency, severity=None, summary=None):
     """
     Add or update an AI report entry in the database.
 
@@ -834,12 +836,16 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency):
         confidence: AI confidence score (0-100)
         model: Name of the model used
         latency: Processing time in seconds
+        severity: Severity score (0-10, -1 if not assessed)
+        summary: Brief summary of findings
     """
     db_insert('ai_reports',
               uid=uid,
               text=report_text,
               positive=int(positive),
               confidence=confidence if confidence is not None else -1,
+              severity=severity if severity is not None else -1,
+              summary=summary,
               model=model,
               latency=latency)
 
@@ -1169,7 +1175,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         SELECT 
             e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
             p.name, p.cnp, p.id, p.age, p.sex,
-            ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.model, ar.latency,
+            ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.severity, ar.summary, ar.model, ar.latency,
             rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
             CASE 
                 WHEN (rr.severity = -1 OR rr.severity IS NULL) THEN -1
@@ -1198,7 +1204,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             # Unpack row into named variables for better readability
             (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
              patient_name, patient_cnp, patient_id, patient_age, patient_sex,
-             ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_model, ai_latency,
+             ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_severity, ai_summary, ai_model, ai_latency,
              rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
              correct, reviewed) = row
                 
@@ -1232,6 +1238,8 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                         'updated': ai_updated,
                         'positive': bool(ai_positive) if ai_positive is not None and ai_positive > -1 else False,
                         'confidence': ai_confidence,
+                        'severity': ai_severity,
+                        'summary': ai_summary,
                         'model': ai_model,
                         'latency': ai_latency,
                     },
@@ -1618,7 +1626,14 @@ def db_get_ai_report(uid):
     Returns:
         dict: Report data or None if not found
     """
-    return db_select_one('ai_reports', uid)
+    result = db_select_one('ai_reports', uid)
+    if result:
+        # Ensure severity and summary fields are present even if None
+        if 'severity' not in result:
+            result['severity'] = None
+        if 'summary' not in result:
+            result['summary'] = None
+    return result
 
 
 def db_get_rad_report(uid):
