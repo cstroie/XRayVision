@@ -2696,9 +2696,9 @@ async def diagnostics_handler(request):
 
 
 async def diagnostics_monthly_trends_handler(request):
-    """Provide monthly trends data for the top diagnostics over the last 12 months.
+    """Provide monthly trends data showing top 10 diagnostics for each month over the last 12 months.
 
-    Returns monthly report counts for the top 10 diagnostics over the last 12 months
+    Returns top 10 diagnostics with their counts for each month over the last 12 months
     for use in the diagnostics trends chart.
 
     Args:
@@ -2708,50 +2708,43 @@ async def diagnostics_monthly_trends_handler(request):
         web.json_response: JSON response with monthly trends data
     """
     try:
-        # First, get the top 10 diagnostics by report count
-        top_diagnostics_query = """
-            SELECT summary, COUNT(*) as report_count
-            FROM rad_reports
-            WHERE summary IS NOT NULL AND summary != ''
-            GROUP BY summary
-            ORDER BY report_count DESC
-            LIMIT 10
-        """
-        top_diagnostics_rows = db_execute_query(top_diagnostics_query, fetch_mode='all')
-        top_diagnostics = [row[0] for row in top_diagnostics_rows] if top_diagnostics_rows else []
-        
-        if not top_diagnostics:
-            return web.json_response({})
-        
-        # Get monthly trends for these top diagnostics
-        # Create placeholders for the IN clause
-        placeholders = ','.join(['?'] * len(top_diagnostics))
-        trends_query = f"""
+        # Get top 10 diagnostics for each month over the last 12 months
+        trends_query = """
             SELECT 
+                strftime('%Y-%m', e.created) as month,
                 rr.summary,
-                strftime('%%Y-%%m', e.created) as month,
                 COUNT(*) as report_count
             FROM rad_reports rr
             JOIN exams e ON rr.uid = e.uid
-            WHERE rr.summary IN ({placeholders})
+            WHERE rr.summary IS NOT NULL AND rr.summary != ''
             AND e.created >= date('now', '-12 months')
-            GROUP BY rr.summary, strftime('%%Y-%%m', e.created)
-            ORDER BY month, rr.summary
+            GROUP BY strftime('%Y-%m', e.created), rr.summary
+            ORDER BY month, report_count DESC
         """
-        trends_rows = db_execute_query(trends_query, tuple(top_diagnostics), fetch_mode='all')
+        trends_rows = db_execute_query(trends_query, fetch_mode='all')
         
-        # Process the data into the format needed for the chart
+        # Process the data to get top 10 diagnostics per month
         monthly_trends = {}
         if trends_rows:
+            # Group by month first
+            monthly_data = {}
             for row in trends_rows:
-                diagnostic, month, count = row
-                if diagnostic not in monthly_trends:
-                    monthly_trends[diagnostic] = {}
-                monthly_trends[diagnostic][month] = count
+                month, diagnostic, count = row
+                if month not in monthly_data:
+                    monthly_data[month] = []
+                monthly_data[month].append({
+                    'diagnostic': diagnostic,
+                    'count': count
+                })
+            
+            # For each month, take top 10 diagnostics
+            for month, diagnostics in monthly_data.items():
+                # Sort by count descending and take top 10
+                top_diagnostics = sorted(diagnostics, key=lambda x: x['count'], reverse=True)[:10]
+                monthly_trends[month] = top_diagnostics
         
         # Format the response
         result = {
-            'diagnostics': top_diagnostics,
             'trends': monthly_trends
         }
         
