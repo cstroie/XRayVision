@@ -4285,9 +4285,7 @@ async def handle_ai_success(exam, short, report, confidence, severity, summary, 
     # Save to exams database
     is_positive = short == "yes"
     # Save to exams database with processing time
-    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence, latency = int(processing_time))
-    # Update AI report with severity and summary
-    db_add_ai_report(exam['uid'], report, is_positive, confidence, MODEL_NAME, int(processing_time), severity, summary)
+    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence, latency = int(processing_time), severity=severity, summary=summary)
     # Send notification for positive cases
     if is_positive:
         try:
