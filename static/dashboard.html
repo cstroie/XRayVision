@@ -529,7 +529,19 @@
             // Update AI report
             const aiReportElement = cardElement.querySelector('.ai-report');
             if (text) {
-                aiReportElement.querySelector('summary').innerHTML = `AI Report: ${isPositive ? 'Positive' : 'Negative'}${exam.report.ai.confidence !== null && exam.report.ai.confidence > -1 ? ` (Confidence: ${exam.report.ai.confidence}%)` : ''}`;
+                // Display summary, severity, and confidence instead of positive/negative
+                let aiSummary = exam.report.ai.summary || (isPositive ? 'Positive' : 'Negative');
+                let aiSeverity = exam.report.ai.severity !== null && exam.report.ai.severity > -1 ? `Severity: ${exam.report.ai.severity}/10` : '';
+                let aiConfidence = exam.report.ai.confidence !== null && exam.report.ai.confidence > -1 ? `Confidence: ${exam.report.ai.confidence}%` : '';
+                
+                // Combine the information
+                let aiInfo = `AI Report: ${aiSummary}`;
+                if (aiSeverity || aiConfidence) {
+                    let details = [aiSeverity, aiConfidence].filter(Boolean).join(', ');
+                    aiInfo += ` (${details})`;
+                }
+                
+                aiReportElement.querySelector('summary').innerHTML = aiInfo;
                 aiReportElement.querySelector('summary').nextSibling.textContent = text;
                 aiReportElement.style.display = 'block';
             } else {
