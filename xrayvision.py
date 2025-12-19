@@ -2695,6 +2695,72 @@ async def diagnostics_handler(request):
         return web.json_response({}, status = 500)
 
 
+async def diagnostics_monthly_trends_handler(request):
+    """Provide monthly trends data for the top diagnostics over the last 12 months.
+
+    Returns monthly report counts for the top 10 diagnostics over the last 12 months
+    for use in the diagnostics trends chart.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with monthly trends data
+    """
+    try:
+        # First, get the top 10 diagnostics by report count
+        top_diagnostics_query = """
+            SELECT summary, COUNT(*) as report_count
+            FROM rad_reports
+            WHERE summary IS NOT NULL AND summary != ''
+            GROUP BY summary
+            ORDER BY report_count DESC
+            LIMIT 10
+        """
+        top_diagnostics_rows = db_execute_query(top_diagnostics_query, fetch_mode='all')
+        top_diagnostics = [row[0] for row in top_diagnostics_rows] if top_diagnostics_rows else []
+        
+        if not top_diagnostics:
+            return web.json_response({})
+        
+        # Get monthly trends for these top diagnostics
+        # Create placeholders for the IN clause
+        placeholders = ','.join(['?'] * len(top_diagnostics))
+        trends_query = f"""
+            SELECT 
+                rr.summary,
+                strftime('%%Y-%%m', e.created) as month,
+                COUNT(*) as report_count
+            FROM rad_reports rr
+            JOIN exams e ON rr.uid = e.uid
+            WHERE rr.summary IN ({placeholders})
+            AND e.created >= date('now', '-12 months')
+            GROUP BY rr.summary, strftime('%%Y-%%m', e.created)
+            ORDER BY month, rr.summary
+        """
+        trends_rows = db_execute_query(trends_query, tuple(top_diagnostics), fetch_mode='all')
+        
+        # Process the data into the format needed for the chart
+        monthly_trends = {}
+        if trends_rows:
+            for row in trends_rows:
+                diagnostic, month, count = row
+                if diagnostic not in monthly_trends:
+                    monthly_trends[diagnostic] = {}
+                monthly_trends[diagnostic][month] = count
+        
+        # Format the response
+        result = {
+            'diagnostics': top_diagnostics,
+            'trends': monthly_trends
+        }
+        
+        return web.json_response(result)
+    except Exception as e:
+        logging.error(f"Diagnostics monthly trends endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
+
 async def diagnostics_stats_handler(request):
     """Provide detailed statistics for diagnostics.
 
@@ -4523,6 +4589,7 @@ async def start_dashboard():
     app.router.add_get('/api/stats', stats_handler)
     app.router.add_get('/api/regions', regions_handler)
     app.router.add_get('/api/diagnostics', diagnostics_handler)
+    app.router.add_get('/api/diagnostics/monthly_trends', diagnostics_monthly_trends_handler)
     app.router.add_get('/api/radiologists', radiologists_handler)
     app.router.add_get('/api/stats/radiologists', radiologist_stats_handler)
     app.router.add_get('/api/stats/diagnostics', diagnostics_stats_handler)

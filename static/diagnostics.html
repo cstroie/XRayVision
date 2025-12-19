@@ -99,6 +99,18 @@
             </section>
 
             <section>
+                <article class="chart-container">
+                    <h3>
+                        Monthly Trends for Top Diagnostics (Last 12 Months)
+                        <button class="secondary outline" onclick="downloadChart('monthlyDiagnosticsChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 500px;">
+                        <canvas id="monthlyDiagnosticsChart"></canvas>
+                    </div>
+                </article>
+            </section>
+
+            <section>
                 <h2>Diagnostic Details</h2>
                 <div class="overflow-auto">
                     <table id="diagnosticStats" role="grid">
@@ -123,7 +135,7 @@
 
     <script>
         // Chart instances
-        let reportsChart, accuracyChart;
+        let reportsChart, accuracyChart, monthlyDiagnosticsChart;
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
@@ -212,6 +224,7 @@
             // Destroy existing charts if they exist
             if (reportsChart) reportsChart.destroy();
             if (accuracyChart) accuracyChart.destroy();
+            if (monthlyDiagnosticsChart) monthlyDiagnosticsChart.destroy();
             
             // Chart: Reports by Diagnostic
             reportsChart = new Chart(document.getElementById("reportsChart"), {
@@ -307,6 +320,154 @@
                     },
                     indexAxis: 'y'
                 }
+            });
+            
+            // Chart: Monthly trends for top diagnostics
+            // Fetch the monthly trends data
+            fetch('/api/diagnostics/monthly_trends')
+            .then(res => res.json())
+            .then(trendsData => {
+                // Generate last 12 months labels
+                const months = [];
+                const now = new Date();
+                for (let i = 11; i >= 0; i--) {
+                    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    months.push(date.toISOString().slice(0, 7)); // YYYY-MM format
+                }
+                
+                // Format month labels for display (e.g., "2024-01" -> "Jan 2024")
+                const monthLabels = months.map(month => {
+                    const [year, monthNum] = month.split('-');
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    return `${monthNames[parseInt(monthNum) - 1]} ${year}`;
+                });
+                
+                // Create datasets for the top diagnostics
+                const monthlyDiagnosticDatasets = [];
+                const diagnosticColors = [
+                    '#0ea5e9', '#2dd4bf', '#f59e0b', '#ef4444', '#8b5cf6', 
+                    '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#10b981'
+                ];
+                
+                // Process the trends data
+                const diagnosticsList = trendsData.diagnostics || [];
+                const trends = trendsData.trends || {};
+                
+                diagnosticsList.forEach((diagnostic, index) => {
+                    const dataPoints = months.map(month => {
+                        return (trends[diagnostic] && trends[diagnostic][month]) || 0;
+                    });
+                    
+                    monthlyDiagnosticDatasets.push({
+                        label: diagnostic,
+                        data: dataPoints,
+                        borderColor: diagnosticColors[index % diagnosticColors.length],
+                        backgroundColor: diagnosticColors[index % diagnosticColors.length] + '20',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3
+                    });
+                });
+                
+                // Create the chart
+                monthlyDiagnosticsChart = new Chart(document.getElementById("monthlyDiagnosticsChart"), {
+                    type: 'line',
+                    data: {
+                        labels: monthLabels,
+                        datasets: monthlyDiagnosticDatasets
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 20
+                                }
+                            },
+                            title: {
+                                display: false
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Number of Reports',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            }
+                        }
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading monthly diagnostic trends:', error);
+                // Create a chart with empty data as fallback
+                monthlyDiagnosticsChart = new Chart(document.getElementById("monthlyDiagnosticsChart"), {
+                    type: 'line',
+                    data: {
+                        labels: [],
+                        datasets: []
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    padding: 20
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Number of Reports',
+                                    color: 'rgba(255, 255, 255, 0.7)'
+                                },
+                                beginAtZero: true,
+                                grid: {
+                                    color: 'rgba(255, 255, 255, 0.1)'
+                                }
+                            }
+                        }
+                    }
+                });
             });
             
             // Populate table
