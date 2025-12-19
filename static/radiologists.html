@@ -99,6 +99,18 @@
             </section>
 
             <section>
+                <article class="chart-container">
+                    <h3>
+                        Monthly Trends for Top Radiologists (Last 12 Months)
+                        <button class="secondary outline" onclick="downloadChart('monthlyRadiologistsChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 500px;">
+                        <canvas id="monthlyRadiologistsChart"></canvas>
+                    </div>
+                </article>
+            </section>
+
+            <section>
                 <h2>Radiologist Details</h2>
                 <div class="overflow-auto">
                     <table id="radiologistStats" role="grid">
@@ -123,7 +135,7 @@
 
     <script>
         // Chart instances
-        let reportsChart, accuracyChart;
+        let reportsChart, accuracyChart, monthlyRadiologistsChart;
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
@@ -234,6 +246,7 @@
             // Destroy existing charts if they exist
             if (reportsChart) reportsChart.destroy();
             if (accuracyChart) accuracyChart.destroy();
+            if (monthlyRadiologistsChart) monthlyRadiologistsChart.destroy();
             
             // Chart: Reports by Radiologist
             reportsChart = new Chart(document.getElementById("reportsChart"), {

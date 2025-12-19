@@ -3108,6 +3108,65 @@ async def radiologist_stats_handler(request):
         return web.json_response({}, status = 500)
 
 
+async def radiologists_monthly_trends_handler(request):
+    """Provide monthly trends data showing top 10 radiologists for each month over the last 12 months.
+
+    Returns top 10 radiologists with their report counts for each month over the last 12 months
+    for use in the radiologists trends chart.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.json_response: JSON response with monthly trends data
+    """
+    try:
+        # Get top 10 radiologists for each month over the last 12 months
+        trends_query = """
+            SELECT 
+                strftime('%Y-%m', e.created) as month,
+                rr.radiologist,
+                COUNT(*) as report_count
+            FROM rad_reports rr
+            JOIN exams e ON rr.uid = e.uid
+            WHERE rr.radiologist IS NOT NULL AND rr.radiologist != ''
+            AND e.created >= date('now', '-12 months')
+            GROUP BY strftime('%Y-%m', e.created), rr.radiologist
+            ORDER BY month, report_count DESC
+        """
+        trends_rows = db_execute_query(trends_query, fetch_mode='all')
+        
+        # Process the data to get top 10 radiologists per month
+        monthly_trends = {}
+        if trends_rows:
+            # Group by month first
+            monthly_data = {}
+            for row in trends_rows:
+                month, radiologist, count = row
+                if month not in monthly_data:
+                    monthly_data[month] = []
+                monthly_data[month].append({
+                    'radiologist': radiologist,
+                    'count': count
+                })
+            
+            # For each month, take top 10 radiologists
+            for month, radiologists in monthly_data.items():
+                # Sort by count descending and take top 10
+                top_radiologists = sorted(radiologists, key=lambda x: x['count'], reverse=True)[:10]
+                monthly_trends[month] = top_radiologists
+        
+        # Format the response
+        result = {
+            'trends': monthly_trends
+        }
+        
+        return web.json_response(result)
+    except Exception as e:
+        logging.error(f"Radiologists monthly trends endpoint error: {e}")
+        return web.json_response({}, status = 500)
+
+
 async def severity_handler(request):
     """Provide severity levels and their report counts.
 
@@ -4585,6 +4644,7 @@ async def start_dashboard():
     app.router.add_get('/api/diagnostics/monthly_trends', diagnostics_monthly_trends_handler)
     app.router.add_get('/api/radiologists', radiologists_handler)
     app.router.add_get('/api/stats/radiologists', radiologist_stats_handler)
+    app.router.add_get('/api/stats/radiologists/monthly_trends', radiologists_monthly_trends_handler)
     app.router.add_get('/api/stats/diagnostics', diagnostics_stats_handler)
     app.router.add_get('/api/stats/insights', insights_handler)
     app.router.add_get('/api/severity', severity_handler)
