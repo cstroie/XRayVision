@@ -1006,7 +1006,7 @@ def db_update_patient_id(cnp, patient_id):
     db_update('patients', 'cnp = ?', (cnp,), id=patient_id)
 
 
-def db_add_exam(info, report=None, positive=None, confidence=None, justification=None, latency=None, severity=None, summary=None):
+def db_add_exam(info, report=None, positive=None, confidence=None, latency=None, severity=None, summary=None):
     """
     Add or update an exam entry in the database.
 
@@ -1055,13 +1055,6 @@ def db_add_exam(info, report=None, positive=None, confidence=None, justification
     # If report is provided, add it to ai_reports table
     if report is not None and positive is not None:
         db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, latency if latency is not None else -1, severity, summary)
-    
-    # If justification is provided, add it to rad_reports table
-    if justification is not None:
-        # Check if a rad report already exists for this UID
-        if not db_have_rad_reports(info['uid']):
-            # No existing report, insert a new one with justification
-            db_insert('rad_reports', uid=info['uid'], id='', type=exam.get("type", ""),  justification=justification)
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
