@@ -3514,8 +3514,8 @@ async def check_ai_report_and_update(uid):
         # Extract the report text
         report_text = ai_report['text']
         
-        # Send to CHECK prompt for analysis
-        logging.info(f"Sending AI report for exam {uid} to CHECK prompt")
+        # Summarize the AI report
+        logging.info(f"Summarizing AI report for exam {uid}")
         analysis_result = await check_report(report_text)
         
         # Check if analysis was successful
@@ -3569,8 +3569,8 @@ async def check_rad_report_and_update(uid):
         # Extract the report text
         report_text = rad_report['text']
         
-        # Send to CHECK prompt for analysis
-        logging.info(f"Sending radiologist report for exam {uid} to CHECK prompt")
+        # Summarize the radiologist report
+        logging.info(f"Summarizing radiologist report for exam {uid}")
         start_time = asyncio.get_event_loop().time()
         analysis_result = await check_report(report_text)
         end_time = asyncio.get_event_loop().time()
