@@ -3599,6 +3599,10 @@ async def check_rad_report_and_update(uid):
                   latency=int(processing_time))
 
         logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {int(processing_time)}s")
+        
+        # Notify dashboard of the update
+        await broadcast_dashboard_update(event="radcheck", payload={'uid': uid})
+        
         return True
         
     except Exception as e:
