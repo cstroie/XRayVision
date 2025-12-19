@@ -1006,7 +1006,7 @@ def db_update_patient_id(cnp, patient_id):
     db_update('patients', 'cnp = ?', (cnp,), id=patient_id)
 
 
-def db_add_exam(info, report=None, positive=None, confidence=None, latency=None, severity=None, summary=None):
+def db_add_exam(info):
     """
     Add or update an exam entry in the database.
 
@@ -1017,13 +1017,6 @@ def db_add_exam(info, report=None, positive=None, confidence=None, latency=None,
 
     Args:
         info: Dictionary containing exam metadata (uid, patient info, exam details)
-        report: Optional AI report text
-        positive: Optional AI positive finding indicator (True/False)
-        confidence: Optional AI confidence score (0-100)
-        justification: Optional clinical justification text
-        latency: Optional processing time in seconds
-        severity: Optional AI severity score (0-10, -1 if not assessed)
-        summary: Optional AI summary of findings
     """
     # Add or update patient information
     patient = info["patient"]
@@ -1051,10 +1044,6 @@ def db_add_exam(info, report=None, positive=None, confidence=None, latency=None,
               status=status,
               study=exam.get("study"),
               series=exam.get("series"))
-
-    # If report is provided, add it to ai_reports table
-    if report is not None and positive is not None:
-        db_add_ai_report(info['uid'], report, positive, confidence, MODEL_NAME, latency if latency is not None else -1, severity, summary)
 
 
 def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
@@ -4278,7 +4267,10 @@ async def handle_ai_success(exam, short, report, confidence, severity, summary, 
     # Save to exams database
     is_positive = short == "yes"
     # Save to exams database with processing time
-    db_add_exam(exam, report = report, positive = is_positive, confidence = confidence, latency = int(processing_time), severity=severity, summary=summary)
+    db_add_exam(exam)
+    # If report is provided, add it to ai_reports table
+    if report is not None:
+        db_add_ai_report(exam['uid'], report, is_positive, confidence, MODEL_NAME, int(processing_time), severity if severity is not None else -1, summary)
     # Send notification for positive cases
     if is_positive:
         try:
