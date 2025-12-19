@@ -4609,7 +4609,7 @@ async def relay_to_openai_loop():
                     pass
             elif exam_status == 'check':
                 # Process FHIR report with LLM
-                await process_fhir_report_with_llm(exam['uid'])
+                await check_rad_report_and_update(exam['uid'])
                 # Set the status to done
                 db_set_status(exam['uid'], "done")
         except Exception as e:
