@@ -171,6 +171,7 @@ You must respond with ONLY valid JSON in this exact format:
   "short": "yes" or "no",
   "report": "detailed findings as a string",
   "confidence": integer from 0 to 100,
+  "severity": integer from 0 to 10,
   "summary": "diagnosis in 1-3 words"
 }
 
@@ -180,6 +181,7 @@ CRITICAL RULES:
 - "yes" means pathological findings are present
 - "no" means no significant findings detected
 - The "confidence" field must be a number between 0-100 (no quotes)
+- The "severity" field must be a number between 0-10 (no quotes), where 0 is normal and 10 is critical
 - The "summary" field must be a brief diagnosis in 1-3 words, focusing on major category classifications (e.g., "pneumonia", "fracture", "normal", "interstitial infiltrate")
 - Use double quotes for all keys and string values
 - Properly escape special characters in the report string
@@ -188,15 +190,15 @@ EXAMPLES:
 
 Example 1 - Chest X-ray with pneumonia:
 Input: Chest X-ray, patient with cough and fever
-Output: {"short": "yes", "report": "Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.", "confidence": 92, "summary": "pneumonia"}
+Output: {"short": "yes", "report": "Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.", "confidence": 92, "severity": 6, "summary": "pneumonia"}
 
 Example 2 - Normal chest X-ray:
 Input: Chest X-ray, routine screening
-Output: {"short": "no", "report": "Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.", "confidence": 95, "summary": "normal"}
+Output: {"short": "no", "report": "Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.", "confidence": 95, "severity": 0, "summary": "normal"}
 
 Example 3 - Abdominal X-ray with uncertain findings:
 Input: Abdominal X-ray, abdominal pain
-Output: {"short": "yes", "report": "Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.", "confidence": 78, "summary": "bowel obstruction"}
+Output: {"short": "yes", "report": "Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.", "confidence": 78, "severity": 7, "summary": "bowel obstruction"}
 
 ANALYSIS APPROACH:
 - Systematically examine the entire image for all abnormalities
@@ -210,6 +212,13 @@ The "report" field should contain a complete radiological description including:
 - Primary findings related to the clinical question
 - Additional incidental findings or lesions
 - Relevant negative findings if clinically important
+
+SEVERITY SCORING:
+- 0: Normal findings
+- 1-3: Minimal abnormalities, no immediate clinical concern
+- 4-6: Moderate findings requiring clinical correlation
+- 7-8: Significant abnormalities requiring prompt attention
+- 9-10: Critical findings requiring immediate intervention
 
 CONFIDENCE SCORING:
 - 90-100: High confidence in findings
