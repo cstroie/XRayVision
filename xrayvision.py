@@ -171,7 +171,7 @@ You must respond with ONLY valid JSON in this exact format:
   "short": "yes" or "no",
   "report": "detailed findings as a string",
   "confidence": integer from 0 to 100,
-  "summary": "diagnosis in maximum 5 words"
+  "summary": "diagnosis in 1-3 words"
 }
 
 CRITICAL RULES:
@@ -180,7 +180,7 @@ CRITICAL RULES:
 - "yes" means pathological findings are present
 - "no" means no significant findings detected
 - The "confidence" field must be a number between 0-100 (no quotes)
-- The "summary" field must be a brief diagnosis in maximum 5 words (e.g., "pneumonia", "fracture", "normal")
+- The "summary" field must be a brief diagnosis in 1-3 words, focusing on major category classifications (e.g., "pneumonia", "fracture", "normal", "interstitial infiltrate")
 - Use double quotes for all keys and string values
 - Properly escape special characters in the report string
 
@@ -244,13 +244,13 @@ OUTPUT FORMAT (JSON):
 {
   "pathologic": "yes/no",
   "severity": 1-10,
-  "summary": "1-5 words"
+  "summary": "1-3 words"
 }
 
 RULES:
 - "pathologic": "yes" if any anomaly exists, otherwise "no"
 - "severity": 1=minimal, 5=moderate, 10=critical/urgent
-- "summary": diagnosis in maximum 5 words (e.g., "fracture", "pneumonia", "lung nodule")
+- "summary": diagnosis in 1-3 words, focusing on major category classifications (e.g., "fracture", "pneumonia", "interstitial infiltrate")
 - If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
 - Ignore spelling errors
 - Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
@@ -261,7 +261,7 @@ RULES:
 EXAMPLES:
 
 Report: "Hazy opacity in the left mid lung field, possibly representing consolidation or infiltrate."
-Response: {"pathologic": "yes", "severity": 6, "summary": "pulmonary consolidation"}
+Response: {"pathologic": "yes", "severity": 6, "summary": "pneumonia"}
 
 Report: "No pathological changes. Heart of normal size."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
