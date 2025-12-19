@@ -3490,6 +3490,61 @@ async def check_report(report_text):
         logging.error(f"Error processing report check request: {e}")
         return {'error': 'Internal server error'}
 
+
+async def check_ai_report_and_update(uid):
+    """Send AI report text to CHECK prompt and update database with severity/summary.
+
+    Takes an AI report from the database, sends it to the LLM for analysis using
+    the CHECK prompt, and updates the database with the extracted severity score
+    and summary.
+
+    Args:
+        uid: Exam unique identifier
+
+    Returns:
+        bool: True if successfully processed and updated, False otherwise
+    """
+    try:
+        # Get the AI report from database
+        ai_report = db_get_ai_report(uid)
+        if not ai_report or not ai_report.get('text'):
+            logging.warning(f"No AI report text found for exam {uid}")
+            return False
+            
+        # Extract the report text
+        report_text = ai_report['text']
+        
+        # Send to CHECK prompt for analysis
+        logging.info(f"Sending AI report for exam {uid} to CHECK prompt")
+        analysis_result = await check_report(report_text)
+        
+        # Check if analysis was successful
+        if 'error' in analysis_result:
+            logging.error(f"CHECK prompt failed for exam {uid}: {analysis_result['error']}")
+            return False
+            
+        # Extract values from analysis result
+        try:
+            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
+            severity = analysis_result['severity']
+            summary = analysis_result['summary'].lower()
+        except Exception as e:
+            logging.error(f"Could not extract analysis results for exam {uid}: {e}")
+            return False
+        
+        # Update the AI report in database with severity and summary
+        db_update('ai_reports', 'uid = ?', (uid,),
+                  positive=positive,
+                  severity=severity,
+                  summary=summary)
+        
+        logging.info(f"Updated AI report for exam {uid} with severity {severity} and summary '{summary}'")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error processing CHECK prompt for exam {uid}: {e}")
+        return False
+
 async def check_report_handler(request):
     """Analyze a free-text radiology report for pathological findings.
 
