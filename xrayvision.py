@@ -4611,7 +4611,7 @@ async def relay_to_openai_loop():
             elif exam_status == 'check':
                 # Check if AI report already has a summary
                 ai_report = db_get_ai_report(exam['uid'])
-                if not ai_report or not ai_report.get('summary'):
+                if ai_report and not ai_report.get('summary'):
                     # Process AI report with LLM to generate summary
                     await check_ai_report_and_update(exam['uid'])
                 # Process FHIR report with LLM
