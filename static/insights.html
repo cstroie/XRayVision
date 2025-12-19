@@ -304,8 +304,8 @@
             // Chart: Age distribution
             const ageGroups = Object.keys(data.age_distribution || {}).sort((a, b) => {
                 // Sort age groups numerically
-                if (a === '> 20') return 1;
-                if (b === '> 20') return -1;
+                if (a === '> 18') return 1;
+                if (b === '> 18') return -1;
                 const aStart = parseInt(a.split('-')[0]);
                 const bStart = parseInt(b.split('-')[0]);
                 return aStart - bStart;
