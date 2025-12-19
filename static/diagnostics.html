@@ -343,32 +343,61 @@
                     return `${monthNames[parseInt(monthNum) - 1]} ${year}`;
                 });
                 
-                // Create datasets for the top diagnostics
-                const monthlyDiagnosticDatasets = [];
+                // Get all unique diagnostics across all months
+                const allDiagnostics = new Set();
+                if (trendsData.trends) {
+                    for (const month in trendsData.trends) {
+                        trendsData.trends[month].forEach(item => {
+                            allDiagnostics.add(item.diagnostic);
+                        });
+                    }
+                }
+                
+                // Create a color map for diagnostics
                 const diagnosticColors = [
                     '#0ea5e9', '#2dd4bf', '#f59e0b', '#ef4444', '#8b5cf6', 
-                    '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#10b981'
+                    '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#10b981',
+                    '#06b6d4', '#8b5cf6', '#f472b6', '#60a5fa', '#34d399'
                 ];
                 
-                // Process the trends data
-                const diagnosticsList = trendsData.diagnostics || [];
-                const trends = trendsData.trends || {};
+                const colorMap = {};
+                let colorIndex = 0;
+                Array.from(allDiagnostics).forEach(diagnostic => {
+                    colorMap[diagnostic] = diagnosticColors[colorIndex % diagnosticColors.length];
+                    colorIndex++;
+                });
                 
-                diagnosticsList.forEach((diagnostic, index) => {
-                    const dataPoints = months.map(month => {
-                        return (trends[diagnostic] && trends[diagnostic][month]) || 0;
-                    });
-                    
-                    monthlyDiagnosticDatasets.push({
+                // Create datasets for each diagnostic
+                const datasets = {};
+                Array.from(allDiagnostics).forEach(diagnostic => {
+                    datasets[diagnostic] = {
                         label: diagnostic,
-                        data: dataPoints,
-                        borderColor: diagnosticColors[index % diagnosticColors.length],
-                        backgroundColor: diagnosticColors[index % diagnosticColors.length] + '20',
+                        data: new Array(months.length).fill(0),
+                        borderColor: colorMap[diagnostic],
+                        backgroundColor: colorMap[diagnostic] + '20',
                         fill: false,
                         tension: 0.3,
                         pointRadius: 3
-                    });
+                    };
                 });
+                
+                // Populate data points
+                if (trendsData.trends) {
+                    months.forEach((month, monthIndex) => {
+                        if (trendsData.trends[month]) {
+                            trendsData.trends[month].forEach(item => {
+                                if (datasets[item.diagnostic]) {
+                                    datasets[item.diagnostic].data[monthIndex] = item.count;
+                                }
+                            });
+                        }
+                    });
+                }
+                
+                // Convert to array and filter out datasets with all zero values
+                const monthlyDiagnosticDatasets = Object.values(datasets).filter(dataset => 
+                    dataset.data.some(count => count > 0)
+                );
                 
                 // Create the chart
                 monthlyDiagnosticsChart = new Chart(document.getElementById("monthlyDiagnosticsChart"), {
