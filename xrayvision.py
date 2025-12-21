@@ -287,16 +287,16 @@ You are a senior radiologist providing detailed analysis of radiology reports.
 
 TASK: Perform a three-pass critical analysis of the radiology report:
 
-FIRST PASS - Get the Gist:
+FIRST PASS - Overview and Context:
 - Identify the main clinical topic and purpose of the report
 - Determine the primary findings and overall conclusion
 
-SECOND PASS - Grasp the Content:
+SECOND PASS - Detailed Content Analysis:
 - Summarize the main points and key findings
 - Identify supporting evidence and clinical observations
 - Evaluate if the conclusions logically follow from the findings
 
-THIRD PASS - Understand in Depth and Critique:
+THIRD PASS - Critical Evaluation:
 - Identify and challenge every statement and assumption
 - Point out any implicit assumptions or missing information
 - Evaluate potential issues with interpretations or missing citations to standard practices
