@@ -138,13 +138,13 @@
             let html = '<div style="margin-bottom: 1rem;">';
             
             // First Pass
-            html += '<h4 style="margin-bottom: 0.5rem; color: #60a5fa;">First Pass - Get the Gist</h4>';
+            html += '<h4 style="margin-bottom: 0.5rem; color: #60a5fa;">First Pass - Overview and Context</h4>';
             html += `<p><strong>Topic:</strong> ${data.first_pass.topic || 'N/A'}</p>`;
             html += `<p><strong>Purpose:</strong> ${data.first_pass.purpose || 'N/A'}</p>`;
             html += `<p><strong>Primary Findings:</strong> ${data.first_pass.primary_findings || 'N/A'}</p>`;
             
             // Second Pass
-            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Second Pass - Grasp the Content</h4>';
+            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Second Pass - Detailed Content Analysis</h4>';
             if (data.second_pass.main_points && data.second_pass.main_points.length > 0) {
                 html += '<p><strong>Main Points:</strong></p><ul>';
                 data.second_pass.main_points.forEach(point => {
@@ -162,7 +162,7 @@
             html += `<p><strong>Conclusions Valid:</strong> ${data.second_pass.conclusions_valid ? 'Yes' : 'No'}</p>`;
             
             // Third Pass
-            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Third Pass - In-Depth Critique</h4>';
+            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Third Pass - Critical Evaluation</h4>';
             if (data.third_pass.assumptions && data.third_pass.assumptions.length > 0) {
                 html += '<p><strong>Assumptions:</strong></p><ul>';
                 data.third_pass.assumptions.forEach(assumption => {
