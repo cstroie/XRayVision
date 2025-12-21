@@ -47,19 +47,8 @@
             <h2>Report Analysis</h2>
             <p>Enter a radiology report to analyze for pathological findings and detailed insights</p>
         </hgroup>
-        <header id="result" class="grid stats-grid">
-            <article>
-                <strong>Pathologic</strong>
-                <span id="pathologic">-</span>
-            </article>
-            <article>
-                <strong>Severity</strong>
-                <span id="severity">-</span>
-            </article>
-            <article>
-                <strong>Summary</strong>
-                <span id="summary">-</span>
-            </article>
+        <header id="result" class="grid stats-grid" style="display: none;">
+            <!-- Results will be cloned from template -->
         </header>
         <details id="detailed-analysis" style="margin-top: 1rem; display: none;">
             <summary><strong>Detailed Analysis</strong></summary>
@@ -73,6 +62,14 @@
             </fieldset>
         </form>
     </main>
+
+    <!-- Template for result cards -->
+    <template id="result-template">
+        <article>
+            <strong data-field="label"></strong>
+            <span data-field="value">-</span>
+        </article>
+    </template>
 
     <script>
         function colorizePathologic(element, value) {
@@ -93,6 +90,45 @@
                 const green = Math.min(255, Math.floor((10 - severity) * 25.5));
                 element.style.color = `rgb(${red}, ${green}, 0)`;
             }
+        }
+        
+        function createResultCard(label, value) {
+            const template = document.getElementById('result-template');
+            const clone = template.content.cloneNode(true);
+            
+            // Set the label
+            const labelElement = clone.querySelector('[data-field="label"]');
+            labelElement.textContent = label;
+            
+            // Set the value
+            const valueElement = clone.querySelector('[data-field="value"]');
+            valueElement.textContent = value;
+            
+            return clone;
+        }
+        
+        function displayResults(data) {
+            const resultContainer = document.getElementById('result');
+            resultContainer.innerHTML = '';
+            
+            // Create and append cards for each result field
+            const pathologicCard = createResultCard('Pathologic', data.pathologic);
+            const severityCard = createResultCard('Severity', data.severity);
+            const summaryCard = createResultCard('Summary', data.summary);
+            
+            resultContainer.appendChild(pathologicCard);
+            resultContainer.appendChild(severityCard);
+            resultContainer.appendChild(summaryCard);
+            
+            // Apply colorization
+            const pathologicElement = resultContainer.querySelector('[data-field="value"]:nth-child(1)');
+            const severityElement = resultContainer.querySelector('[data-field="value"]:nth-child(2)');
+            
+            colorizePathologic(pathologicElement, data.pathologic);
+            colorizeSeverity(severityElement, data.severity);
+            
+            // Show the results container
+            resultContainer.style.display = 'grid';
         }
         
         function displayDetailedAnalysis(data) {
@@ -182,24 +218,14 @@
                 return response.json();
             })
             .then(data => {
-                // Colorize pathologic text (green for "no", red for "yes")
-                const pathologicElement = document.getElementById("pathologic");
-                colorizePathologic(pathologicElement, data.pathologic);
-                
-                // Color scale for severity (green to red based on 1-10 scale)
-                const severityElement = document.getElementById("severity");
-                colorizeSeverity(severityElement, data.severity);
-                
-                document.getElementById("summary").textContent = data.summary;
-                
-                const resultElement = document.getElementById("result");
-                resultElement.classList.add("show");
+                // Display results using template
+                displayResults(data);
                 
                 // Hide detailed analysis if shown
                 document.getElementById("detailed-analysis").style.display = "none";
                 
                 // Scroll to results
-                resultElement.scrollIntoView({ behavior: "smooth" });
+                document.getElementById("result").scrollIntoView({ behavior: "smooth" });
             })
             .catch(error => {
                 console.error('Error:', error);
