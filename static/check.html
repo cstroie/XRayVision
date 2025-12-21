@@ -73,8 +73,10 @@
 
     <script>
         function colorizePathologic(element, value) {
-            element.textContent = value;
-            if (value === "no") {
+            // Ensure only "yes" or "no" values are displayed
+            const normalizedValue = (value === "yes" || value === "no") ? value : "no";
+            element.textContent = normalizedValue;
+            if (normalizedValue === "no") {
                 element.style.color = "#2dd4bf"; // green
             } else {
                 element.style.color = "#f87171"; // red
