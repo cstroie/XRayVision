@@ -170,7 +170,7 @@
             // First Pass - Overview and Context
             const firstPassTemplate = document.getElementById('detailed-analysis-template');
             const firstPassSection = firstPassTemplate.content.cloneNode(true);
-            firstPassSection.querySelector('[data-field="title"]').textContent = 'First Pass - Overview and Context';
+            firstPassSection.querySelector('[data-field="title"]').textContent = 'Overview and Context';
             
             const firstPassContent = document.createElement('div');
             if (data.first_pass) {
@@ -192,7 +192,7 @@
             // Second Pass - Detailed Content Analysis
             const secondPassTemplate = document.getElementById('detailed-analysis-template');
             const secondPassSection = secondPassTemplate.content.cloneNode(true);
-            secondPassSection.querySelector('[data-field="title"]').textContent = 'Second Pass - Detailed Content Analysis';
+            secondPassSection.querySelector('[data-field="title"]').textContent = 'Detailed Content Analysis';
             
             const secondPassContent = document.createElement('div');
             if (data.second_pass) {
@@ -232,7 +232,7 @@
             // Third Pass - Critical Evaluation
             const thirdPassTemplate = document.getElementById('detailed-analysis-template');
             const thirdPassSection = thirdPassTemplate.content.cloneNode(true);
-            thirdPassSection.querySelector('[data-field="title"]').textContent = 'Third Pass - Critical Evaluation';
+            thirdPassSection.querySelector('[data-field="title"]').textContent = 'Critical Evaluation';
             
             const thirdPassContent = document.createElement('div');
             if (data.third_pass) {
