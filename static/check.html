@@ -70,6 +70,17 @@
             <span data-field="value">-</span>
         </article>
     </template>
+        
+    <template id="detailed-analysis-template">
+        <section>
+            <h4 style="margin-bottom: 0.5rem; color: #60a5fa;" data-field="title"></h4>
+            <div data-field="content"></div>
+        </section>
+    </template>
+        
+    <template id="list-item-template">
+        <li data-field="text"></li>
+    </template>
 
     <script>
         function colorizePathologic(element, value) {
@@ -152,83 +163,122 @@
                 return;
             }
             
-            let html = '<div style="margin-bottom: 1rem;">';
+            // Clear previous content
+            detailedContent.innerHTML = '<div style="margin-bottom: 1rem;"></div>';
+            const container = detailedContent.firstChild;
             
-            // First Pass
-            html += '<section>';
-            html += '<h4 style="margin-bottom: 0.5rem; color: #60a5fa;">First Pass - Overview and Context</h4>';
+            // First Pass - Overview and Context
+            const firstPassTemplate = document.getElementById('detailed-analysis-template');
+            const firstPassSection = firstPassTemplate.content.cloneNode(true);
+            firstPassSection.querySelector('[data-field="title"]').textContent = 'First Pass - Overview and Context';
+            
+            const firstPassContent = document.createElement('div');
             if (data.first_pass) {
-                html += `<p><strong>Topic:</strong> ${data.first_pass.topic || 'N/A'}</p>`;
-                html += `<p><strong>Purpose:</strong> ${data.first_pass.purpose || 'N/A'}</p>`;
-                html += `<p><strong>Primary Findings:</strong> ${data.first_pass.primary_findings || 'N/A'}</p>`;
+                firstPassContent.innerHTML = `
+                    <p><strong>Topic:</strong> ${data.first_pass.topic || 'N/A'}</p>
+                    <p><strong>Purpose:</strong> ${data.first_pass.purpose || 'N/A'}</p>
+                    <p><strong>Primary Findings:</strong> ${data.first_pass.primary_findings || 'N/A'}</p>
+                `;
             } else {
-                html += '<p><strong>Topic:</strong> N/A</p>';
-                html += '<p><strong>Purpose:</strong> N/A</p>';
-                html += '<p><strong>Primary Findings:</strong> N/A</p>';
+                firstPassContent.innerHTML = `
+                    <p><strong>Topic:</strong> N/A</p>
+                    <p><strong>Purpose:</strong> N/A</p>
+                    <p><strong>Primary Findings:</strong> N/A</p>
+                `;
             }
-            html += '</section>';
+            firstPassSection.querySelector('[data-field="content"]').appendChild(firstPassContent);
+            container.appendChild(firstPassSection);
             
-            // Second Pass
-            html += '<section>';
-            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Second Pass - Detailed Content Analysis</h4>';
+            // Second Pass - Detailed Content Analysis
+            const secondPassTemplate = document.getElementById('detailed-analysis-template');
+            const secondPassSection = secondPassTemplate.content.cloneNode(true);
+            secondPassSection.querySelector('[data-field="title"]').textContent = 'Second Pass - Detailed Content Analysis';
+            
+            const secondPassContent = document.createElement('div');
             if (data.second_pass) {
+                let secondHtml = '';
                 if (data.second_pass.main_points && data.second_pass.main_points.length > 0) {
-                    html += '<p><strong>Main Points:</strong></p><ul>';
+                    secondHtml += '<p><strong>Main Points:</strong></p><ul>';
                     data.second_pass.main_points.forEach(point => {
-                        html += `<li>${point}</li>`;
+                        const listItemTemplate = document.getElementById('list-item-template');
+                        const listItem = listItemTemplate.content.cloneNode(true);
+                        listItem.querySelector('[data-field="text"]').textContent = point;
+                        secondHtml += listItem.querySelector('li').outerHTML;
                     });
-                    html += '</ul>';
+                    secondHtml += '</ul>';
                 }
                 if (data.second_pass.supporting_evidence && data.second_pass.supporting_evidence.length > 0) {
-                    html += '<p><strong>Supporting Evidence:</strong></p><ul>';
+                    secondHtml += '<p><strong>Supporting Evidence:</strong></p><ul>';
                     data.second_pass.supporting_evidence.forEach(evidence => {
-                        html += `<li>${evidence}</li>`;
+                        const listItemTemplate = document.getElementById('list-item-template');
+                        const listItem = listItemTemplate.content.cloneNode(true);
+                        listItem.querySelector('[data-field="text"]').textContent = evidence;
+                        secondHtml += listItem.querySelector('li').outerHTML;
                     });
-                    html += '</ul>';
+                    secondHtml += '</ul>';
                 }
-                html += `<p><strong>Conclusions Valid:</strong> ${data.second_pass.conclusions_valid ? 'Yes' : 'No'}</p>`;
+                secondHtml += `<p><strong>Conclusions Valid:</strong> ${data.second_pass.conclusions_valid ? 'Yes' : 'No'}</p>`;
+                secondPassContent.innerHTML = secondHtml;
             } else {
-                html += '<p><strong>Main Points:</strong> N/A</p>';
-                html += '<p><strong>Supporting Evidence:</strong> N/A</p>';
-                html += '<p><strong>Conclusions Valid:</strong> N/A</p>';
+                secondPassContent.innerHTML = `
+                    <p><strong>Main Points:</strong> N/A</p>
+                    <p><strong>Supporting Evidence:</strong> N/A</p>
+                    <p><strong>Conclusions Valid:</strong> N/A</p>
+                `;
             }
-            html += '</section>';
+            secondPassSection.querySelector('[data-field="content"]').appendChild(secondPassContent);
+            container.appendChild(secondPassSection);
             
-            // Third Pass
-            html += '<section>';
-            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Third Pass - Critical Evaluation</h4>';
+            // Third Pass - Critical Evaluation
+            const thirdPassTemplate = document.getElementById('detailed-analysis-template');
+            const thirdPassSection = thirdPassTemplate.content.cloneNode(true);
+            thirdPassSection.querySelector('[data-field="title"]').textContent = 'Third Pass - Critical Evaluation';
+            
+            const thirdPassContent = document.createElement('div');
             if (data.third_pass) {
+                let thirdHtml = '';
                 if (data.third_pass.assumptions && data.third_pass.assumptions.length > 0) {
-                    html += '<p><strong>Assumptions:</strong></p><ul>';
+                    thirdHtml += '<p><strong>Assumptions:</strong></p><ul>';
                     data.third_pass.assumptions.forEach(assumption => {
-                        html += `<li>${assumption}</li>`;
+                        const listItemTemplate = document.getElementById('list-item-template');
+                        const listItem = listItemTemplate.content.cloneNode(true);
+                        listItem.querySelector('[data-field="text"]').textContent = assumption;
+                        thirdHtml += listItem.querySelector('li').outerHTML;
                     });
-                    html += '</ul>';
+                    thirdHtml += '</ul>';
                 }
                 if (data.third_pass.missing_info && data.third_pass.missing_info.length > 0) {
-                    html += '<p><strong>Missing Information:</strong></p><ul>';
+                    thirdHtml += '<p><strong>Missing Information:</strong></p><ul>';
                     data.third_pass.missing_info.forEach(info => {
-                        html += `<li>${info}</li>`;
+                        const listItemTemplate = document.getElementById('list-item-template');
+                        const listItem = listItemTemplate.content.cloneNode(true);
+                        listItem.querySelector('[data-field="text"]').textContent = info;
+                        thirdHtml += listItem.querySelector('li').outerHTML;
                     });
-                    html += '</ul>';
+                    thirdHtml += '</ul>';
                 }
-                html += `<p><strong>Critique:</strong> ${data.third_pass.critique || 'N/A'}</p>`;
+                thirdHtml += `<p><strong>Critique:</strong> ${data.third_pass.critique || 'N/A'}</p>`;
+                thirdPassContent.innerHTML = thirdHtml;
             } else {
-                html += '<p><strong>Assumptions:</strong> N/A</p>';
-                html += '<p><strong>Missing Information:</strong> N/A</p>';
-                html += '<p><strong>Critique:</strong> N/A</p>';
+                thirdPassContent.innerHTML = `
+                    <p><strong>Assumptions:</strong> N/A</p>
+                    <p><strong>Missing Information:</strong> N/A</p>
+                    <p><strong>Critique:</strong> N/A</p>
+                `;
             }
-            html += '</section>';
+            thirdPassSection.querySelector('[data-field="content"]').appendChild(thirdPassContent);
+            container.appendChild(thirdPassSection);
             
             // Overall Assessment
-            html += '<section>';
-            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Overall Assessment</h4>';
-            html += `<p>${data.overall_assessment || 'N/A'}</p>`;
-            html += '</section>';
+            const overallTemplate = document.getElementById('detailed-analysis-template');
+            const overallSection = overallTemplate.content.cloneNode(true);
+            overallSection.querySelector('[data-field="title"]').textContent = 'Overall Assessment';
             
-            html += '</div>';
+            const overallContent = document.createElement('div');
+            overallContent.innerHTML = `<p>${data.overall_assessment || 'N/A'}</p>`;
+            overallSection.querySelector('[data-field="content"]').appendChild(overallContent);
+            container.appendChild(overallSection);
             
-            detailedContent.innerHTML = html;
             detailedAnalysis.style.display = "block";
             
             // Scroll to detailed analysis
