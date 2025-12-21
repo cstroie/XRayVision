@@ -3828,22 +3828,32 @@ async def detailed_analysis_report(report_text):
             response_text = result["choices"][0]["message"]["content"].strip()
             logging.debug(f"Raw AI response: {response_text}")
             
+            # Log the response text for debugging before cleaning
+            logging.debug(f"AI response before cleaning: {repr(response_text)}")
+            
             # Clean up markdown code fences if present
             response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
             response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
             
+            # Log the response text after cleaning
+            logging.debug(f"AI response after cleaning: {repr(response_text)}")
+            
             try:
                 parsed_response = json.loads(response_text)
                 logging.debug(f"AI detailed analysis completed")
+                logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
                 return parsed_response
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
+                logging.error(f"JSON decode error: {str(e)}")
+                logging.error(f"Response length: {len(response_text)}")
                 return {'error': 'Failed to parse AI response', 'response': response_text}
             except ValueError as e:
                 logging.error(f"Invalid AI response format: {e}")
                 return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
     except Exception as e:
         logging.error(f"Error processing detailed analysis request: {e}")
+        logging.exception("Full traceback:")
         return {'error': 'Internal server error'}
 
 
