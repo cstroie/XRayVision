@@ -128,8 +128,8 @@
             resultContainer.appendChild(summaryCard);
             
             // Apply colorization
-            const pathologicElement = resultContainer.querySelector('[data-field="value"]:nth-child(1)');
-            const severityElement = resultContainer.querySelector('[data-field="value"]:nth-child(2)');
+            const pathologicElement = resultContainer.querySelectorAll('[data-field="value"]')[0];
+            const severityElement = resultContainer.querySelectorAll('[data-field="value"]')[1];
             
             if (pathologicElement) {
                 colorizePathologic(pathologicElement, data.pathologic || 'N/A');
