@@ -282,6 +282,53 @@ Report: "SCD libere, fără lichid pleural."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 """)
 
+DET_PROMPT = ("""
+You are a senior radiologist providing detailed analysis of radiology reports.
+
+TASK: Perform a three-pass critical analysis of the radiology report:
+
+FIRST PASS - Get the Gist:
+- Identify the main clinical topic and purpose of the report
+- Determine the primary findings and overall conclusion
+
+SECOND PASS - Grasp the Content:
+- Summarize the main points and key findings
+- Identify supporting evidence and clinical observations
+- Evaluate if the conclusions logically follow from the findings
+
+THIRD PASS - Understand in Depth and Critique:
+- Identify and challenge every statement and assumption
+- Point out any implicit assumptions or missing information
+- Evaluate potential issues with interpretations or missing citations to standard practices
+
+OUTPUT FORMAT (JSON):
+{
+  "first_pass": {
+    "topic": "main clinical topic",
+    "purpose": "purpose of the examination",
+    "primary_findings": "overall primary findings"
+  },
+  "second_pass": {
+    "main_points": ["key finding 1", "key finding 2"],
+    "supporting_evidence": ["evidence 1", "evidence 2"],
+    "conclusions_valid": true/false
+  },
+  "third_pass": {
+    "assumptions": ["assumption 1", "assumption 2"],
+    "missing_info": ["missing information 1", "missing information 2"],
+    "critique": "detailed critique of the report"
+  },
+  "overall_assessment": "overall quality and completeness assessment"
+}
+
+RULES:
+- Provide detailed, professional radiological analysis
+- Be factual and constructive in your critique
+- Focus on clinical relevance and report quality
+- Use clear, concise language
+- Respond ONLY with the JSON, without additional text
+""")
+
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
 # Static directory
@@ -3723,6 +3770,80 @@ async def check_rad_report_and_update(uid):
         logging.error(f"Error processing CHECK prompt for exam {uid}: {e}")
         return False
 
+async def detailed_analysis_report(report_text):
+    """Perform detailed three-pass analysis of a radiology report.
+
+    Takes a radiology report text and sends it to the LLM for detailed analysis
+    using the DET_PROMPT to extract comprehensive insights.
+
+    Args:
+        report_text: Radiology report text to analyze
+
+    Returns:
+        dict: Detailed analysis results with three-pass structure
+    """
+    try:
+        logging.debug(f"Detailed analysis request received with report length: {len(report_text)} characters")
+        
+        if not report_text:
+            logging.warning("Detailed analysis request failed: no report text provided")
+            return {'error': 'No report text provided'}
+        
+        # Prepare the request headers
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+        
+        # Prepare the JSON data
+        payload = {
+            "model": MODEL_NAME,
+            "stream": False,
+            "keep_alive": 1800,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": DET_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": report_text}
+                    ]
+                }
+            ]
+        }
+        
+        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for detailed analysis")
+        
+        async with aiohttp.ClientSession() as session:
+            result = await send_to_openai(session, headers, payload)
+            if not result:
+                logging.error("Failed to get response from AI service")
+                return {'error': 'Failed to get response from AI service'}
+            
+            response_text = result["choices"][0]["message"]["content"].strip()
+            logging.debug(f"Raw AI response: {response_text}")
+            
+            # Clean up markdown code fences if present
+            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
+            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
+            
+            try:
+                parsed_response = json.loads(response_text)
+                logging.debug(f"AI detailed analysis completed")
+                return parsed_response
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse AI response as JSON: {response_text}")
+                return {'error': 'Failed to parse AI response', 'response': response_text}
+            except ValueError as e:
+                logging.error(f"Invalid AI response format: {e}")
+                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
+    except Exception as e:
+        logging.error(f"Error processing detailed analysis request: {e}")
+        return {'error': 'Internal server error'}
+
+
 async def check_report_handler(request):
     """Analyze a free-text radiology report for pathological findings.
 
@@ -3749,6 +3870,35 @@ async def check_report_handler(request):
         return web.json_response(result)
     except Exception as e:
         logging.error(f"Error processing report check request: {e}")
+        return web.json_response({'error': 'Internal server error'}, status=500)
+
+
+async def detailed_analysis_handler(request):
+    """Perform detailed three-pass analysis of a radiology report.
+
+    Takes a radiology report text and sends it to the LLM for detailed analysis
+    using the DET_PROMPT to extract comprehensive insights.
+
+    Args:
+        request: aiohttp request object with JSON body containing report text
+
+    Returns:
+        web.json_response: JSON response with detailed analysis results
+    """
+    try:
+        data = await request.json()
+        report_text = data.get('report', '').strip()
+        
+        result = await detailed_analysis_report(report_text)
+        
+        # Check if there was an error
+        if 'error' in result:
+            status = 500 if result['error'] != 'No report text provided' else 400
+            return web.json_response(result, status=status)
+        
+        return web.json_response(result)
+    except Exception as e:
+        logging.error(f"Error processing detailed analysis request: {e}")
         return web.json_response({'error': 'Internal server error'}, status=500)
 
 
@@ -4659,6 +4809,7 @@ async def start_dashboard():
     app.router.add_post('/api/requeue', requeue_exam)
     app.router.add_post('/api/getrad', get_report_handler)
     app.router.add_post('/api/check', check_report_handler)
+    app.router.add_post('/api/analyse', detailed_analysis_handler)
     
     # API endpoints - Metadata
     app.router.add_get('/api/spec', serve_api_spec)

@@ -44,8 +44,8 @@
     </nav>
     <main>
         <hgroup>
-            <h2>Report Checker</h2>
-            <p>Enter a radiology report to analyze for pathological findings</p>
+            <h2>Report Analysis</h2>
+            <p>Enter a radiology report to analyze for pathological findings and detailed insights</p>
         </hgroup>
         <header id="result" class="grid stats-grid">
             <article>
@@ -61,17 +61,105 @@
                 <span id="summary">-</span>
             </article>
         </header>
-        <form id="check-form">
-            <textarea id="report-text" name="report" placeholder="Enter radiology report text here..." rows="5" required></textarea>
-            <button type="submit" form="check-form">Analyze Report</button>
+        <details id="detailed-analysis" style="margin-top: 1rem; display: none;">
+            <summary><strong>Detailed Analysis</strong></summary>
+            <div id="detailed-content" style="padding: 1rem; background-color: rgba(30, 30, 40, 0.5); border-radius: 0.5rem; margin-top: 0.5rem;"></div>
+        </details>
+        <form id="check-form" style="margin-top: 1rem;">
+            <textarea id="report-text" name="report" placeholder="Enter radiology report text here..." rows="8" required></textarea>
+            <fieldset role="group">
+                <button type="submit" id="check-btn" form="check-form">Quick Check</button>
+                <button type="button" id="analyse-btn">Detailed Analysis</button>
+            </fieldset>
         </form>
     </main>
 
     <script>
-        document.getElementById("check-form").addEventListener("submit", function (e) {
+        function colorizePathologic(element, value) {
+            element.textContent = value;
+            if (value === "no") {
+                element.style.color = "#2dd4bf"; // green
+            } else {
+                element.style.color = "#f87171"; // red
+            }
+        }
+        
+        function colorizeSeverity(element, value) {
+            element.textContent = value;
+            const severity = parseInt(value);
+            if (!isNaN(severity)) {
+                // Calculate color from green (0) to red (10)
+                const red = Math.min(255, Math.floor(severity * 25.5));
+                const green = Math.min(255, Math.floor((10 - severity) * 25.5));
+                element.style.color = `rgb(${red}, ${green}, 0)`;
+            }
+        }
+        
+        function displayDetailedAnalysis(data) {
+            const detailedContent = document.getElementById("detailed-content");
+            const detailedAnalysis = document.getElementById("detailed-analysis");
+            
+            let html = '<div style="margin-bottom: 1rem;">';
+            
+            // First Pass
+            html += '<h4 style="margin-bottom: 0.5rem; color: #60a5fa;">First Pass - Get the Gist</h4>';
+            html += `<p><strong>Topic:</strong> ${data.first_pass.topic || 'N/A'}</p>`;
+            html += `<p><strong>Purpose:</strong> ${data.first_pass.purpose || 'N/A'}</p>`;
+            html += `<p><strong>Primary Findings:</strong> ${data.first_pass.primary_findings || 'N/A'}</p>`;
+            
+            // Second Pass
+            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Second Pass - Grasp the Content</h4>';
+            if (data.second_pass.main_points && data.second_pass.main_points.length > 0) {
+                html += '<p><strong>Main Points:</strong></p><ul>';
+                data.second_pass.main_points.forEach(point => {
+                    html += `<li>${point}</li>`;
+                });
+                html += '</ul>';
+            }
+            if (data.second_pass.supporting_evidence && data.second_pass.supporting_evidence.length > 0) {
+                html += '<p><strong>Supporting Evidence:</strong></p><ul>';
+                data.second_pass.supporting_evidence.forEach(evidence => {
+                    html += `<li>${evidence}</li>`;
+                });
+                html += '</ul>';
+            }
+            html += `<p><strong>Conclusions Valid:</strong> ${data.second_pass.conclusions_valid ? 'Yes' : 'No'}</p>`;
+            
+            // Third Pass
+            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Third Pass - In-Depth Critique</h4>';
+            if (data.third_pass.assumptions && data.third_pass.assumptions.length > 0) {
+                html += '<p><strong>Assumptions:</strong></p><ul>';
+                data.third_pass.assumptions.forEach(assumption => {
+                    html += `<li>${assumption}</li>`;
+                });
+                html += '</ul>';
+            }
+            if (data.third_pass.missing_info && data.third_pass.missing_info.length > 0) {
+                html += '<p><strong>Missing Information:</strong></p><ul>';
+                data.third_pass.missing_info.forEach(info => {
+                    html += `<li>${info}</li>`;
+                });
+                html += '</ul>';
+            }
+            html += `<p><strong>Critique:</strong> ${data.third_pass.critique || 'N/A'}</p>`;
+            
+            // Overall Assessment
+            html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Overall Assessment</h4>';
+            html += `<p>${data.overall_assessment || 'N/A'}</p>`;
+            
+            html += '</div>';
+            
+            detailedContent.innerHTML = html;
+            detailedAnalysis.style.display = "block";
+            
+            // Scroll to detailed analysis
+            detailedAnalysis.scrollIntoView({ behavior: "smooth" });
+        }
+        
+        document.getElementById("check-btn").addEventListener("click", function (e) {
             e.preventDefault();
             const reportText = document.getElementById("report-text").value.trim();
-            const submitButton = document.querySelector("#check-form button[type='submit']");
+            const submitButton = document.getElementById("check-btn");
             
             if (!reportText) {
                 alert("Please enter a report to analyze");
@@ -80,7 +168,7 @@
 
             // Disable the submit button
             submitButton.disabled = true;
-            submitButton.textContent = "Analyzing...";
+            submitButton.textContent = "Checking...";
 
             fetch('/api/check', {
                 method: 'POST',
@@ -96,28 +184,19 @@
             .then(data => {
                 // Colorize pathologic text (green for "no", red for "yes")
                 const pathologicElement = document.getElementById("pathologic");
-                pathologicElement.textContent = data.pathologic;
-                if (data.pathologic === "no") {
-                    pathologicElement.style.color = "#2dd4bf"; // green
-                } else {
-                    pathologicElement.style.color = "#f87171"; // red
-                }
+                colorizePathologic(pathologicElement, data.pathologic);
                 
                 // Color scale for severity (green to red based on 1-10 scale)
                 const severityElement = document.getElementById("severity");
-                severityElement.textContent = data.severity;
-                const severity = parseInt(data.severity);
-                if (!isNaN(severity)) {
-                    // Calculate color from green (0) to red (10)
-                    const red = Math.min(255, Math.floor(severity * 25.5));
-                    const green = Math.min(255, Math.floor((10 - severity) * 25.5));
-                    severityElement.style.color = `rgb(${red}, ${green}, 0)`;
-                }
+                colorizeSeverity(severityElement, data.severity);
                 
                 document.getElementById("summary").textContent = data.summary;
                 
                 const resultElement = document.getElementById("result");
                 resultElement.classList.add("show");
+                
+                // Hide detailed analysis if shown
+                document.getElementById("detailed-analysis").style.display = "none";
                 
                 // Scroll to results
                 resultElement.scrollIntoView({ behavior: "smooth" });
@@ -129,7 +208,52 @@
             .finally(() => {
                 // Re-enable the submit button
                 submitButton.disabled = false;
-                submitButton.textContent = "Analyze Report";
+                submitButton.textContent = "Quick Check";
+            });
+        });
+        
+        document.getElementById("analyse-btn").addEventListener("click", function (e) {
+            e.preventDefault();
+            const reportText = document.getElementById("report-text").value.trim();
+            const analyseButton = document.getElementById("analyse-btn");
+            
+            if (!reportText) {
+                alert("Please enter a report to analyze");
+                return;
+            }
+
+            // Disable the analyse button
+            analyseButton.disabled = true;
+            analyseButton.textContent = "Analysing...";
+
+            fetch('/api/analyse', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ report: reportText })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    alert("Error: " + data.error);
+                    return;
+                }
+                
+                // Display detailed analysis
+                displayDetailedAnalysis(data);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert("An error occurred while analyzing the report. Please try again.");
+            })
+            .finally(() => {
+                // Re-enable the analyse button
+                analyseButton.disabled = false;
+                analyseButton.textContent = "Detailed Analysis";
             });
         });
     </script>
