@@ -4481,7 +4481,7 @@ def process_ai_response(response_text, exam_uid):
         return None, None, None, None, None
 
 
-async def handle_ai_success(exam, short, report, confidence, severity, summary, processing_time):
+async def handle_ai_success(exam, short, report, confidence, severity, summary, processing_time, response_model=None):
     """
     Handle successful AI processing by updating database and sending notifications.
     
@@ -4493,6 +4493,7 @@ async def handle_ai_success(exam, short, report, confidence, severity, summary, 
         severity: AI severity score
         summary: AI summary text
         processing_time: Time taken to process the exam
+        response_model: Actual model name from API response
         
     Returns:
         bool: True if successful
@@ -4503,7 +4504,7 @@ async def handle_ai_success(exam, short, report, confidence, severity, summary, 
     db_add_exam(exam)
     # If report is provided, add it to ai_reports table
     if report is not None:
-        db_add_ai_report(exam['uid'], report, is_positive, confidence, MODEL_NAME, int(processing_time), severity if severity is not None else -1, summary)
+        db_add_ai_report(exam['uid'], report, is_positive, confidence, response_model, int(processing_time), severity if severity is not None else -1, summary)
     # Send notification for positive cases
     if is_positive:
         try:
@@ -4570,6 +4571,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     if not result:
                         break
                     response_text = result["choices"][0]["message"]["content"].strip()
+                    # Extract the actual model name from the API response
+                    response_model = result.get("model", MODEL_NAME)
                     
                     # Process AI response
                     short, report, confidence, severity, summary = process_ai_response(response_text, exam['uid'])
@@ -4589,7 +4592,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         timings['average'] = timings['total']
                     
                     # Handle success
-                    success = await handle_ai_success(exam, short, report, confidence, severity, summary, processing_time)
+                    success = await handle_ai_success(exam, short, report, confidence, severity, summary, processing_time, response_model)
                     if success:
                         return True
                         
