@@ -4658,7 +4658,7 @@ async def start_dashboard():
     app.router.add_post('/api/radreview', rad_review)
     app.router.add_post('/api/requeue', requeue_exam)
     app.router.add_post('/api/getrad', get_report_handler)
-    app.router.add_post('/api/checkrad', check_report_handler)
+    app.router.add_post('/api/check', check_report_handler)
     
     # API endpoints - Metadata
     app.router.add_get('/api/spec', serve_api_spec)
