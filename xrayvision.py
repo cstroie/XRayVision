@@ -282,7 +282,7 @@ Report: "SCD libere, fără lichid pleural."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 """)
 
-DET_PROMPT = ("""
+ANA_PROMPT = ("""
 You are a senior radiologist providing detailed analysis of radiology reports.
 
 TASK: Perform a three-pass critical analysis of the radiology report:
@@ -3774,7 +3774,7 @@ async def detailed_analysis_report(report_text):
     """Perform detailed three-pass analysis of a radiology report.
 
     Takes a radiology report text and sends it to the LLM for detailed analysis
-    using the DET_PROMPT to extract comprehensive insights.
+    using the ANA_PROMPT to extract comprehensive insights.
 
     Args:
         report_text: Radiology report text to analyze
@@ -3803,7 +3803,7 @@ async def detailed_analysis_report(report_text):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": DET_PROMPT}]
+                    "content": [{"type": "text", "text": ANA_PROMPT}]
                 },
                 {
                     "role": "user",
@@ -3877,7 +3877,7 @@ async def detailed_analysis_handler(request):
     """Perform detailed three-pass analysis of a radiology report.
 
     Takes a radiology report text and sends it to the LLM for detailed analysis
-    using the DET_PROMPT to extract comprehensive insights.
+    using the ANA_PROMPT to extract comprehensive insights.
 
     Args:
         request: aiohttp request object with JSON body containing report text
