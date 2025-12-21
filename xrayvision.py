@@ -327,6 +327,9 @@ RULES:
 - Focus on clinical relevance and report quality
 - Use clear, concise language
 - Respond ONLY with the JSON, without additional text
+- IMPORTANT: Properly escape all special characters in JSON strings, especially double quotes (") should be escaped as (\")
+- Ensure all JSON keys and string values are properly quoted with double quotes
+- Do not include any text before or after the JSON object
 """)
 
 # Images directory
