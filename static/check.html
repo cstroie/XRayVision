@@ -109,12 +109,17 @@
         
         function displayResults(data) {
             const resultContainer = document.getElementById('result');
+            if (!resultContainer) {
+                console.error('Result container not found');
+                return;
+            }
+            
             resultContainer.innerHTML = '';
             
             // Create and append cards for each result field
-            const pathologicCard = createResultCard('Pathologic', data.pathologic);
-            const severityCard = createResultCard('Severity', data.severity);
-            const summaryCard = createResultCard('Summary', data.summary);
+            const pathologicCard = createResultCard('Pathologic', data.pathologic || 'N/A');
+            const severityCard = createResultCard('Severity', data.severity !== undefined ? data.severity : 'N/A');
+            const summaryCard = createResultCard('Summary', data.summary || 'N/A');
             
             resultContainer.appendChild(pathologicCard);
             resultContainer.appendChild(severityCard);
@@ -124,8 +129,12 @@
             const pathologicElement = resultContainer.querySelector('[data-field="value"]:nth-child(1)');
             const severityElement = resultContainer.querySelector('[data-field="value"]:nth-child(2)');
             
-            colorizePathologic(pathologicElement, data.pathologic);
-            colorizeSeverity(severityElement, data.severity);
+            if (pathologicElement) {
+                colorizePathologic(pathologicElement, data.pathologic || 'N/A');
+            }
+            if (severityElement) {
+                colorizeSeverity(severityElement, data.severity !== undefined ? data.severity : 'N/A');
+            }
             
             // Show the results container
             resultContainer.style.display = 'grid';
@@ -135,49 +144,73 @@
             const detailedContent = document.getElementById("detailed-content");
             const detailedAnalysis = document.getElementById("detailed-analysis");
             
+            // Check if elements exist
+            if (!detailedContent || !detailedAnalysis) {
+                console.error('Detailed analysis elements not found');
+                return;
+            }
+            
             let html = '<div style="margin-bottom: 1rem;">';
             
             // First Pass
             html += '<h4 style="margin-bottom: 0.5rem; color: #60a5fa;">First Pass - Overview and Context</h4>';
-            html += `<p><strong>Topic:</strong> ${data.first_pass.topic || 'N/A'}</p>`;
-            html += `<p><strong>Purpose:</strong> ${data.first_pass.purpose || 'N/A'}</p>`;
-            html += `<p><strong>Primary Findings:</strong> ${data.first_pass.primary_findings || 'N/A'}</p>`;
+            if (data.first_pass) {
+                html += `<p><strong>Topic:</strong> ${data.first_pass.topic || 'N/A'}</p>`;
+                html += `<p><strong>Purpose:</strong> ${data.first_pass.purpose || 'N/A'}</p>`;
+                html += `<p><strong>Primary Findings:</strong> ${data.first_pass.primary_findings || 'N/A'}</p>`;
+            } else {
+                html += '<p><strong>Topic:</strong> N/A</p>';
+                html += '<p><strong>Purpose:</strong> N/A</p>';
+                html += '<p><strong>Primary Findings:</strong> N/A</p>';
+            }
             
             // Second Pass
             html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Second Pass - Detailed Content Analysis</h4>';
-            if (data.second_pass.main_points && data.second_pass.main_points.length > 0) {
-                html += '<p><strong>Main Points:</strong></p><ul>';
-                data.second_pass.main_points.forEach(point => {
-                    html += `<li>${point}</li>`;
-                });
-                html += '</ul>';
+            if (data.second_pass) {
+                if (data.second_pass.main_points && data.second_pass.main_points.length > 0) {
+                    html += '<p><strong>Main Points:</strong></p><ul>';
+                    data.second_pass.main_points.forEach(point => {
+                        html += `<li>${point}</li>`;
+                    });
+                    html += '</ul>';
+                }
+                if (data.second_pass.supporting_evidence && data.second_pass.supporting_evidence.length > 0) {
+                    html += '<p><strong>Supporting Evidence:</strong></p><ul>';
+                    data.second_pass.supporting_evidence.forEach(evidence => {
+                        html += `<li>${evidence}</li>`;
+                    });
+                    html += '</ul>';
+                }
+                html += `<p><strong>Conclusions Valid:</strong> ${data.second_pass.conclusions_valid ? 'Yes' : 'No'}</p>`;
+            } else {
+                html += '<p><strong>Main Points:</strong> N/A</p>';
+                html += '<p><strong>Supporting Evidence:</strong> N/A</p>';
+                html += '<p><strong>Conclusions Valid:</strong> N/A</p>';
             }
-            if (data.second_pass.supporting_evidence && data.second_pass.supporting_evidence.length > 0) {
-                html += '<p><strong>Supporting Evidence:</strong></p><ul>';
-                data.second_pass.supporting_evidence.forEach(evidence => {
-                    html += `<li>${evidence}</li>`;
-                });
-                html += '</ul>';
-            }
-            html += `<p><strong>Conclusions Valid:</strong> ${data.second_pass.conclusions_valid ? 'Yes' : 'No'}</p>`;
             
             // Third Pass
             html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Third Pass - Critical Evaluation</h4>';
-            if (data.third_pass.assumptions && data.third_pass.assumptions.length > 0) {
-                html += '<p><strong>Assumptions:</strong></p><ul>';
-                data.third_pass.assumptions.forEach(assumption => {
-                    html += `<li>${assumption}</li>`;
-                });
-                html += '</ul>';
+            if (data.third_pass) {
+                if (data.third_pass.assumptions && data.third_pass.assumptions.length > 0) {
+                    html += '<p><strong>Assumptions:</strong></p><ul>';
+                    data.third_pass.assumptions.forEach(assumption => {
+                        html += `<li>${assumption}</li>`;
+                    });
+                    html += '</ul>';
+                }
+                if (data.third_pass.missing_info && data.third_pass.missing_info.length > 0) {
+                    html += '<p><strong>Missing Information:</strong></p><ul>';
+                    data.third_pass.missing_info.forEach(info => {
+                        html += `<li>${info}</li>`;
+                    });
+                    html += '</ul>';
+                }
+                html += `<p><strong>Critique:</strong> ${data.third_pass.critique || 'N/A'}</p>`;
+            } else {
+                html += '<p><strong>Assumptions:</strong> N/A</p>';
+                html += '<p><strong>Missing Information:</strong> N/A</p>';
+                html += '<p><strong>Critique:</strong> N/A</p>';
             }
-            if (data.third_pass.missing_info && data.third_pass.missing_info.length > 0) {
-                html += '<p><strong>Missing Information:</strong></p><ul>';
-                data.third_pass.missing_info.forEach(info => {
-                    html += `<li>${info}</li>`;
-                });
-                html += '</ul>';
-            }
-            html += `<p><strong>Critique:</strong> ${data.third_pass.critique || 'N/A'}</p>`;
             
             // Overall Assessment
             html += '<h4 style="margin: 1rem 0 0.5rem 0; color: #60a5fa;">Overall Assessment</h4>';
