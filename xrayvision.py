@@ -3648,6 +3648,9 @@ async def check_report(report_text):
             logging.warning("Report check request failed: no report text provided")
             return {'error': 'No report text provided'}
         
+        # Add space after punctuation marks to properly separate phrases
+        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
+        
         # Prepare the request headers
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
@@ -3667,7 +3670,7 @@ async def check_report(report_text):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": report_text}
+                        {"type": "text", "text": processed_report_text}
                     ]
                 }
             ]
@@ -3854,6 +3857,9 @@ async def detailed_analysis_report(report_text):
             logging.warning("Detailed analysis request failed: no report text provided")
             return {'error': 'No report text provided'}
         
+        # Add space after punctuation marks to properly separate phrases
+        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
+        
         # Prepare the request headers
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
@@ -3873,7 +3879,7 @@ async def detailed_analysis_report(report_text):
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": report_text}
+                        {"type": "text", "text": processed_report_text}
                     ]
                 }
             ]
