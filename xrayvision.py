@@ -471,7 +471,7 @@ def db_init():
                 cnp TEXT PRIMARY KEY,
                 id TEXT,
                 name TEXT,
-                age INTEGER,
+                birthdate TEXT,
                 sex TEXT CHECK(sex IN ('M', 'F', 'O'))
             )
         ''')
@@ -868,7 +868,7 @@ def db_select_one(table_name, pk_value):
     return None
 
 
-def db_add_patient(cnp, id, name, age, sex):
+def db_add_patient(cnp, id, name, birthdate, sex):
     """
     Add a new patient to the database or update existing patient information.
 
@@ -876,11 +876,11 @@ def db_add_patient(cnp, id, name, age, sex):
         cnp: Romanian personal identification number (primary key)
         id: Patient ID from hospital system
         name: Patient full name
-        age: Patient age in years
+        birthdate: Patient birth date (YYYY-MM-DD format)
         sex: Patient sex ('M', 'F', or 'O')
     """
-    query = db_create_insert_query('patients', 'cnp', 'id', 'name', 'age', 'sex')
-    params = (cnp, id, name, age, sex)
+    query = db_create_insert_query('patients', 'cnp', 'id', 'name', 'birthdate', 'sex')
+    params = (cnp, id, name, birthdate, sex)
     return db_execute_query_retry(query, params)
 
 
@@ -1074,7 +1074,7 @@ def db_add_exam(info):
         patient["cnp"],
         patient.get("id",""),
         patient["name"],
-        patient["age"],
+        patient.get("birthdate", None),
         patient["sex"]
     )
     
@@ -1217,7 +1217,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     query = f"""
         SELECT 
             e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
-            p.name, p.cnp, p.id, p.age, p.sex,
+            p.name, p.cnp, p.id, p.birthdate, p.sex,
             ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.severity, ar.summary, ar.model, ar.latency,
             rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
             CASE 
@@ -1246,12 +1246,24 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         for row in rows:
             # Unpack row into named variables for better readability
             (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
-             patient_name, patient_cnp, patient_id, patient_age, patient_sex,
+             patient_name, patient_cnp, patient_id, patient_birthdate, patient_sex,
              ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_severity, ai_summary, ai_model, ai_latency,
              rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
              correct, reviewed) = row
                 
             dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
+            # Calculate age from birthdate if available
+            patient_age = -1
+            if patient_birthdate:
+                try:
+                    birth_date = datetime.strptime(patient_birthdate, "%Y-%m-%d")
+                    today = datetime.now()
+                    patient_age = today.year - birth_date.year
+                    if (today.month, today.day) < (birth_date.month, birth_date.day):
+                        patient_age -= 1
+                except ValueError:
+                    patient_age = -1
+                    
             exams.append({
                 'uid': uid,
                 'patient': {
@@ -1259,6 +1271,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     'cnp': patient_cnp,
                     'id': patient_id,
                     'age': patient_age,
+                    'birthdate': patient_birthdate,
                     'sex': patient_sex,
                 },
                 'exam': {
@@ -1780,7 +1793,7 @@ def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
 
     # Apply the limits (pagination)
     query = f"""
-        SELECT cnp, id, name, age, sex
+        SELECT cnp, id, name, birthdate, sex
         FROM patients
         {where}
         ORDER BY name
@@ -1794,12 +1807,25 @@ def db_get_patients(limit=PAGE_SIZE, offset=0, **filters):
     if rows:
         for row in rows:
             # Unpack row into named variables for better readability
-            (cnp, id, name, age, sex) = row
+            (cnp, id, name, birthdate, sex) = row
+            # Calculate age from birthdate if available
+            age = -1
+            if birthdate:
+                try:
+                    birth_date = datetime.strptime(birthdate, "%Y-%m-%d")
+                    today = datetime.now()
+                    age = today.year - birth_date.year
+                    if (today.month, today.day) < (birth_date.month, birth_date.day):
+                        age -= 1
+                except ValueError:
+                    age = -1
+                    
             patients.append({
                 'cnp': cnp,
                 'id': id,
                 'name': name,
                 'age': age,
+                'birthdate': birthdate,
                 'sex': sex,
             })
     # Get the total for pagination
@@ -2207,24 +2233,31 @@ def extract_dicom_metadata(ds):
         dict: Dictionary containing structured exam information
     """
     age = -1
+    birthdate = None
     county = None
-    if 'PatientAge' in ds:
-        age = str(ds.PatientAge).lower().replace("y", "").strip()
+    if 'PatientBirthDate' in ds and ds.PatientBirthDate:
         try:
-            age = int(age)
+            birthdate = str(ds.PatientBirthDate)
+            # Validate the format (should be YYYYMMDD)
+            if len(birthdate) == 8:
+                birthdate = f"{birthdate[:4]}-{birthdate[4:6]}-{birthdate[6:8]}"
+                # Calculate age from birthdate
+                birth_date = datetime.strptime(birthdate, "%Y-%m-%d")
+                today = datetime.now()
+                age = today.year - birth_date.year
+                if (today.month, today.day) < (birth_date.month, birth_date.day):
+                    age -= 1
         except Exception as e:
-            logging.error(f"Cannot convert age to number: {e}")
-            # Try to compute age from PatientID if available
-            if 'PatientID' in ds:
-                age = compute_age_from_cnp(ds.PatientID)
-    else:
-        # Try to compute age from PatientID if PatientAge is not available
-        if 'PatientID' in ds:
-            age = compute_age_from_cnp(ds.PatientID)
-            # Also try to get county information
-            cnp_result = validate_romanian_cnp(ds.PatientID)
-            if cnp_result['valid']:
-                county = cnp_result['county']
+            logging.error(f"Cannot parse birth date: {e}")
+            birthdate = None
+            age = -1
+    elif 'PatientID' in ds:
+        # Try to compute birthdate and age from PatientID (CNP) if available
+        cnp_result = validate_romanian_cnp(ds.PatientID)
+        if cnp_result['valid']:
+            birthdate = cnp_result['birth_date'].strftime("%Y-%m-%d")
+            age = cnp_result['age']
+            county = cnp_result['county']
     # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # Get the exam timestamp
@@ -2247,8 +2280,8 @@ def extract_dicom_metadata(ds):
             'name':  str(ds.PatientName),
             'cnp':   str(ds.PatientID),
             'age':   age,
+            'birthdate': birthdate,
             'sex':   str(ds.PatientSex),
-            'bdate': str(ds.PatientBirthDate),
         },
         'exam': {
             'protocol': str(ds.ProtocolName),
@@ -2271,6 +2304,10 @@ def extract_dicom_metadata(ds):
             # Also add county if not already added
             if 'county' not in info['patient'] and 'county' in result:
                 info['patient']['county'] = result['county']
+            # Set birthdate if not already set
+            if not info['patient']['birthdate']:
+                info['patient']['birthdate'] = result['birth_date'].strftime("%Y-%m-%d")
+                info['patient']['age'] = result['age']
         else:
             info['patient']['sex'] = 'O'
     # Return the dicom info
