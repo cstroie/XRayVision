@@ -500,8 +500,8 @@
             let created = exam.exam.created;
             // Parse the created datetime string
             let createdDate = new Date(created);
-            // Format for display as dd-mm-YYYY and HH:MM:SS
-            let formattedDate = `${String(createdDate.getDate()).padStart(2, '0')}-${String(createdDate.getMonth() + 1).padStart(2, '0')}-${createdDate.getFullYear()}`;
+            // Format for display as YYYY-mm-dd and HH:MM:SS
+            let formattedDate = `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, '0')}-${String(createdDate.getDate()).padStart(2, '0')}`;
             let formattedTime = `${String(createdDate.getHours()).padStart(2, '0')}:${String(createdDate.getMinutes()).padStart(2, '0')}:${String(createdDate.getSeconds()).padStart(2, '0')}`;
             let datetimeString = createdDate.toISOString();
 
