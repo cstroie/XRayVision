@@ -2995,16 +2995,16 @@ async def insights_handler(request):
             SELECT 
                 CASE 
                     WHEN p.birthdate IS NULL THEN 'Unknown'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) < 0 THEN 'Unknown'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 2 THEN '0-2'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 4 THEN '2-4'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 6 THEN '4-6'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 8 THEN '6-8'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 10 THEN '8-10'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 12 THEN '10-12'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 14 THEN '12-14'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 16 THEN '14-16'
-                    WHEN CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 18 THEN '16-18'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) < 0 THEN 'Unknown'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 2 THEN '0-2'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 4 THEN '2-4'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 6 THEN '4-6'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 8 THEN '6-8'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 10 THEN '8-10'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 12 THEN '10-12'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 14 THEN '12-14'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 16 THEN '14-16'
+                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 18 THEN '16-18'
                     ELSE '> 18'
                 END as age_group,
                 COUNT(*) as total_exams,
