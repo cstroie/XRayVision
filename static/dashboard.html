@@ -469,6 +469,10 @@
         function updateExamCard(uid) {
             // Check if the exam card exists on the current page
             const card = document.getElementById(`card-${uid}`);
+            if (!card) {
+                // Card doesn't exist on current page, nothing to update
+                return;
+            }
             // Fetch the updated exam data
             fetch(`/api/exams/${uid}`)
                 .then(res => res.json())
@@ -482,6 +486,12 @@
         }
 
         function renderSingleExam(cardElement, exam) {
+            // Check if cardElement exists before trying to update it
+            if (!cardElement) {
+                console.warn("Attempted to render exam on null card element");
+                return;
+            }
+            
             let isPositive = exam.report.ai.positive;
             let isReviewed = exam.report.reviewed;
             let isCorrect = exam.report.correct;
