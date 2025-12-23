@@ -497,11 +497,13 @@
             let isCorrect = exam.report.correct;
             let text = exam.report.ai.text || "";
 
-            let date = exam.exam.date;
-            let time = exam.exam.time;
-            let formattedDate = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
-            let formattedTime = `${time.substring(0,2)}:${time.substring(2,4)}:${time.substring(4,6)}`;
-            let datetimeString = `${formattedDate}T${formattedTime}`;
+            let created = exam.exam.created;
+            // Parse the created datetime string
+            let createdDate = new Date(created);
+            // Format for display
+            let formattedDate = createdDate.toLocaleDateString();
+            let formattedTime = createdDate.toLocaleTimeString();
+            let datetimeString = createdDate.toISOString();
 
             let patientNameParts = exam.patient.name.split('^');
             let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : exam.patient.name;
