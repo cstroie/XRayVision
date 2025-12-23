@@ -263,7 +263,6 @@ RULES:
 - "summary": diagnosis in 1-3 words, focusing on major category classifications (e.g., "fracture", "pneumonia", "interstitial infiltrate")
 - If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
 - CRITICAL: Analyze each sentence separately - if ANY sentence describes a pathological finding, mark as pathologic
-- Example: "Proces de condensare paracardiac dreapta. SCD libere. Cord normal" = {"pathologic": "yes", "severity": 7, "summary": "pneumonia"}
 - Ignore spelling errors
 - Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
 - Note: In Romanian reports, "SCD" means "costo-diaphragmatic sinuses" 
