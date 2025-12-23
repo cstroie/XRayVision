@@ -248,6 +248,7 @@ CHK_PROMPT = ("""
 You are a medical assistant analyzing radiology reports.
 
 TASK: Read the report and extract the main pathological information in JSON format.
+ANALYZE EACH SENTENCE SEPARATELY and identify any pathological findings, even if other aspects are described as normal.
 
 OUTPUT FORMAT (JSON):
 {
@@ -257,10 +258,12 @@ OUTPUT FORMAT (JSON):
 }
 
 RULES:
-- "pathologic": "yes" if any anomaly exists, otherwise "no"
+- "pathologic": "yes" if ANY pathological finding exists, otherwise "no"
 - "severity": 1=minimal, 5=moderate, 10=critical/urgent
 - "summary": diagnosis in 1-3 words, focusing on major category classifications (e.g., "fracture", "pneumonia", "interstitial infiltrate")
 - If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
+- CRITICAL: Analyze each sentence separately - if ANY sentence describes a pathological finding, mark as pathologic
+- Example: "Proces de condensare paracardiac dreapta. SCD libere. Cord normal" = {"pathologic": "yes", "severity": 7, "summary": "pneumonia"}
 - Ignore spelling errors
 - Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
 - Note: In Romanian reports, "SCD" means "costo-diaphragmatic sinuses" 
@@ -280,6 +283,9 @@ Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 
 Report: "SCD libere, fără lichid pleural."
 Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
+
+Report: "Proces de condensare paracardiac dreapta. SCD libere. Cord normal"
+Response: {"pathologic": "yes", "severity": 7, "summary": "pneumonia"}
 """)
 
 ANA_PROMPT = ("""
