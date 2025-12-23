@@ -539,7 +539,7 @@
                 cardElement.querySelector('.details .patient-his').style.display = 'none';
             }
             
-            cardElement.querySelector('.details .exam-time').innerHTML = `<small><strong>Time:</strong> <time datetime="${datetimeString}">${formattedDate} ${formattedTime}</time></small>`;
+            cardElement.querySelector('.details .exam-time').innerHTML = `<small><strong>Date and time:</strong> <time datetime="${datetimeString}">${formattedDate} ${formattedTime}</time></small>`;
             
             // Update protocol in figcaption
             cardElement.querySelector('figcaption').textContent = exam.exam.protocol;
