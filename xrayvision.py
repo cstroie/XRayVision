@@ -415,7 +415,7 @@ def db_init():
         - cnp (TEXT, PRIMARY KEY): Romanian personal identification number
         - id (TEXT): Patient ID from hospital system
         - name (TEXT): Patient full name
-        - age (INTEGER): Patient age in years
+        - birthdate (TEXT): Patient birth date (YYYY-MM-DD format)
         - sex (TEXT): Patient sex ('M', 'F', or 'O')
     
     exams:
@@ -981,7 +981,7 @@ def db_get_exams_without_rad_report():
         
         # First, find a patient with at least one exam without a radiologist report
         patient_query = """
-            SELECT DISTINCT p.cnp, p.name, p.id, p.age, p.sex
+            SELECT DISTINCT p.cnp, p.name, p.id, p.birthdate, p.sex
             FROM exams e
             INNER JOIN patients p ON e.cnp = p.cnp
             LEFT JOIN rad_reports rr ON e.uid = rr.uid
@@ -994,7 +994,7 @@ def db_get_exams_without_rad_report():
         patient_row = db_execute_query(patient_query, (cutoff_date_str,), fetch_mode='one')
         
         if patient_row:
-            patient_cnp, patient_name, patient_id, patient_age, patient_sex = patient_row
+            patient_cnp, patient_name, patient_id, patient_birthdate, patient_sex = patient_row
             
             # Now get all exams for this patient without radiologist reports
             exams_query = """
@@ -1010,12 +1010,25 @@ def db_get_exams_without_rad_report():
             exam_rows = db_execute_query(exams_query, (patient_cnp,), fetch_mode='all')
             
             if exam_rows:
+                # Calculate age from birthdate if available
+                patient_age = -1
+                if patient_birthdate:
+                    try:
+                        birth_date = datetime.strptime(patient_birthdate, "%Y-%m-%d")
+                        today = datetime.now()
+                        patient_age = today.year - birth_date.year
+                        if (today.month, today.day) < (birth_date.month, birth_date.day):
+                            patient_age -= 1
+                    except ValueError:
+                        patient_age = -1
+                        
                 result = {
                     'patient': {
                         'name': patient_name,
                         'cnp': patient_cnp,
                         'id': patient_id,
                         'age': patient_age,
+                        'birthdate': patient_birthdate,
                         'sex': patient_sex,
                     },
                     'exams': []
