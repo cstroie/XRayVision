@@ -1153,8 +1153,14 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("ar.positive = ?")
         params.append(filters['positive'])
     if 'correct' in filters:
-        conditions.append("correct = ?")
-        params.append(filters['correct'])
+        if filters['correct'] == 1:
+            # Correct predictions (TP or TN)
+            conditions.append("((rr.severity = -1 OR rr.severity IS NULL) OR (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?))")
+            params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
+        else:
+            # Incorrect predictions (FP or FN)
+            conditions.append("((ar.positive = 1 AND rr.severity < ? AND rr.severity > -1) OR (ar.positive = 0 AND rr.severity >= ?))")
+            params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
     if 'region' in filters:
         conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
