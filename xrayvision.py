@@ -3602,7 +3602,9 @@ async def get_report_handler(request):
                 # If patient ID is not known, search for it in FHIR
                 if not exam['patient']['id']:
                     async with aiohttp.ClientSession() as session:
-                        patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'], exam['patient']['name'])
+                        # Format patient name as "last_name first_name" for FHIR search
+                        formatted_name = format_patient_name_for_fhir(exam['patient']['name'])
+                        patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'], formatted_name)
                         if patient_id:
                             exam['patient']['id'] = patient_id
 
@@ -4334,6 +4336,39 @@ def determine_patient_gender_description(info):
     return gender
 
 
+async def format_patient_name_for_fhir(dicom_name):
+    """
+    Format DICOM patient name as "last_name first_name" for FHIR search.
+    
+    Args:
+        dicom_name: Patient name in DICOM format (Last^First^Middle)
+        
+    Returns:
+        str: Formatted patient name as "last_name first_name"
+    """
+    if not dicom_name or not isinstance(dicom_name, str):
+        return ""
+    
+    # Convert DICOM name format (Last^First^Middle) to "last_name first_name"
+    if '^' in dicom_name:
+        name_parts = dicom_name.split('^')
+        # Extract last name (first part) and first name (second part)
+        last_name = name_parts[0].strip() if len(name_parts) > 0 else ""
+        first_name = name_parts[1].strip() if len(name_parts) > 1 else ""
+        
+        # Format as "last_name first_name" if both parts exist
+        if last_name and first_name:
+            return f"{last_name} {first_name}"
+        elif last_name:
+            return last_name
+        elif first_name:
+            return first_name
+        else:
+            return ""
+    else:
+        return dicom_name.strip()
+
+
 async def get_fhir_patient(session, cnp, patient_name=None):
     """
     Search for a patient in FHIR system by CNP, and if not found, by name.
@@ -4414,16 +4449,8 @@ async def get_fhir_patient(session, cnp, patient_name=None):
     if patient_name:
         logging.info(f"Proceeding to name search for patient: {patient_name}")
         try:
-            # Convert DICOM name format (Last^First^Middle) to space-separated format
-            if '^' in patient_name:
-                name_parts = patient_name.split('^')
-                # Reorder to First Middle Last format for better matching
-                if len(name_parts) >= 2:
-                    formatted_name = ' '.join([part for part in name_parts[1:] + [name_parts[0]] if part])
-                else:
-                    formatted_name = ' '.join([part for part in name_parts if part])
-            else:
-                formatted_name = patient_name.strip()
+            # Use the already formatted name for FHIR search
+            formatted_name = patient_name.strip()
             
             if formatted_name:
                 logging.info(f"Retrying FHIR patient search by name: {formatted_name}")
