@@ -2940,6 +2940,186 @@ async def diagnostics_stats_handler(request):
         return web.json_response({}, status = 500)
 
 
+async def db_get_processing_times_by_region():
+    """Get processing time analysis by region.
+    
+    Returns:
+        list: List of tuples containing (region, avg_processing_time, exam_count)
+    """
+    query = """
+        SELECT 
+            e.region,
+            AVG(CAST(ar.latency AS FLOAT)) as avg_processing_time,
+            COUNT(*) as exam_count
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status = 'done' 
+        AND ar.latency IS NOT NULL 
+        AND ar.latency >= 0
+        GROUP BY e.region
+        ORDER BY avg_processing_time DESC
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+async def db_get_rad_severity_distribution():
+    """Get severity distribution for radiologist reports.
+    
+    Returns:
+        list: List of tuples containing (severity, count)
+    """
+    query = """
+        SELECT 
+            severity,
+            COUNT(*) as count
+        FROM rad_reports
+        WHERE severity >= 0
+        GROUP BY severity
+        ORDER BY severity
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+async def db_get_ai_severity_distribution():
+    """Get severity distribution for AI reports.
+    
+    Returns:
+        list: List of tuples containing (severity, count)
+    """
+    query = """
+        SELECT 
+            severity,
+            COUNT(*) as count
+        FROM ai_reports
+        WHERE severity >= 0
+        GROUP BY severity
+        ORDER BY severity
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+async def db_get_severity_differences():
+    """Get severity differences between AI and radiologist reports.
+    
+    Returns:
+        list: List of tuples containing (severity_diff, count)
+    """
+    query = """
+        SELECT 
+            CAST(ar.severity AS INTEGER) - CAST(rr.severity AS INTEGER) as severity_diff,
+            COUNT(*) as count
+        FROM exams e
+        JOIN ai_reports ar ON e.uid = ar.uid
+        JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE e.status = 'done'
+        AND ar.severity >= 0
+        AND rr.severity >= 0
+        GROUP BY severity_diff
+        ORDER BY severity_diff
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+async def db_get_age_distribution_insights(severity_threshold):
+    """Get patient demographics insights by age group.
+    
+    Args:
+        severity_threshold: Threshold for positive findings
+        
+    Returns:
+        list: List of tuples containing (age_group, total_exams, positive_findings)
+    """
+    query = """
+        SELECT 
+            CASE 
+                WHEN p.birthdate IS NULL THEN 'Unknown'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) < 0 THEN 'Unknown'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 2 THEN '0-2'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 4 THEN '2-4'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 6 THEN '4-6'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 8 THEN '6-8'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 10 THEN '8-10'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 12 THEN '10-12'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 14 THEN '12-14'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 16 THEN '14-16'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 18 THEN '16-18'
+                ELSE '> 18'
+            END as age_group,
+            COUNT(*) as total_exams,
+            SUM(CASE WHEN rr.severity >= ? THEN 1 ELSE 0 END) as positive_findings
+        FROM patients p
+        JOIN exams e ON p.cnp = e.cnp
+        JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE p.birthdate IS NOT NULL
+        GROUP BY age_group
+        ORDER BY 
+            CASE age_group
+                WHEN '0-2' THEN 1
+                WHEN '2-4' THEN 2
+                WHEN '4-6' THEN 3
+                WHEN '6-8' THEN 4
+                WHEN '8-10' THEN 5
+                WHEN '10-12' THEN 6
+                WHEN '12-14' THEN 7
+                WHEN '14-16' THEN 8
+                WHEN '16-18' THEN 9
+                WHEN '> 18' THEN 10
+                ELSE 11
+            END
+    """
+    return db_execute_query(query, (severity_threshold,), fetch_mode='all')
+
+async def db_get_hourly_patterns():
+    """Get temporal patterns by hour of day.
+    
+    Returns:
+        list: List of tuples containing (hour, exam_count)
+    """
+    query = """
+        SELECT 
+            CAST(strftime('%H', created) AS INTEGER) as hour,
+            COUNT(*) as exam_count
+        FROM exams
+        WHERE status = 'done'
+        GROUP BY hour
+        ORDER BY hour
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+async def db_get_requeue_analysis():
+    """Get re-queue analysis data.
+    
+    Returns:
+        tuple: Tuple containing (total_requeued, avg_latency_improvement) or None
+    """
+    query = """
+        SELECT 
+            COUNT(*) as total_requeued,
+            AVG(CAST(ai2.latency AS FLOAT) - CAST(ai1.latency AS FLOAT)) as avg_latency_improvement
+        FROM exams e
+        JOIN ai_reports ai1 ON e.uid = ai1.uid
+        JOIN ai_reports ai2 ON e.uid = ai2.uid
+        WHERE e.status = 'done'
+        AND ai1.created < ai2.created
+    """
+    return db_execute_query(query, fetch_mode='one')
+
+async def db_get_radiologist_metrics():
+    """Get radiologist consistency metrics.
+    
+    Returns:
+        list: List of tuples containing (radiologist, reports_count, avg_severity, unique_exams)
+    """
+    query = """
+        SELECT 
+            radiologist,
+            COUNT(*) as reports_count,
+            AVG(CAST(severity AS FLOAT)) as avg_severity,
+            COUNT(DISTINCT uid) as unique_exams
+        FROM rad_reports
+        WHERE radiologist IS NOT NULL AND radiologist != ''
+        GROUP BY radiologist
+        HAVING reports_count > 5
+        ORDER BY reports_count DESC
+    """
+    return db_execute_query(query, fetch_mode='all')
+
 async def insights_handler(request):
     """Provide advanced insights and correlations from the database.
 
@@ -2962,20 +3142,7 @@ async def insights_handler(request):
         insights = {}
         
         # 1. Processing time analysis by region
-        query = """
-            SELECT 
-                e.region,
-                AVG(CAST(ar.latency AS FLOAT)) as avg_processing_time,
-                COUNT(*) as exam_count
-            FROM exams e
-            LEFT JOIN ai_reports ar ON e.uid = ar.uid
-            WHERE e.status = 'done' 
-            AND ar.latency IS NOT NULL 
-            AND ar.latency >= 0
-            GROUP BY e.region
-            ORDER BY avg_processing_time DESC
-        """
-        rows = db_execute_query(query, fetch_mode='all')
+        rows = await db_get_processing_times_by_region()
         insights['processing_times'] = {}
         if rows:
             for row in rows:
@@ -2986,16 +3153,7 @@ async def insights_handler(request):
                 }
         
         # 2. Severity distribution for radiologist reports
-        query = """
-            SELECT 
-                severity,
-                COUNT(*) as count
-            FROM rad_reports
-            WHERE severity >= 0
-            GROUP BY severity
-            ORDER BY severity
-        """
-        rows = db_execute_query(query, fetch_mode='all')
+        rows = await db_get_rad_severity_distribution()
         insights['rad_severity_distribution'] = {}
         if rows:
             for row in rows:
@@ -3003,16 +3161,7 @@ async def insights_handler(request):
                 insights['rad_severity_distribution'][str(severity)] = count
                 
         # 2b. Severity distribution for AI reports
-        query = """
-            SELECT 
-                severity,
-                COUNT(*) as count
-            FROM ai_reports
-            WHERE severity >= 0
-            GROUP BY severity
-            ORDER BY severity
-        """
-        rows = db_execute_query(query, fetch_mode='all')
+        rows = await db_get_ai_severity_distribution()
         insights['ai_severity_distribution'] = {}
         if rows:
             for row in rows:
@@ -3020,20 +3169,7 @@ async def insights_handler(request):
                 insights['ai_severity_distribution'][str(severity)] = count
         
         # 2c. Severity differences between AI and radiologist reports
-        query = """
-            SELECT 
-                CAST(ar.severity AS INTEGER) - CAST(rr.severity AS INTEGER) as severity_diff,
-                COUNT(*) as count
-            FROM exams e
-            JOIN ai_reports ar ON e.uid = ar.uid
-            JOIN rad_reports rr ON e.uid = rr.uid
-            WHERE e.status = 'done'
-            AND ar.severity >= 0
-            AND rr.severity >= 0
-            GROUP BY severity_diff
-            ORDER BY severity_diff
-        """
-        rows = db_execute_query(query, fetch_mode='all')
+        rows = await db_get_severity_differences()
         insights['severity_differences'] = {}
         if rows:
             for row in rows:
@@ -3041,45 +3177,7 @@ async def insights_handler(request):
                 insights['severity_differences'][str(diff)] = count
         
         # 3. Patient demographics insights (positive findings by age group)
-        query = """
-            SELECT 
-                CASE 
-                    WHEN p.birthdate IS NULL THEN 'Unknown'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) < 0 THEN 'Unknown'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 2 THEN '0-2'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 4 THEN '2-4'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 6 THEN '4-6'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 8 THEN '6-8'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 10 THEN '8-10'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 12 THEN '10-12'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 14 THEN '12-14'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 16 THEN '14-16'
-                    WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 18 THEN '16-18'
-                    ELSE '> 18'
-                END as age_group,
-                COUNT(*) as total_exams,
-                SUM(CASE WHEN rr.severity >= ? THEN 1 ELSE 0 END) as positive_findings
-            FROM patients p
-            JOIN exams e ON p.cnp = e.cnp
-            JOIN rad_reports rr ON e.uid = rr.uid
-            WHERE p.birthdate IS NOT NULL
-            GROUP BY age_group
-            ORDER BY 
-                CASE age_group
-                    WHEN '0-2' THEN 1
-                    WHEN '2-4' THEN 2
-                    WHEN '4-6' THEN 3
-                    WHEN '6-8' THEN 4
-                    WHEN '8-10' THEN 5
-                    WHEN '10-12' THEN 6
-                    WHEN '12-14' THEN 7
-                    WHEN '14-16' THEN 8
-                    WHEN '16-18' THEN 9
-                    WHEN '> 18' THEN 10
-                    ELSE 11
-                END
-        """
-        rows = db_execute_query(query, (SEVERITY_THRESHOLD,), fetch_mode='all')
+        rows = await db_get_age_distribution_insights(SEVERITY_THRESHOLD)
         insights['age_distribution'] = {}
         if rows:
             for row in rows:
@@ -3091,16 +3189,7 @@ async def insights_handler(request):
                 }
         
         # 4. Temporal patterns (exams by hour of day)
-        query = """
-            SELECT 
-                CAST(strftime('%H', created) AS INTEGER) as hour,
-                COUNT(*) as exam_count
-            FROM exams
-            WHERE status = 'done'
-            GROUP BY hour
-            ORDER BY hour
-        """
-        rows = db_execute_query(query, fetch_mode='all')
+        rows = await db_get_hourly_patterns()
         insights['hourly_patterns'] = {}
         if rows:
             for row in rows:
@@ -3108,17 +3197,7 @@ async def insights_handler(request):
                 insights['hourly_patterns'][str(hour)] = count
         
         # 5. Re-queue analysis
-        query = """
-            SELECT 
-                COUNT(*) as total_requeued,
-                AVG(CAST(ai2.latency AS FLOAT) - CAST(ai1.latency AS FLOAT)) as avg_latency_improvement
-            FROM exams e
-            JOIN ai_reports ai1 ON e.uid = ai1.uid
-            JOIN ai_reports ai2 ON e.uid = ai2.uid
-            WHERE e.status = 'done'
-            AND ai1.created < ai2.created
-        """
-        row = db_execute_query(query, fetch_mode='one')
+        row = await db_get_requeue_analysis()
         if row:
             total_requeued, avg_improvement = row
             insights['requeue_analysis'] = {
@@ -3127,19 +3206,7 @@ async def insights_handler(request):
             }
         
         # 6. Radiologist consistency (if we have multiple reports for same exam)
-        query = """
-            SELECT 
-                radiologist,
-                COUNT(*) as reports_count,
-                AVG(CAST(severity AS FLOAT)) as avg_severity,
-                COUNT(DISTINCT uid) as unique_exams
-            FROM rad_reports
-            WHERE radiologist IS NOT NULL AND radiologist != ''
-            GROUP BY radiologist
-            HAVING reports_count > 5
-            ORDER BY reports_count DESC
-        """
-        rows = db_execute_query(query, fetch_mode='all')
+        rows = await db_get_radiologist_metrics()
         insights['radiologist_metrics'] = {}
         if rows:
             for row in rows:
