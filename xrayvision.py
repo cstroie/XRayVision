@@ -2984,7 +2984,7 @@ async def insights_handler(request):
                     'count': count
                 }
         
-        # 2. Severity distribution
+        # 2. Severity distribution for radiologist reports
         query = """
             SELECT 
                 severity,
@@ -2995,11 +2995,28 @@ async def insights_handler(request):
             ORDER BY severity
         """
         rows = db_execute_query(query, fetch_mode='all')
-        insights['severity_distribution'] = {}
+        insights['rad_severity_distribution'] = {}
         if rows:
             for row in rows:
                 severity, count = row
-                insights['severity_distribution'][str(severity)] = count
+                insights['rad_severity_distribution'][str(severity)] = count
+                
+        # 2b. Severity distribution for AI reports
+        query = """
+            SELECT 
+                severity,
+                COUNT(*) as count
+            FROM ai_reports
+            WHERE severity >= 0
+            GROUP BY severity
+            ORDER BY severity
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        insights['ai_severity_distribution'] = {}
+        if rows:
+            for row in rows:
+                severity, count = row
+                insights['ai_severity_distribution'][str(severity)] = count
         
         # 3. Patient demographics insights (positive findings by age group)
         query = """

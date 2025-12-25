@@ -251,28 +251,42 @@
             });
 
             // Chart: Severity distribution
-            const severities = Object.keys(data.severity_distribution || {});
-            const severityCounts = severities.map(sev => data.severity_distribution[sev]);
+            // Get all unique severity levels from both AI and radiologist reports
+            const aiSeverities = data.ai_severity_distribution ? Object.keys(data.ai_severity_distribution) : [];
+            const radSeverities = data.rad_severity_distribution ? Object.keys(data.rad_severity_distribution) : [];
+            const allSeverities = [...new Set([...aiSeverities, ...radSeverities])].sort((a, b) => parseInt(a) - parseInt(b));
+            
+            const aiSeverityCounts = allSeverities.map(sev => (data.ai_severity_distribution && data.ai_severity_distribution[sev]) || 0);
+            const radSeverityCounts = allSeverities.map(sev => (data.rad_severity_distribution && data.rad_severity_distribution[sev]) || 0);
             
             if (severityChart) severityChart.destroy();
             severityChart = new Chart(document.getElementById("severityChart"), {
                 type: 'bar',
                 data: {
-                    labels: severities,
-                    datasets: [{
-                        label: 'Number of Reports',
-                        data: severityCounts,
-                        backgroundColor: '#2dd4bf',
-                        borderColor: '#2dd4bf',
-                        borderWidth: 1
-                    }]
+                    labels: allSeverities,
+                    datasets: [
+                        {
+                            label: 'AI Reports',
+                            data: aiSeverityCounts,
+                            backgroundColor: '#0ea5e9',
+                            borderColor: '#0ea5e9',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Radiologist Reports',
+                            data: radSeverityCounts,
+                            backgroundColor: '#2dd4bf',
+                            borderColor: '#2dd4bf',
+                            borderWidth: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
                         legend: {
-                            display: false
+                            position: 'top'
                         },
                         title: {
                             display: false
