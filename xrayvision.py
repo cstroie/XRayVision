@@ -4462,7 +4462,11 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                     if resp.status == 200:
                         data = await resp.json()
                         logging.debug(f"FHIR patient search by name returned resourceType: {data.get('resourceType')}")
-                        if data.get('resourceType') == 'Bundle' and 'entry' in data:
+                        if data.get('resourceType') == 'Patient':
+                            # Single patient returned
+                            logging.info(f"Found single patient by name '{formatted_name}'")
+                            return data
+                        elif data.get('resourceType') == 'Bundle' and 'entry' in data:
                             patients = []
                             for entry in data['entry']:
                                 if 'resource' in entry and entry['resource'].get('resourceType') == 'Patient':
