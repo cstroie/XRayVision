@@ -4346,6 +4346,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
     Returns:
         dict or None: Patient data from FHIR if successful, None otherwise
     """
+    logging.info(f"Starting FHIR patient search for CNP: {cnp}")
     try:
         # Use basic authentication
         auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
@@ -4354,11 +4355,15 @@ async def get_fhir_patient(session, cnp, patient_name=None):
         url = f"{FHIR_URL}/fhir/Patient"
         params = {'q': cnp}
         
+        logging.debug(f"Sending FHIR patient search by CNP request to {url} with params {params}")
         async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+            logging.debug(f"Received FHIR patient search by CNP response with status {resp.status}")
             if resp.status == 200:
                 data = await resp.json()
+                logging.debug(f"FHIR patient search by CNP returned resourceType: {data.get('resourceType')}")
                 if data.get('resourceType') == 'Patient':
                     # Single patient returned
+                    logging.info(f"Found single patient by CNP {cnp}")
                     return data
                 elif data.get('resourceType') == 'Bundle' and 'entry' in data:
                     # Multiple patients returned in a bundle
@@ -4368,6 +4373,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                             patients.append(entry['resource'])
                     
                     if patients:
+                        logging.info(f"Found {len(patients)} patients in bundle for CNP {cnp}")
                         # Validate CNP before proceeding
                         cnp_result = validate_romanian_cnp(cnp)
                         if not cnp_result['valid']:
@@ -4380,6 +4386,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                         # Sort patients by ID (assuming IDs are numeric or comparable)
                         # and select the one with the greatest ID
                         patients.sort(key=lambda p: p.get('id', ''), reverse=True)
+                        logging.info(f"Selected patient with ID {patients[0].get('id')} for CNP {cnp}")
                         return patients[0]
                     else:
                         logging.error(f"FHIR patient search error: no valid patients found in bundle for CNP {cnp}")
@@ -4392,7 +4399,10 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                     all_info = all(issue.get('severity', '').lower() == 'information' for issue in issues)
                     if not all_info:
                         # If there are non-informational issues, don't proceed to name search
+                        logging.info(f"Non-informational issues found for CNP {cnp}, not proceeding to name search")
                         return None
+                    else:
+                        logging.info(f"Only informational issues found for CNP {cnp}, will proceed to name search")
                 else:
                     logging.error(f"FHIR patient search error: unexpected response format for CNP {cnp}")
             else:
@@ -4402,6 +4412,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
     
     # If CNP search failed or returned only informational messages and patient_name is provided, try searching by name
     if patient_name:
+        logging.info(f"Proceeding to name search for patient: {patient_name}")
         try:
             # Convert DICOM name format (Last^First^Middle) to space-separated format
             if '^' in patient_name:
@@ -4418,9 +4429,12 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                 logging.info(f"Retrying FHIR patient search by name: {formatted_name}")
                 params = {'name': formatted_name}
                 
+                logging.debug(f"Sending FHIR patient search by name request to {url} with params {params}")
                 async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+                    logging.debug(f"Received FHIR patient search by name response with status {resp.status}")
                     if resp.status == 200:
                         data = await resp.json()
+                        logging.debug(f"FHIR patient search by name returned resourceType: {data.get('resourceType')}")
                         if data.get('resourceType') == 'Bundle' and 'entry' in data:
                             patients = []
                             for entry in data['entry']:
@@ -4430,6 +4444,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                             if patients:
                                 # Log warning about using name search
                                 logging.warning(f"Found {len(patients)} patient(s) by name search for '{formatted_name}', selecting the first one")
+                                logging.info(f"Selected patient with ID {patients[0].get('id')} by name search")
                                 # Return the first patient found
                                 return patients[0]
                             else:
@@ -4447,8 +4462,11 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                 logging.warning("Patient name is empty, skipping name search")
         except Exception as e:
             logging.error(f"FHIR patient search by name error: {e}")
+    else:
+        logging.info("No patient name provided, skipping name search")
     
     # If both searches failed, return None
+    logging.info(f"FHIR patient search completed for CNP {cnp}, no patient found")
     return None
 
 async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region):
