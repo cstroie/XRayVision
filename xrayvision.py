@@ -4852,7 +4852,8 @@ async def update_patient_info_from_fhir(exam):
         
     patient_cnp = exam['patient']['cnp']
     patient_name = exam['patient']['name']
-    if patient_cnp and not exam['patient']['id']:
+    patient_birthdate = exam['patient']['birthdate']
+    if patient_cnp and (not exam['patient']['id'] or not patient_birthdate or patient_birthdate == -1):
         async with aiohttp.ClientSession() as session:
             # Get patient information from FHIR (first by CNP, then by name if CNP fails)
             fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
@@ -4862,6 +4863,25 @@ async def update_patient_info_from_fhir(exam):
                     exam['patient']['id'] = fhir_patient['id']
                     # Update in database
                     db_update_patient_id(patient_cnp, fhir_patient['id'])
+                
+                # Update patient birthdate if not already known
+                if (not patient_birthdate or patient_birthdate == -1) and 'birthDate' in fhir_patient:
+                    try:
+                        birthdate = fhir_patient['birthDate']
+                        # Validate the format (should be YYYY-MM-DD)
+                        if len(birthdate) == 10 and birthdate[4] == '-' and birthdate[7] == '-':
+                            exam['patient']['birthdate'] = birthdate
+                            # Calculate age from birthdate
+                            birth_date = datetime.strptime(birthdate, "%Y-%m-%d")
+                            today = datetime.now()
+                            age = today.year - birth_date.year
+                            if (today.month, today.day) < (birth_date.month, birth_date.day):
+                                age -= 1
+                            exam['patient']['age'] = age
+                            # Update in database
+                            db_update('patients', 'cnp = ?', (patient_cnp,), birthdate=birthdate)
+                    except Exception as e:
+                        logging.error(f"Error parsing birthdate from FHIR for patient {patient_cnp}: {e}")
 
 
 async def prepare_exam_data(exam):
