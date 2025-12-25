@@ -4454,8 +4454,11 @@ async def get_fhir_patient(session, cnp, patient_name=None):
     if patient_name:
         logging.info(f"Proceeding to name search for patient: {patient_name}")
         try:
-            # Use the already formatted name for FHIR search
-            formatted_name = patient_name.strip()
+            # Format patient name as "last_name first_name" for FHIR search if it's in DICOM format
+            if '^' in patient_name:
+                formatted_name = await format_patient_name_for_fhir(patient_name)
+            else:
+                formatted_name = patient_name.strip()
             
             if formatted_name:
                 logging.info(f"Retrying FHIR patient search by name: {formatted_name}")
