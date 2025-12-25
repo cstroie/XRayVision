@@ -1120,35 +1120,69 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
     Retrieves exams with associated patient information, AI reports, and radiologist
     reports. Calculates correctness based on agreement between AI and radiologist
-    predictions.
+    predictions. This function performs complex JOIN operations across multiple tables
+    and supports extensive filtering capabilities for the dashboard interface.
+
+    The function builds dynamic SQL queries based on provided filters and uses
+    parameterized queries to prevent SQL injection. It calculates correctness metrics
+    by comparing AI and radiologist severity scores against the configured threshold.
 
     Args:
-        limit: Maximum number of exams to return (default: PAGE_SIZE)
-        offset: Number of exams to skip for pagination (default: 0)
+        limit (int): Maximum number of exams to return (default: PAGE_SIZE)
+        offset (int): Number of exams to skip for pagination (default: 0)
         **filters: Optional filters for querying exams:
-            - reviewed: Filter by review status (0/1) - reviewed if severity > -1
-            - positive: Filter by AI prediction (0/1)
-            - correct: Filter by correctness status (0/1)
-            - region: Filter by anatomic region (case-insensitive partial
-              match)
-            - status: Filter by processing status (case-insensitive exact
+            - reviewed (int): Filter by review status (0/1) - reviewed if severity > -1
+            - positive (int): Filter by AI prediction (0/1) based on severity threshold
+            - correct (int): Filter by correctness status (0/1) - agreement between AI and radiologist
+            - region (str): Filter by anatomic region (case-insensitive partial match)
+            - status (str or list): Filter by processing status (case-insensitive exact
               match or list of statuses)
-            - search: Filter by patient name, CNP, or UID (case-insensitive
-              partial match for name/CNP, exact for UID)
-            - diagnostic: Filter by radiologist diagnostic summary
-            - radiologist: Filter by radiologist name (case-insensitive exact match)
-            - uid: Filter by exam UID (exact match)
-            - cnp: Filter by patient CNP (exact match)
+            - search (str): Filter by patient name, CNP, patient ID, or UID (case-insensitive
+              partial match for name/CNP/ID, exact for UID)
+            - diagnostic (str): Filter by radiologist diagnostic summary (case-insensitive exact match)
+            - radiologist (str): Filter by radiologist name (case-insensitive exact match)
+            - uid (str): Filter by exam UID (exact match)
+            - cnp (str): Filter by patient CNP (exact match)
+            - severity (str): Filter by radiologist severity with interval notation:
+                - "3-6": Severity between 3 and 6 (inclusive)
+                - "-8": Severity from 0 to 8 (inclusive)
+                - "2-": Severity from 2 to 10 (inclusive)
+                - "5": Exact severity of 5
 
     Returns:
-        tuple: (exams_list, total_count) where exams_list is a list of
-               exam dictionaries containing patient, exam, and report data,
-               and total_count is the total number of exams matching the filters
+        tuple: (exams_list, total_count) where:
+            - exams_list (list): List of exam dictionaries containing:
+                * uid: Exam unique identifier
+                * patient: Patient information (name, cnp, age, birthdate, sex, id)
+                * exam: Exam details (created, date, time, protocol, region, status, type, study, series, id)
+                * report: Report data with AI and radiologist findings, correctness metrics
+            - total_count (int): Total number of exams matching the filters (for pagination)
+
+    Database Schema:
+        This function JOINs four tables:
+        - exams (e): Core exam information with status tracking
+        - patients (p): Patient demographics linked by CNP
+        - ai_reports (ar): AI-generated reports linked by exam UID
+        - rad_reports (rr): Radiologist reports linked by exam UID
+
+    Correctness Calculation:
+        - correct = 1: True positives (both AI and radiologist positive) or 
+                     True negatives (both AI and radiologist negative)
+        - correct = 0: False positives (AI positive, radiologist negative) or
+                     False negatives (AI negative, radiologist positive)
+        - correct = -1: Not reviewed (radiologist severity = -1 or NULL)
+
+    Performance Considerations:
+        - Uses parameterized queries to prevent SQL injection
+        - Leverages database indexes on status, region, cnp, and created columns
+        - Applies LIMIT/OFFSET for efficient pagination
+        - Calculates age dynamically from birthdate for display
     """
     conditions = []
     params = []
 
-    # Update the conditions with proper parameterization
+    # Build dynamic WHERE conditions based on provided filters
+    # Each condition is parameterized to prevent SQL injection
     if 'reviewed' in filters:
         if filters['reviewed'] == 1:
             conditions.append("rr.severity > -1")
@@ -2039,12 +2073,41 @@ async def query_and_retrieve(minutes=60):
     """
     Query and Retrieve new studies from the remote DICOM server.
 
-    This function queries the remote PACS for studies performed within the last 'minutes'
-    and requests them to be sent to our DICOM server. It handles the complexity of
-    time ranges that cross midnight by splitting into two separate queries.
+    This function implements the DICOM Query/Retrieve workflow by:
+    1. Establishing a C-FIND association with the remote PACS
+    2. Querying for CR (Computed Radiography) studies within a time window
+    3. Handling time ranges that cross midnight by splitting into two queries
+    4. Processing each found study by either C-MOVE or C-GET retrieval
+    5. Skipping studies already in the local database
+    6. Properly releasing the DICOM association
+
+    The function uses pynetdicom library for DICOM network operations and
+    handles complex time range calculations to ensure complete study retrieval.
 
     Args:
-        minutes: Number of minutes to look back for new studies (default: 60)
+        minutes (int): Number of minutes to look back for new studies (default: 60)
+        
+    DICOM Workflow:
+        1. C-FIND: Query remote PACS for studies matching criteria
+        2. Study Filtering: Skip studies already in local database
+        3. C-MOVE/C-GET: Request study transfer based on configuration
+        4. Association Management: Proper establishment and release of connections
+
+    Time Range Handling:
+        When the query period crosses midnight (e.g., 23:00-01:00), the function
+        automatically splits the query into two separate time ranges to comply
+        with DICOM time range format limitations:
+        - First query: From start time to 23:59:59
+        - Second query: From 00:00:00 to end time
+
+    Retrieval Methods:
+        - C-MOVE: Server pushes studies to configured AE title
+        - C-GET: Server sends studies over the same association
+
+    Error Handling:
+        - Logs association failures
+        - Continues processing other studies on individual study errors
+        - Properly releases associations even on errors
     """
     ae = AE(ae_title=AE_TITLE)
     ae.requested_contexts = QueryRetrievePresentationContexts
@@ -2248,13 +2311,57 @@ def extract_dicom_metadata(ds):
     Extract relevant information from a DICOM dataset.
 
     Parses patient demographics, exam details, and timestamps from a DICOM dataset.
-    Handles missing or malformed data gracefully with fallback values.
+    Handles missing or malformed data gracefully with fallback values. This function
+    performs several key operations:
+    
+    1. Patient Age Calculation: Computes age from birth date or Romanian CNP
+    2. Timestamp Processing: Extracts and validates study/series timestamps
+    3. Anatomic Region Identification: Maps protocol names to standardized regions
+    4. Gender Normalization: Ensures consistent gender representation
+    5. Data Validation: Handles missing or malformed DICOM fields gracefully
+
+    The function prioritizes data quality and consistency, using multiple fallback
+    mechanisms when primary data sources are unavailable or invalid.
 
     Args:
-        ds: pydicom Dataset object
+        ds (Dataset): pydicom Dataset object containing DICOM file metadata
 
     Returns:
-        dict: Dictionary containing structured exam information
+        dict: Dictionary containing structured exam information with the following keys:
+            - uid (str): SOP Instance UID - unique exam identifier
+            - patient (dict): Patient information including:
+                * name (str): Patient name from DICOM
+                * cnp (str): Patient ID (often Romanian CNP)
+                * age (int): Computed age in years (-1 if unavailable)
+                * birthdate (str): Birth date in YYYY-MM-DD format (None if unavailable)
+                * sex (str): Normalized gender ('M', 'F', or 'O')
+                * county (str, optional): County code from CNP validation
+            - exam (dict): Exam details including:
+                * protocol (str): Imaging protocol name
+                * created (str): Exam timestamp in YYYY-MM-DD HH:MM:SS format
+                * region (str): Identified anatomic region
+                * study (str): Study Instance UID
+                * series (str): Series Instance UID
+                * id (None): Placeholder for service request ID
+
+    Data Extraction Process:
+        1. Birth Date Processing:
+           - Extracts PatientBirthDate and validates format
+           - Calculates age from birth date
+           - Falls back to CNP-based age calculation if birth date invalid
+        2. Timestamp Validation:
+           - Uses SeriesDate/SeriesTime for exam timestamp
+           - Falls back to current time if DICOM timestamps missing/invalid
+        3. Region Identification:
+           - Maps ProtocolName to standardized anatomic regions
+           - Uses configurable region mapping rules
+        4. Gender Normalization:
+           - Validates PatientSex values
+           - Extracts gender from CNP if DICOM field invalid
+        5. Error Handling:
+           - Gracefully handles missing/invalid DICOM fields
+           - Provides sensible default values
+           - Logs extraction errors for debugging
     """
     age = -1
     birthdate = None
@@ -4957,17 +5064,43 @@ async def send_exam_to_openai(exam, max_retries = 3):
     """
     Send an exam's PNG image to the AI API for analysis.
 
-    Processes the exam by identifying region/projection, preparing AI prompts,
-    encoding the image, sending requests with retries, parsing responses,
-    storing results in the database, and sending notifications for positive
-    findings. Implements exponential backoff for retry attempts.
+    This is the core AI processing function that handles the complete workflow:
+    1. Updates patient information from FHIR system
+    2. Prepares exam data (region, projection, gender, age)
+    3. Filters exams by supported regions
+    4. Creates AI prompts with clinical context and prior reports
+    5. Encodes images for AI analysis
+    6. Sends requests with exponential backoff retries
+    7. Parses and validates AI responses
+    8. Stores results in the database
+    9. Sends notifications for positive findings
+    10. Updates dashboard with processing status
+
+    The function implements robust error handling with automatic retries and
+    proper status updates in the database for both success and failure cases.
 
     Args:
-        exam: Dictionary containing exam information and metadata
-        max_retries: Maximum number of retry attempts (default: 3)
+        exam (dict): Dictionary containing exam information and metadata including:
+            - uid: Unique exam identifier
+            - patient: Patient information (name, cnp, age, sex)
+            - exam: Exam details (protocol, created timestamp, study/series UIDs)
+            - report: Previous report data if reprocessing
+        max_retries (int): Maximum number of retry attempts (default: 3)
 
     Returns:
         bool: True if successfully processed, False otherwise
+
+    Processing Flow:
+        1. FHIR Integration: Update patient info from hospital system
+        2. Data Preparation: Extract region, projection, subject description
+        3. Region Filtering: Only process exams from supported anatomic regions
+        4. Prompt Engineering: Create context-rich prompts with clinical info
+        5. Image Encoding: Convert PNG to base64 for AI API transmission
+        6. Retry Logic: Exponential backoff (2s, 4s, 8s delays) on failures
+        7. Response Parsing: Validate and extract AI-generated findings
+        8. Database Storage: Save results with processing timing metrics
+        9. Notification: Alert for positive findings via ntfy.sh
+        10. Dashboard Update: Broadcast processing completion status
     """
     try:
         # Try to get additional patient and exam information from FHIR before processing
