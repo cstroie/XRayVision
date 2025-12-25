@@ -3602,7 +3602,7 @@ async def get_report_handler(request):
                 # If patient ID is not known, search for it in FHIR
                 if not exam['patient']['id']:
                     async with aiohttp.ClientSession() as session:
-                        patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'])
+                        patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'], exam['patient']['name'])
                         if patient_id:
                             exam['patient']['id'] = patient_id
 
