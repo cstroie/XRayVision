@@ -1155,17 +1155,17 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         else:
             conditions.append("(rr.severity = -1 OR rr.severity IS NULL)")
     if 'positive' in filters:
-        conditions.append("ar.positive = ?")
-        params.append(filters['positive'])
+        conditions.append("ar.severity >= ?")
+        params.append(SEVERITY_THRESHOLD if filters['positive'] == 1 else 0)
     if 'correct' in filters:
         if filters['correct'] == 1:
             # Correct predictions (TP or TN)
-            conditions.append("((rr.severity = -1 OR rr.severity IS NULL) OR (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?))")
-            params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
+            conditions.append("((rr.severity = -1 OR rr.severity IS NULL) OR (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?))")
+            params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
         else:
             # Incorrect predictions (FP or FN)
-            conditions.append("((ar.positive = 1 AND rr.severity < ? AND rr.severity > -1) OR (ar.positive = 0 AND rr.severity >= ?))")
-            params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
+            conditions.append("((ar.severity >= ? AND rr.severity < ? AND rr.severity > -1) OR (ar.severity < ? AND rr.severity >= ?))")
+            params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
     if 'region' in filters:
         conditions.append("LOWER(e.region) LIKE ?")
         params.append(f"%{filters['region'].lower()}%")
@@ -1242,11 +1242,11 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         SELECT 
             e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
             p.name, p.cnp, p.id, p.birthdate, p.sex,
-            ar.created, ar.text, ar.positive, ar.updated, ar.confidence, ar.severity, ar.summary, ar.model, ar.latency,
-            rr.text, rr.positive, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
+            ar.created, ar.text, ar.updated, ar.confidence, ar.severity, ar.summary, ar.model, ar.latency,
+            rr.text, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
             CASE 
                 WHEN (rr.severity = -1 OR rr.severity IS NULL) THEN -1
-                WHEN (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?) THEN 1
+                WHEN (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?) THEN 1
                 ELSE 0
             END AS correct,
             CASE
@@ -1261,7 +1261,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         ORDER BY e.created DESC
         LIMIT ? OFFSET ?
     """
-    all_params = [SEVERITY_THRESHOLD, SEVERITY_THRESHOLD] + params + [limit, offset]
+    all_params = [SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD] + params + [limit, offset]
 
     # Get the exams
     exams = []
@@ -1271,8 +1271,8 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             # Unpack row into named variables for better readability
             (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
              patient_name, patient_cnp, patient_id, patient_birthdate, patient_sex,
-             ai_created, ai_text, ai_positive, ai_updated, ai_confidence, ai_severity, ai_summary, ai_model, ai_latency,
-             rad_text, rad_positive, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
+             ai_created, ai_text, ai_updated, ai_confidence, ai_severity, ai_summary, ai_model, ai_latency,
+             rad_text, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
              correct, reviewed) = row
                 
             dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
@@ -1325,7 +1325,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     },
                     'rad': {
                         'text': rad_text,
-                        'positive': bool(rad_positive) if (rad_positive is not None and rad_positive > -1) else False,
+                        'positive': rad_severity is not None and rad_severity >= SEVERITY_THRESHOLD,
                         'severity': rad_severity,
                         'summary': rad_summary,
                         'created': rad_created,
@@ -1380,7 +1380,7 @@ def db_get_previous_reports(patient_cnp, region, months=3):
         AND e.region = ?
         AND ar.updated >= ?
         AND ar.text IS NOT NULL
-        AND ar.positive IS NOT NULL
+        AND ar.severity >= 0
         ORDER BY ar.updated DESC
     """
     params = (patient_cnp, region, cutoff_date_str)
@@ -3172,8 +3172,8 @@ async def radiologist_stats_handler(request):
                 rr.radiologist,
                 COUNT(*) as report_count,
                 AVG(CAST(rr.severity AS FLOAT)) as avg_severity,
-                SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?) THEN 1 ELSE 0 END) as correct_predictions,
-                COUNT(CASE WHEN ar.positive IS NOT NULL THEN 1 END) as ai_compared,
+                SUM(CASE WHEN (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?) THEN 1 ELSE 0 END) as correct_predictions,
+                COUNT(CASE WHEN ar.severity >= 0 THEN 1 END) as ai_compared,
                 GROUP_CONCAT(rr.summary, ', ') as all_diagnostics
             FROM rad_reports rr
             LEFT JOIN exams e ON rr.uid = e.uid
@@ -3182,7 +3182,7 @@ async def radiologist_stats_handler(request):
             GROUP BY rr.radiologist
             ORDER BY report_count DESC
         """
-        rows = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
+        rows = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
         
         radiologist_stats = {}
         if rows:
@@ -3719,7 +3719,7 @@ async def check_report(report_text):
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
                 return {'error': 'Failed to parse AI response', 'response': response_text}
             except ValueError as e:
-                logging.error(f"Invalid AI response format: {e}")
+                logging.error(f"Invalid AI response format: {e} ({response_text})")
                 return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
     except Exception as e:
         logging.error(f"Error processing report check request: {e}")
@@ -3755,7 +3755,7 @@ async def check_ai_report_and_update(uid):
         
         # Check if analysis was successful
         if 'error' in analysis_result:
-            logging.error(f"CHECK prompt failed for exam {uid}: {analysis_result['error']}")
+            logging.error(f"AI check failed for exam {uid}: {analysis_result['error']}")
             return False
             
         # Extract values from analysis result
@@ -3813,14 +3813,14 @@ async def check_rad_report_and_update(uid):
         
         # Check if analysis was successful
         if 'error' in analysis_result:
-            logging.error(f"CHECK prompt failed for exam {uid}: {analysis_result['error']}")
+            logging.error(f"AI check failed for exam {uid}: {analysis_result['error']}")
             return False
             
         # Extract values from analysis result
         try:
             # Validate that all required fields are present
             if 'pathologic' not in analysis_result or 'severity' not in analysis_result or 'summary' not in analysis_result:
-                logging.error(f"CHECK prompt response missing required fields for exam {uid}: {list(analysis_result.keys())}")
+                logging.error(f"AI check response missing required fields for exam {uid}: {list(analysis_result.keys())}")
                 return False
                 
             positive = 1 if analysis_result['pathologic'] == 'yes' else 0
@@ -3924,7 +3924,7 @@ async def detailed_analysis_report(report_text):
                 logging.error(f"Response length: {len(response_text)}")
                 return {'error': 'Failed to parse AI response', 'response': response_text}
             except ValueError as e:
-                logging.error(f"Invalid AI response format: {e}")
+                logging.error(f"Invalid AI response format: {e} ({response_text})")
                 return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
     except Exception as e:
         logging.error(f"Error processing detailed analysis request: {e}")
