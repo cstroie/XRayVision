@@ -4334,13 +4334,14 @@ def determine_patient_gender_description(info):
     return gender
 
 
-async def get_fhir_patient(session, cnp):
+async def get_fhir_patient(session, cnp, patient_name=None):
     """
-    Search for a patient in FHIR system by CNP.
+    Search for a patient in FHIR system by CNP, and if not found, by name.
 
     Args:
         session: aiohttp ClientSession instance
         cnp: Patient CNP
+        patient_name: Patient full name (optional)
 
     Returns:
         dict or None: Patient data from FHIR if successful, None otherwise
@@ -4349,6 +4350,7 @@ async def get_fhir_patient(session, cnp):
         # Use basic authentication
         auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
         
+        # First, try searching by CNP
         url = f"{FHIR_URL}/fhir/Patient"
         params = {'q': cnp}
         
@@ -4386,13 +4388,62 @@ async def get_fhir_patient(session, cnp):
                     issues = data.get('issue', [])
                     error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
                     logging.warning(f"FHIR patient search returned OperationOutcome for CNP {cnp}: {error_details}")
-                    return None
                 else:
                     logging.error(f"FHIR patient search error: unexpected response format for CNP {cnp}")
             else:
-                logging.warning(f"FHIR patient search failed with status {resp.status}")
+                logging.warning(f"FHIR patient search by CNP failed with status {resp.status}")
     except Exception as e:
-        logging.error(f"FHIR patient search error: {e}")
+        logging.error(f"FHIR patient search by CNP error: {e}")
+    
+    # If CNP search failed and patient_name is provided, try searching by name
+    if patient_name:
+        try:
+            # Convert DICOM name format (Last^First^Middle) to space-separated format
+            if '^' in patient_name:
+                name_parts = patient_name.split('^')
+                # Reorder to First Middle Last format for better matching
+                if len(name_parts) >= 2:
+                    formatted_name = ' '.join([part for part in name_parts[1:] + [name_parts[0]] if part])
+                else:
+                    formatted_name = ' '.join([part for part in name_parts if part])
+            else:
+                formatted_name = patient_name.strip()
+            
+            if formatted_name:
+                logging.info(f"Retrying FHIR patient search by name: {formatted_name}")
+                params = {'name': formatted_name}
+                
+                async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if data.get('resourceType') == 'Bundle' and 'entry' in data:
+                            patients = []
+                            for entry in data['entry']:
+                                if 'resource' in entry and entry['resource'].get('resourceType') == 'Patient':
+                                    patients.append(entry['resource'])
+                            
+                            if patients:
+                                # Log warning about using name search
+                                logging.warning(f"Found {len(patients)} patient(s) by name search for '{formatted_name}', selecting the first one")
+                                # Return the first patient found
+                                return patients[0]
+                            else:
+                                logging.info(f"No patients found by name search for '{formatted_name}'")
+                        elif data.get('resourceType') == 'OperationOutcome':
+                            # Handle OperationOutcome responses (typically errors)
+                            issues = data.get('issue', [])
+                            error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                            logging.warning(f"FHIR patient search returned OperationOutcome for name '{formatted_name}': {error_details}")
+                        else:
+                            logging.error(f"FHIR patient search by name error: unexpected response format for name '{formatted_name}'")
+                    else:
+                        logging.warning(f"FHIR patient search by name failed with status {resp.status}")
+            else:
+                logging.warning("Patient name is empty, skipping name search")
+        except Exception as e:
+            logging.error(f"FHIR patient search by name error: {e}")
+    
+    # If both searches failed, return None
     return None
 
 async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region):
@@ -4541,10 +4592,11 @@ async def update_patient_info_from_fhir(exam):
         return
         
     patient_cnp = exam['patient']['cnp']
+    patient_name = exam['patient']['name']
     if patient_cnp and not exam['patient']['id']:
         async with aiohttp.ClientSession() as session:
-            # Get patient information from FHIR
-            fhir_patient = await get_fhir_patient(session, patient_cnp)
+            # Get patient information from FHIR (first by CNP, then by name if CNP fails)
+            fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
             if fhir_patient:
                 # Update patient ID if found
                 if 'id' in fhir_patient:
@@ -5290,18 +5342,19 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     # Notify the queue
     QUEUE_EVENT.set()
 
-async def get_patient_id_from_fhir(session, patient_cnp):
+async def get_patient_id_from_fhir(session, patient_cnp, patient_name=None):
     """
-    Get patient ID from FHIR system by CNP.
+    Get patient ID from FHIR system by CNP, and if not found, by name.
 
     Args:
         session: aiohttp ClientSession instance
         patient_cnp: Patient CNP
+        patient_name: Patient full name (optional)
 
     Returns:
         str or None: Patient ID from FHIR if successful, None otherwise
     """
-    fhir_patient = await get_fhir_patient(session, patient_cnp)
+    fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
     if fhir_patient and 'id' in fhir_patient:
         patient_id = fhir_patient['id']
         # Update patient ID in database
@@ -5328,11 +5381,12 @@ async def process_exams_without_rad_reports(session):
     exams = result['exams']
     
     # If patient ID is not known, search for it in FHIR
+    patient_name = result['patient']['name']
     if not patient_id:
-        patient_id = await get_patient_id_from_fhir(session, patient_cnp)
+        patient_id = await get_patient_id_from_fhir(session, patient_cnp, patient_name)
     # If still no patient ID, log and skip
     if not patient_id:
-        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp}, skipping exams")
+        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp} or name '{patient_name}', skipping exams")
         return
     
     # Process each exam for this patient
