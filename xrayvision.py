@@ -4466,20 +4466,6 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                             # Single patient returned
                             logging.info(f"Found single patient by name '{formatted_name}'")
                             return data
-                        elif data.get('resourceType') == 'Bundle' and 'entry' in data:
-                            patients = []
-                            for entry in data['entry']:
-                                if 'resource' in entry and entry['resource'].get('resourceType') == 'Patient':
-                                    patients.append(entry['resource'])
-                            
-                            if patients:
-                                # Log warning about using name search
-                                logging.warning(f"Found {len(patients)} patient(s) by name search for '{formatted_name}', selecting the first one")
-                                logging.info(f"Selected patient with ID {patients[0].get('id')} by name search")
-                                # Return the first patient found
-                                return patients[0]
-                            else:
-                                logging.info(f"No patients found by name search for '{formatted_name}'")
                         elif data.get('resourceType') == 'OperationOutcome':
                             # Handle OperationOutcome responses (typically errors)
                             issues = data.get('issue', [])
