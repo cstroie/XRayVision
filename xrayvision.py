@@ -4454,7 +4454,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
             
             if formatted_name:
                 logging.info(f"Retrying FHIR patient search by name: {formatted_name}")
-                params = {'name': formatted_name}
+                params = {'q': formatted_name}
                 
                 logging.debug(f"Sending FHIR patient search by name request to {url} with params {params}")
                 async with session.get(url, auth=auth, params=params, timeout=30) as resp:
