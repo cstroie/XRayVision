@@ -3603,7 +3603,7 @@ async def get_report_handler(request):
                 if not exam['patient']['id']:
                     async with aiohttp.ClientSession() as session:
                         # Format patient name as "last_name first_name" for FHIR search
-                        formatted_name = format_patient_name_for_fhir(exam['patient']['name'])
+                        formatted_name = await format_patient_name_for_fhir(exam['patient']['name'])
                         patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'], formatted_name)
                         if patient_id:
                             exam['patient']['id'] = patient_id
