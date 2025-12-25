@@ -2950,6 +2950,7 @@ async def insights_handler(request):
     - Temporal patterns
     - Re-queue analysis
     - Radiologist consistency metrics
+    - AI vs Radiologist severity differences
 
     Args:
         request: aiohttp request object
@@ -3017,6 +3018,27 @@ async def insights_handler(request):
             for row in rows:
                 severity, count = row
                 insights['ai_severity_distribution'][str(severity)] = count
+        
+        # 2c. Severity differences between AI and radiologist reports
+        query = """
+            SELECT 
+                CAST(ar.severity AS INTEGER) - CAST(rr.severity AS INTEGER) as severity_diff,
+                COUNT(*) as count
+            FROM exams e
+            JOIN ai_reports ar ON e.uid = ar.uid
+            JOIN rad_reports rr ON e.uid = rr.uid
+            WHERE e.status = 'done'
+            AND ar.severity >= 0
+            AND rr.severity >= 0
+            GROUP BY severity_diff
+            ORDER BY severity_diff
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+        insights['severity_differences'] = {}
+        if rows:
+            for row in rows:
+                diff, count = row
+                insights['severity_differences'][str(diff)] = count
         
         # 3. Patient demographics insights (positive findings by age group)
         query = """

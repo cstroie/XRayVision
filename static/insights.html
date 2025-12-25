@@ -82,6 +82,16 @@
             <section class="charts-grid">
                 <article class="chart-container">
                     <h3>
+                        AI vs Radiologist Severity Differences
+                        <button class="secondary outline" onclick="downloadChart('severityDiffChart')">Download</button>
+                    </h3>
+                    <div style="position: relative; height: 400px;">
+                        <canvas id="severityDiffChart"></canvas>
+                    </div>
+                </article>
+
+                <article class="chart-container">
+                    <h3>
                         Positive Findings by Age Group
                         <button class="secondary outline" onclick="downloadChart('ageChart')">Download</button>
                     </h3>
@@ -89,7 +99,9 @@
                         <canvas id="ageChart"></canvas>
                     </div>
                 </article>
+            </section>
 
+            <section class="charts-grid">
                 <article class="chart-container">
                     <h3>
                         Exam Volume by Hour of Day
@@ -138,7 +150,7 @@
 
     <script>
         // Chart instances
-        let processingTimeChart, severityChart, ageChart, hourlyChart;
+        let processingTimeChart, severityChart, severityDiffChart, ageChart, hourlyChart;
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
@@ -314,6 +326,62 @@
                             title: {
                                 display: true,
                                 text: 'Number of Reports'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Chart: Severity differences between AI and radiologist
+            const diffs = Object.keys(data.severity_differences || {}).map(Number).sort((a, b) => a - b);
+            const diffCounts = diffs.map(diff => data.severity_differences[diff]);
+            
+            if (severityDiffChart) severityDiffChart.destroy();
+            severityDiffChart = new Chart(document.getElementById("severityDiffChart"), {
+                type: 'bar',
+                data: {
+                    labels: diffs,
+                    datasets: [{
+                        label: 'Number of Exams',
+                        data: diffCounts,
+                        backgroundColor: diffs.map(diff => diff > 0 ? '#ef4444' : (diff < 0 ? '#22c55e' : '#94a3b8')),
+                        borderColor: diffs.map(diff => diff > 0 ? '#ef4444' : (diff < 0 ? '#22c55e' : '#94a3b8')),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            title: {
+                                display: true,
+                                text: 'Severity Difference (AI - Radiologist)'
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            title: {
+                                display: true,
+                                text: 'Number of Exams'
                             }
                         }
                     }
