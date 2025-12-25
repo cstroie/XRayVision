@@ -3818,6 +3818,11 @@ async def check_rad_report_and_update(uid):
             
         # Extract values from analysis result
         try:
+            # Validate that all required fields are present
+            if 'pathologic' not in analysis_result or 'severity' not in analysis_result or 'summary' not in analysis_result:
+                logging.error(f"CHECK prompt response missing required fields for exam {uid}: {list(analysis_result.keys())}")
+                return False
+                
             positive = 1 if analysis_result['pathologic'] == 'yes' else 0
             severity = analysis_result['severity']
             summary = analysis_result['summary'].lower()
