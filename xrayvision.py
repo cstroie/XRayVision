@@ -4388,6 +4388,11 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                     issues = data.get('issue', [])
                     error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
                     logging.warning(f"FHIR patient search returned OperationOutcome for CNP {cnp}: {error_details}")
+                    # Check if all issues are just informational - if so, we should still try name search
+                    all_info = all(issue.get('severity', '').lower() == 'information' for issue in issues)
+                    if not all_info:
+                        # If there are non-informational issues, don't proceed to name search
+                        return None
                 else:
                     logging.error(f"FHIR patient search error: unexpected response format for CNP {cnp}")
             else:
@@ -4395,7 +4400,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
     except Exception as e:
         logging.error(f"FHIR patient search by CNP error: {e}")
     
-    # If CNP search failed and patient_name is provided, try searching by name
+    # If CNP search failed or returned only informational messages and patient_name is provided, try searching by name
     if patient_name:
         try:
             # Convert DICOM name format (Last^First^Middle) to space-separated format
