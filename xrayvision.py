@@ -4360,16 +4360,10 @@ async def format_patient_name_for_fhir(dicom_name):
         # Extract last name (first part) and first name (second part)
         last_name = name_parts[0].strip() if len(name_parts) > 0 else ""
         first_name = name_parts[1].strip() if len(name_parts) > 1 else ""
+        middle_name = name_parts[2].strip() if len(name_parts) > 2 else ""
         
-        # Format as "last_name first_name" if both parts exist
-        if last_name and first_name:
-            return f"{last_name} {first_name}"
-        elif last_name:
-            return last_name
-        elif first_name:
-            return first_name
-        else:
-            return ""
+        # Format as "last_name first_name middle_name" if the parts exist
+        return f"{last_name} {first_name} {middle_name}".strip()
     else:
         return dicom_name.strip()
 
@@ -4474,6 +4468,10 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                             # Single patient returned
                             logging.info(f"Found single patient by name '{formatted_name}'")
                             return data
+                        elif data.get('resourceType') == 'Bundle' and 'entry' in data:
+                            # Multiple patients returned in a bundle
+                            # Log warning about multiple patients
+                            logging.warning(f"Multiple patients found for name {formatted_name}, selecting no one")
                         elif data.get('resourceType') == 'OperationOutcome':
                             # Handle OperationOutcome responses (typically errors)
                             issues = data.get('issue', [])
@@ -5331,34 +5329,30 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     else:
         # Find service request in FHIR
         srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
-        if not srv_req:
-            if not rad_report:
-                # Insert a negative service request ID into our database to mark as not found
-                db_insert('rad_reports', uid=exam_uid, id=-1)
-                logging.info(f"Service request missing for exam {exam_uid}")
-            # Return if no service request found
-            return
-        # Extract justification from supportingInfo if available
-        justification = ''
-        try:
-            if 'supportingInfo' in srv_req and len(srv_req['supportingInfo']) > 0:
-                supporting_info = srv_req['supportingInfo'][0]
-                if 'display' in supporting_info:
-                    justification = supporting_info['display']
-        except Exception as e:
-            logging.debug(f"Could not extract justification from supportingInfo: {e}")
-        # Insert the service request ID into our database
-        db_insert('rad_reports',
-                uid=exam_uid,
-                id=srv_req['id'],
-                type=exam_type,
-                justification=justification)
-        logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid}")
-    
-    # Check if srv_req is valid before accessing its ID
+
     if not srv_req or 'id' not in srv_req:
-        logging.warning(f"No valid service request found for exam {exam_uid}")
+        if not rad_report:
+            # Insert a negative service request ID into our database to mark as not found
+            db_insert('rad_reports', uid=exam_uid, id=-1)
+            logging.info(f"Service request missing for exam {exam_uid}")
+        # Return if no service request found
         return
+    # Extract justification from supportingInfo if available
+    justification = ''
+    try:
+        if 'supportingInfo' in srv_req and len(srv_req['supportingInfo']) > 0:
+            supporting_info = srv_req['supportingInfo'][0]
+            if 'display' in supporting_info:
+                justification = supporting_info['display']
+    except Exception as e:
+        logging.debug(f"Could not extract justification from supportingInfo: {e}")
+    # Insert the service request ID into our database
+    db_insert('rad_reports',
+            uid=exam_uid,
+            id=srv_req['id'],
+            type=exam_type,
+            justification=justification)
+    logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid}")
     
     # Get diagnostic report
     report = await get_fhir_diagnosticreport(session, srv_req['id'])
