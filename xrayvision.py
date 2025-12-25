@@ -4719,10 +4719,11 @@ def create_ai_prompt(exam, region, question, subject, anatomy):
     if exam['report']['rad'].get('justification'):
         prompt += f"\n\nCLINICAL INFORMATION: {exam['report']['rad']['justification']}"
 
-    # Append previous reports if any exist
+    # Append previous reports if any exist (limit to 3 most recent)
     if previous_reports:
         prompt += "\n\nPRIOR STUDIES:"
-        for i, (report, date) in enumerate(previous_reports, 1):
+        # Limit to at most 3 previous reports
+        for i, (report, date) in enumerate(previous_reports[:3], 1):
             prompt += f"\n\n[{date}] {report}"
         prompt += "\n\nCompare to prior studies. Note any new, stable, resolved, or progressive findings with dates."
     prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question. Output JSON only."
