@@ -2900,7 +2900,7 @@ async def diagnostics_stats_handler(request):
             GROUP BY rr.summary
             ORDER BY report_count DESC
         """
-        rows = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
+        rows = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
         
         diagnostic_stats = {}
         if rows:
