@@ -1313,10 +1313,10 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                 'report': {
                     'ai': {
                         'text': ai_text,
-                        'short': ai_positive and 'yes' or 'no' if ai_positive is not None and ai_positive > -1 else 'no',
+                        'short': 'yes' if ai_severity is not None and ai_severity >= SEVERITY_THRESHOLD else 'no',
                         'created': ai_created,
                         'updated': ai_updated,
-                        'positive': bool(ai_positive) if ai_positive is not None and ai_positive > -1 else False,
+                        'positive': ai_severity is not None and ai_severity >= SEVERITY_THRESHOLD,
                         'confidence': ai_confidence,
                         'severity': ai_severity,
                         'summary': ai_summary,
@@ -1471,17 +1471,17 @@ async def db_get_stats():
     # Calculate correct (TP + TN) and wrong (FP + FN) predictions
     query = """
         SELECT
-            SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS tpos,
-            SUM(CASE WHEN (ar.positive = 0 AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS tneg,
-            SUM(CASE WHEN (ar.positive = 1 AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS fpos,
-            SUM(CASE WHEN (ar.positive = 0 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS fneg
+            SUM(CASE WHEN (ar.severity >= ? AND rr.severity >= ?) THEN 1 ELSE 0 END) AS tpos,
+            SUM(CASE WHEN (ar.severity < ? AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS tneg,
+            SUM(CASE WHEN (ar.severity >= ? AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS fpos,
+            SUM(CASE WHEN (ar.severity < ? AND rr.severity >= ?) THEN 1 ELSE 0 END) AS fneg
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done'
-          AND ar.positive > -1;
+          AND ar.severity IS NOT NULL;
     """
-    metrics_row = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='one')
+    metrics_row = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='one')
     if metrics_row:
         (tpos, tneg, fpos, fneg) = metrics_row
         tpos = tpos or 0
@@ -1535,19 +1535,19 @@ async def db_get_stats():
         SELECT e.region,
                 COUNT(*) AS total,
                 SUM(CASE WHEN rr.severity > -1 THEN 1 ELSE 0 END) AS reviewed,
-                SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) AS positive,
-                SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS tpos,
-                SUM(CASE WHEN (ar.positive = 0 AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS tneg,
-                SUM(CASE WHEN (ar.positive = 1 AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS fpos,
-                SUM(CASE WHEN (ar.positive = 0 AND rr.severity >= ?) THEN 1 ELSE 0 END) AS fneg
+                SUM(CASE WHEN ar.severity >= ? THEN 1 ELSE 0 END) AS positive,
+                SUM(CASE WHEN (ar.severity >= ? AND rr.severity >= ?) THEN 1 ELSE 0 END) AS tpos,
+                SUM(CASE WHEN (ar.severity < ? AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS tneg,
+                SUM(CASE WHEN (ar.severity >= ? AND rr.severity < ? AND rr.severity > -1) THEN 1 ELSE 0 END) AS fpos,
+                SUM(CASE WHEN (ar.severity < ? AND rr.severity >= ?) THEN 1 ELSE 0 END) AS fneg
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
         WHERE e.status LIKE 'done'
-          AND ar.positive > -1
+          AND ar.severity IS NOT NULL
         GROUP BY e.region
     """
-    region_data = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
+    region_data = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='all')
     if region_data:
         for row in region_data:
             (region, total, reviewed, positive, tpos, tneg, fpos, fneg) = row
@@ -1595,7 +1595,7 @@ async def db_get_stats():
         SELECT DATE(e.created) as date,
                e.region,
                COUNT(*) as total,
-               SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+               SUM(CASE WHEN ar.severity >= ? THEN 1 ELSE 0 END) as positive
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         WHERE e.status LIKE 'done'
@@ -1603,7 +1603,7 @@ async def db_get_stats():
         GROUP BY DATE(e.created), e.region
         ORDER BY date
     """
-    trends_data = db_execute_query(query, fetch_mode='all')
+    trends_data = db_execute_query(query, (SEVERITY_THRESHOLD,), fetch_mode='all')
     if trends_data:
         # Process trends data into a structured format
         for row in trends_data:
@@ -1621,7 +1621,7 @@ async def db_get_stats():
         SELECT strftime('%Y-%m', e.created) as month,
                e.region,
                COUNT(*) as total,
-               SUM(CASE WHEN ar.positive = 1 THEN 1 ELSE 0 END) as positive
+               SUM(CASE WHEN ar.severity >= ? THEN 1 ELSE 0 END) as positive
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         WHERE e.status LIKE 'done'
@@ -1629,7 +1629,7 @@ async def db_get_stats():
         GROUP BY strftime('%Y-%m', e.created), e.region
         ORDER BY month
     """
-    monthly_trends_data = db_execute_query(query, fetch_mode='all')
+    monthly_trends_data = db_execute_query(query, (SEVERITY_THRESHOLD,), fetch_mode='all')
     if monthly_trends_data:
         # Process monthly trends data into a structured format
         for row in monthly_trends_data:
@@ -2888,8 +2888,8 @@ async def diagnostics_stats_handler(request):
                 rr.summary,
                 COUNT(*) as report_count,
                 AVG(CAST(rr.severity AS FLOAT)) as avg_severity,
-                SUM(CASE WHEN (ar.positive = 1 AND rr.severity >= ?) OR (ar.positive = 0 AND rr.severity < ?) THEN 1 ELSE 0 END) as correct_predictions,
-                COUNT(CASE WHEN ar.positive IS NOT NULL THEN 1 END) as ai_compared,
+                SUM(CASE WHEN (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?) THEN 1 ELSE 0 END) as correct_predictions,
+                COUNT(CASE WHEN ar.severity IS NOT NULL THEN 1 END) as ai_compared,
                 GROUP_CONCAT(e.region, ', ') as regions,
                 MIN(e.created) as first_seen,
                 MAX(e.created) as last_seen
