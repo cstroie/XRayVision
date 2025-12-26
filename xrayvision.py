@@ -3909,23 +3909,31 @@ async def check_report(report_text):
             try:
                 parsed_response = json.loads(response_text)
                 logging.debug(f"AI responded: {parsed_response}")
-                
+                    
+                # Handle case where AI returns an array instead of single object
+                if isinstance(parsed_response, list):
+                    if len(parsed_response) == 0:
+                        raise ValueError("Empty array response from AI")
+                    # Take the first valid entry from the array
+                    parsed_response = parsed_response[0]
+                    logging.debug(f"Extracted first entry from array: {parsed_response}")
+                    
                 # Validate required fields
                 if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
                     raise ValueError("Missing required fields in AI response")
-                
+                    
                 # Validate pathologic field
                 if parsed_response["pathologic"] not in ["yes", "no"]:
                     raise ValueError("Invalid pathologic value in AI response")
-                
+                    
                 # Validate severity field
                 if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
                     raise ValueError("Invalid severity value in AI response")
-                
+                    
                 # Validate summary field
                 if not isinstance(parsed_response["summary"], str):
                     raise ValueError("Invalid summary value in AI response")
-                
+                    
                 logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
                 return parsed_response
             except json.JSONDecodeError as e:
@@ -4130,6 +4138,16 @@ async def detailed_analysis_report(report_text):
                 parsed_response = json.loads(response_text)
                 logging.debug(f"AI detailed analysis completed")
                 logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
+                    
+                # Handle case where AI returns an array instead of single object
+                if isinstance(parsed_response, list):
+                    if len(parsed_response) == 0:
+                        raise ValueError("Empty array response from AI")
+                    # Take the first valid entry from the array
+                    parsed_response = parsed_response[0]
+                    logging.debug(f"Extracted first entry from array: {parsed_response}")
+                    logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
+                    
                 return parsed_response
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
