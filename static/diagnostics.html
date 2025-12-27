@@ -272,13 +272,22 @@
             });
             
             // Chart: AI Validation Accuracy
+            // Sort data by accuracy (descending) for the accuracy chart
+            const accuracyData = topDiagnostics.map((d, i) => ({
+                diagnostic: d,
+                accuracy: topAccuracies[i]
+            })).sort((a, b) => b.accuracy - a.accuracy);
+            
+            const sortedAccuracyLabels = accuracyData.map(item => item.diagnostic);
+            const sortedAccuracies = accuracyData.map(item => item.accuracy);
+            
             accuracyChart = new Chart(document.getElementById("accuracyChart"), {
                 type: 'bar',
                 data: {
-                    labels: topDiagnostics,
+                    labels: sortedAccuracyLabels,
                     datasets: [{
                         label: 'AI Validation Accuracy (%)',
-                        data: topAccuracies,
+                        data: sortedAccuracies,
                         backgroundColor: '#2dd4bf',
                         borderColor: '#2dd4bf',
                         borderWidth: 1
