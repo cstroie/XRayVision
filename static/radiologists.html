@@ -330,22 +330,22 @@
                             intersect: false,
                             callbacks: {
                                 label: function(context) {
-                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                    return context.dataset.label + ': ' + context.parsed.x + '%';
                                 }
                             }
                         }
                     },
                     scales: {
                         x: {
-                            grid: {
-                                display: false
-                            }
-                        },
-                        y: {
                             beginAtZero: true,
                             max: 100,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
                             }
                         }
                     },
