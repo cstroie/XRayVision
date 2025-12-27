@@ -3155,6 +3155,7 @@ async def db_get_age_distribution_insights(severity_threshold):
         JOIN rad_reports rr ON e.uid = rr.uid
         WHERE p.birthdate IS NOT NULL
         GROUP BY age_group
+        HAVING age_group != 'Unknown'
         ORDER BY 
             CASE age_group
                 WHEN '0-2' THEN 1
