@@ -362,17 +362,30 @@
                     }
                 }
                 
-                // Create a color map for diagnostics
+                // Create a color map for diagnostics with unique colors
                 const diagnosticColors = [
                     '#0ea5e9', '#2dd4bf', '#f59e0b', '#ef4444', '#8b5cf6', 
                     '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#10b981',
-                    '#06b6d4', '#8b5cf6', '#f472b6', '#60a5fa', '#34d399'
+                    '#06b6d4', '#8b5cf6', '#f472b6', '#60a5fa', '#34d399',
+                    '#a855f7', '#06b6d4', '#f97316', '#8b5cf6', '#ec4899',
+                    '#14b8a6', '#f59e0b', '#ef4444', '#2dd4bf', '#0ea5e9',
+                    '#6366f1', '#10b981', '#f472b6', '#60a5fa', '#34d399'
                 ];
+                
+                // Function to generate a unique color for each diagnostic
+                function generateUniqueColor(index) {
+                    if (index < diagnosticColors.length) {
+                        return diagnosticColors[index];
+                    }
+                    // Generate a random color if we run out of predefined colors
+                    const hue = (index * 137.508) % 360; // Use golden angle to spread colors
+                    return `hsl(${hue}, 70%, 60%)`;
+                }
                 
                 const colorMap = {};
                 let colorIndex = 0;
                 Array.from(allDiagnostics).forEach(diagnostic => {
-                    colorMap[diagnostic] = diagnosticColors[colorIndex % diagnosticColors.length];
+                    colorMap[diagnostic] = generateUniqueColor(colorIndex);
                     colorIndex++;
                 });
                 
