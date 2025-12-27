@@ -294,13 +294,22 @@
             });
             
             // Chart: AI Validation Accuracy
+            // Sort data by accuracy (descending) for the accuracy chart
+            const accuracyData = radiologists.map((r, i) => ({
+                name: isAdmin ? r : extractInitials(r),
+                accuracy: accuracies[i]
+            })).sort((a, b) => b.accuracy - a.accuracy);
+            
+            const sortedAccuracyNames = accuracyData.map(item => item.name);
+            const sortedAccuracies = accuracyData.map(item => item.accuracy);
+            
             accuracyChart = new Chart(document.getElementById("accuracyChart"), {
                 type: 'bar',
                 data: {
-                    labels: displayNames,
+                    labels: sortedAccuracyNames,
                     datasets: [{
                         label: 'AI Validation Accuracy (%)',
-                        data: accuracies,
+                        data: sortedAccuracies,
                         backgroundColor: '#2dd4bf',
                         borderColor: '#2dd4bf',
                         borderWidth: 1
