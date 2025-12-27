@@ -601,7 +601,7 @@ def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') ->
             return handle_error(e, "database query execution", None, raise_on_error=False)
 
 
-def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 3) -> Optional[int]:
+def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 5) -> Optional[int]:
     """Execute a database query with retry logic.
 
     Executes a database query with exponential backoff retry logic in case
