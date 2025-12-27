@@ -384,17 +384,30 @@
                     }
                 }
                 
-                // Create a color map for radiologists
+                // Create a color map for radiologists with unique colors
                 const radiologistColors = [
                     '#0ea5e9', '#2dd4bf', '#f59e0b', '#ef4444', '#8b5cf6', 
                     '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#10b981',
-                    '#06b6d4', '#8b5cf6', '#f472b6', '#60a5fa', '#34d399'
+                    '#06b6d4', '#8b5cf6', '#f472b6', '#60a5fa', '#34d399',
+                    '#a855f7', '#06b6d4', '#f97316', '#8b5cf6', '#ec4899',
+                    '#14b8a6', '#f59e0b', '#ef4444', '#2dd4bf', '#0ea5e9',
+                    '#6366f1', '#10b981', '#f472b6', '#60a5fa', '#34d399'
                 ];
+                
+                // Function to generate a unique color for each radiologist
+                function generateUniqueColor(index) {
+                    if (index < radiologistColors.length) {
+                        return radiologistColors[index];
+                    }
+                    // Generate a random color if we run out of predefined colors
+                    const hue = (index * 137.508) % 360; // Use golden angle to spread colors
+                    return `hsl(${hue}, 70%, 60%)`;
+                }
                 
                 const colorMap = {};
                 let colorIndex = 0;
                 Array.from(allRadiologists).forEach(radiologist => {
-                    colorMap[radiologist] = radiologistColors[colorIndex % radiologistColors.length];
+                    colorMap[radiologist] = generateUniqueColor(colorIndex);
                     colorIndex++;
                 });
                 
