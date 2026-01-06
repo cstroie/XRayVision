@@ -5630,15 +5630,8 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
                 justification = reason['display']
     except Exception as e:
         logging.debug(f"Could not extract justification from supportingInfo or reason: {e}")
-    # Insert the service request ID into our database
-    db_insert('rad_reports',
-            uid=exam_uid,
-            id=srv_req['id'],
-            type=exam_type,
-            justification=justification)
-    logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid}")
     
-    # Get diagnostic report
+    # Get diagnostic report first
     report = await get_fhir_diagnosticreport(session, srv_req['id'])
     if not report or 'presentedForm' not in report or not report['presentedForm']:
         logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
@@ -5652,17 +5645,20 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     # Log the retrieved report
     logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
     
-    # Update the radiologist report in our database
-    db_update('rad_reports', 'uid = ?', (exam_uid,),
-              text=report_text,
-              radiologist=radiologist,
-              positive=-1,
-              severity=-1,
-              summary='',
-              type=exam_type,
-              justification=justification,
-              model=MODEL_NAME,
-              latency=-1)
+    # Insert or update the radiologist report in our database with all fields
+    db_insert('rad_reports',
+            uid=exam_uid,
+            id=srv_req['id'],
+            text=report_text,
+            radiologist=radiologist,
+            positive=-1,
+            severity=-1,
+            summary='',
+            type=exam_type,
+            justification=justification,
+            model=MODEL_NAME,
+            latency=-1)
+    logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid} with justification: {justification}")
 
     # Set the exam status to 'check' for LLM processing in queue
     db_set_status(exam_uid, "check")
