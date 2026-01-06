@@ -5660,6 +5660,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
               severity=-1,
               summary='',
               type=exam_type,
+              justification=justification,
               model=MODEL_NAME,
               latency=-1)
 
