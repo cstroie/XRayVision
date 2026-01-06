@@ -5623,8 +5623,13 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
             supporting_info = srv_req['supportingInfo'][0]
             if 'display' in supporting_info:
                 justification = supporting_info['display']
+        # Fallback to reason array if supportingInfo is empty
+        elif 'reason' in srv_req and len(srv_req['reason']) > 0:
+            reason = srv_req['reason'][0]
+            if 'display' in reason:
+                justification = reason['display']
     except Exception as e:
-        logging.debug(f"Could not extract justification from supportingInfo: {e}")
+        logging.debug(f"Could not extract justification from supportingInfo or reason: {e}")
     # Insert the service request ID into our database
     db_insert('rad_reports',
             uid=exam_uid,
