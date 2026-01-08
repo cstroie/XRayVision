@@ -304,8 +304,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     # Target size for MedGemma
                     target_size = (896, 896)
                 
-                    # Resize while maintaining aspect ratio using thumbnail
-                    # This preserves the aspect ratio and fits within the target size
+                    # Resize while maintaining aspect ratio by scaling to fill
+                    # This preserves the aspect ratio but scales to fill the target size
                     img.thumbnail(target_size, Image.Resampling.LANCZOS)
                 
                     # Create a new image with target size and paste the resized image
