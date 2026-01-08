@@ -115,10 +115,13 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         if os.path.exists(source_db):
             logging.info(f"Database not found at {db_path}, copying from {source_db}")
             try:
-                # Use shutil.copy2 for secure copying with metadata preservation
-                shutil.copy2(source_db, db_path)
+                # Use SQLite backup API for secure copying with proper transaction handling
+                with sqlite3.connect(source_db) as source_conn:
+                    backup_conn = sqlite3.connect(db_path)
+                    source_conn.backup(backup_conn)
+                    backup_conn.close()
                 logging.info(f"Successfully copied database to {db_path}")
-            except (IOError, OSError) as e:
+            except (IOError, OSError, sqlite3.Error) as e:
                 logging.error(f"Failed to copy database from {source_db} to {db_path}: {e}")
                 raise FileNotFoundError(f"Could not create database at {db_path}: {e}")
         else:
