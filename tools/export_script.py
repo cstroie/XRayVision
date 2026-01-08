@@ -51,7 +51,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
     SELECT 
         e.uid as xray_id,
         e.uid as image_path,  -- Use UID as image path since images are stored as {uid}.png
-        ar.text as report_text,
+        rr.text as report_text,
         CASE 
             WHEN p.birthdate IS NOT NULL THEN 
                 CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER)
@@ -62,7 +62,6 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
         e.created as image_date
     FROM exams e
     INNER JOIN patients p ON e.cnp = p.cnp
-    LEFT JOIN ai_reports ar ON e.uid = ar.uid
     LEFT JOIN rad_reports rr ON e.uid = rr.uid
     WHERE e.type = 'CR'  -- Computed Radiography
     AND e.region = 'chest'  -- Chest X-rays only
@@ -72,7 +71,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
         AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years
         AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0
     )
-    AND ar.text IS NOT NULL  -- Only exams with AI reports
+    AND rr.text IS NOT NULL  -- Only exams with radiologist reports
     ORDER BY e.created
     """
     
