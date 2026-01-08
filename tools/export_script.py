@@ -140,8 +140,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
         }
         
         # Split into train/val/test (80/10/10)
-        # Use modulo for reproducible splitting
-        split_val = xray_id % 10
+        # Use hash of the string UID for reproducible splitting
+        split_val = hash(xray_id) % 10
         if split_val < 8:
             train_data.append(entry)
         elif split_val == 8:
