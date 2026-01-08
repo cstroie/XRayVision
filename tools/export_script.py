@@ -172,7 +172,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
     }
     
     with open(output_path / "dataset_stats.json", 'w') as f:
-        json.dumps(stats_data, f, indent=2)
+        json.dump(stats_data, f, indent=2)
     
     print("\n=== Export Summary ===")
     print(f"Total records: {len(records)}")
