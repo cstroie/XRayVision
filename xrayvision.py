@@ -6184,14 +6184,14 @@ async def main():
     # Print some data
     logging.info(f"Python SQLite version: {sqlite3.version}")
     logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
-    
+
     # Reset any exams stuck in 'processing' status back to 'queued'
     reset_count = db_update('exams', "status = ?", ('processing',), status='queued')
     if reset_count and reset_count > 0:
         logging.info(f"Reset {reset_count} exams from 'processing' to 'queued' status")
         # Signal the queue to process these reset exams
         QUEUE_EVENT.set()
-    
+
     # Load exams
     exams, total = db_get_exams(status = 'done')
     logging.info(f"Loaded {len(exams)} exams from a total of {total}.")
