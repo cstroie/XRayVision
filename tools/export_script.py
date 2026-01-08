@@ -173,15 +173,13 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     FROM exams e
     INNER JOIN patients p ON e.cnp = p.cnp
     INNER JOIN rad_reports rr ON e.uid = rr.uid
-    WHERE e.status = 'done'  -- Only processed exams
-    -- AND e.type = 'CR'  -- Computed Radiography
-    AND (
-        p.birthdate IS NOT NULL 
-        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
-        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
-    )
-    AND rr.text IS NOT NULL  -- Only exams with radiologist reports
-    AND TRIM(rr.text) != ''  -- Ensure report text is not empty after trimming whitespace
+    WHERE e.status = 'done'
+    AND p.birthdate IS NOT NULL
+    AND e.type = 'CR'
+    -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
+    -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
+    AND rr.text IS NOT NULL
+    AND TRIM(rr.text) != ''
     """
     
     # Add region filter if specified
