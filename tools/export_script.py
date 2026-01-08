@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # XRayVision - Async DICOM processor with AI and WebSocket dashboard.
-# Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
+# Copyright (C) 2026 Costin Stroie <costinstroie@eridu.eu.org>
 # 
 # Export pediatric chest X-ray data from database for MedGemma fine-tuning
 # Run this script locally on your machine with database access
@@ -56,7 +56,7 @@ def calculate_age_group(age_days):
         return "adolescent"
 
 
-def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_path="./xrayvision.db", images_source_dir="./images"):
+def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_path="./export/xrayvision.db", images_source_dir="./images"):
     """
     Export pediatric chest X-ray data from XRayVision database for MedGemma fine-tuning.
     
@@ -74,7 +74,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     Args:
         output_dir (str): Directory to save exported data (default: "./export/pediatric_xray_dataset")
         limit (int, optional): Maximum number of records to export (for testing/debugging)
-        db_path (str): Path to XRayVision SQLite database file (default: "./xrayvision.db")
+        db_path (str): Path to XRayVision SQLite database file (default: "./export/xrayvision.db")
         images_source_dir (str): Directory containing source PNG image files (default: "./images")
         
     Returns:
