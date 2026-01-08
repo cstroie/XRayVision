@@ -176,6 +176,24 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         total_with_reports = cursor.fetchone()[0]
         logging.info(f"Total chest CR exams with radiologist reports: {total_with_reports}")
         
+        # Debug: Check what regions are actually in the database
+        region_query = "SELECT DISTINCT region FROM exams WHERE type = 'CR' AND status = 'done' ORDER BY region"
+        cursor.execute(region_query)
+        regions = cursor.fetchall()
+        logging.info(f"Available regions in database: {[r[0] for r in regions]}")
+        
+        # Debug: Check what types are actually in the database
+        type_query = "SELECT DISTINCT type FROM exams WHERE status = 'done' ORDER BY type"
+        cursor.execute(type_query)
+        types = cursor.fetchall()
+        logging.info(f"Available types in database: {[t[0] for t in types]}")
+        
+        # Debug: Check what statuses are actually in the database
+        status_query = "SELECT DISTINCT status FROM exams ORDER BY status"
+        cursor.execute(status_query)
+        statuses = cursor.fetchall()
+        logging.info(f"Available statuses in database: {[s[0] for s in statuses]}")
+        
         cursor.execute(query)
         records = cursor.fetchall()
         logging.info(f"Database query completed, found {len(records)} records")
