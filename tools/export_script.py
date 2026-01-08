@@ -131,8 +131,14 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         else:
             raise FileNotFoundError(f"Database file not found at {db_path} and source {source_db} does not exist")
     
-    # Create directory structure
-    output_path = Path(output_dir)
+    # Create directory structure with region-specific naming
+    if region:
+        # Include region name in output directory
+        region_safe = region.replace(" ", "_").lower()
+        output_path = Path(f"{output_dir}_{region_safe}")
+    else:
+        output_path = Path(output_dir)
+    
     images_dir = output_path / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
     
