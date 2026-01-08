@@ -161,10 +161,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     SELECT
         e.uid as xray_id,
         e.uid as image_path,  -- Use UID as image path since images are stored as {uid}.png
-        CASE
-            WHEN rr.text_en IS NOT NULL AND TRIM(rr.text_en) != '' THEN rr.text_en
-            ELSE rr.text
-        END as report_text,
+        rr.text_en as report_text,
         CASE
             WHEN p.birthdate IS NOT NULL THEN
                 CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER)
@@ -181,8 +178,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     AND e.type = 'CR'
     -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
     -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
-    AND rr.text IS NOT NULL
-    AND TRIM(rr.text) != ''
+    AND rr.text_en IS NOT NULL
+    AND TRIM(rr.text_en) != ''
     """
 
     # Add region filter if specified
