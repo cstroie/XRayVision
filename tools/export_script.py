@@ -208,20 +208,19 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     
     try:
         # Debug: Check what's in the database first
-        debug_query = "SELECT COUNT(*) FROM exams WHERE type = 'CR' AND region = 'chest' AND status = 'done'"
+        debug_query = "SELECT COUNT(*) FROM exams WHERE type = 'CR' AND status = 'done'"
+        if region:
+            debug_query += f" AND region = '{region}'"
         cursor.execute(debug_query)
         total_chest_exams = cursor.fetchone()[0]
-        logging.info(f"Total chest CR exams in database: {total_chest_exams}")
+        logging.info(f"Total {region} CR exams in database: {total_chest_exams}")
         
-        debug_query2 = "SELECT COUNT(*) FROM exams e INNER JOIN patients p ON e.cnp = p.cnp WHERE e.type = 'CR' AND e.region = 'chest' AND e.status = 'done' AND p.birthdate IS NOT NULL"
-        cursor.execute(debug_query2)
-        total_with_birthdate = cursor.fetchone()[0]
-        logging.info(f"Total chest CR exams with birthdate: {total_with_birthdate}")
-        
-        debug_query3 = "SELECT COUNT(*) FROM exams e INNER JOIN patients p ON e.cnp = p.cnp LEFT JOIN rad_reports rr ON e.uid = rr.uid WHERE e.type = 'CR' AND e.region = 'chest' AND e.status = 'done' AND p.birthdate IS NOT NULL AND rr.text IS NOT NULL"
-        cursor.execute(debug_query3)
+        debug_query = "SELECT COUNT(*) FROM exams e INNER JOIN patients p ON e.cnp = p.cnp LEFT JOIN rad_reports rr ON e.uid = rr.uid WHERE e.type = 'CR' AND e.status = 'done' AND p.birthdate IS NOT NULL AND rr.text IS NOT NULL"
+        if region:
+            debug_query += f" AND region = '{region}'"
+        cursor.execute(debug_query)
         total_with_reports = cursor.fetchone()[0]
-        logging.info(f"Total chest CR exams with radiologist reports: {total_with_reports}")
+        logging.info(f"Total {region} CR exams with radiologist reports: {total_with_reports}")
         
         # Debug: Check what regions are actually in the database
         region_query = "SELECT DISTINCT region FROM exams WHERE type = 'CR' AND status = 'done' ORDER BY region"
@@ -234,12 +233,6 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         cursor.execute(type_query)
         types = cursor.fetchall()
         logging.info(f"Available types in database: {[t[0] for t in types]}")
-        
-        # Debug: Check what statuses are actually in the database
-        status_query = "SELECT DISTINCT status FROM exams ORDER BY status"
-        cursor.execute(status_query)
-        statuses = cursor.fetchall()
-        logging.info(f"Available statuses in database: {[s[0] for s in statuses]}")
         
         cursor.execute(query)
         records = cursor.fetchall()
