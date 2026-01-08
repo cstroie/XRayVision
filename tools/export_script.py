@@ -176,8 +176,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     WHERE e.status = 'done'
     AND p.birthdate IS NOT NULL
     AND e.type = 'CR'
-    -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
-    -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
+    AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
+    AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
     AND rr.text IS NOT NULL
     AND TRIM(rr.text) != ''
     """
