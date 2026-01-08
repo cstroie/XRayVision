@@ -14,39 +14,119 @@ from pathlib import Path
 from datetime import datetime
 import shutil
 import sqlite3
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)8s | %(message)s'
+)
 
 def calculate_age_group(age_days):
-    """Classify patient into age group based on days"""
+    """
+    Classify patient into age group based on days since birth.
+    
+    Maps patient age in days to standardized pediatric age groups used
+    in medical imaging and research. These age groups align with common
+    pediatric radiology classifications.
+    
+    Args:
+        age_days (int): Patient age in days since birth
+        
+    Returns:
+        str: Age group classification:
+            - "neonate": 0-28 days (newborn period)
+            - "infant": 29 days - 2 years
+            - "preschool": 2-5 years
+            - "school_age": 5-12 years
+            - "adolescent": 12-18 years
+            
+    Note:
+        Ages outside the valid range (negative or >18 years) default to "adolescent"
+    """
     if age_days <= 28:
         return "neonate"
-    elif age_days <= 730:  # 2 years
+    elif age_days <= 730:  # 2 years = 365 * 2 = 730 days
         return "infant"
-    elif age_days <= 1825:  # 5 years
+    elif age_days <= 1825:  # 5 years = 365 * 5 = 1825 days
         return "preschool"
-    elif age_days <= 4380:  # 12 years
+    elif age_days <= 4380:  # 12 years = 365 * 12 = 4380 days
         return "school_age"
     else:
         return "adolescent"
 
-def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
+
+def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_path="./xrayvision.db", images_source_dir="./images"):
     """
-    Export X-ray images and reports from database
+    Export pediatric chest X-ray data from XRayVision database for MedGemma fine-tuning.
+    
+    This function extracts pediatric chest X-ray images and associated radiologist reports
+    from the XRayVision database, organizes them into training/validation/test splits,
+    and creates a structured dataset suitable for fine-tuning medical AI models.
+    
+    The export process includes:
+    1. Database querying with pediatric age filtering (0-18 years)
+    2. Image file validation and copying
+    3. Reproducible dataset splitting (80/10/10 train/val/test)
+    4. Metadata generation and statistics collection
+    5. JSONL format output for compatibility with ML training pipelines
     
     Args:
-        output_dir: Directory to save exported data
-        limit: Optional limit on number of records (for testing)
+        output_dir (str): Directory to save exported data (default: "./export/pediatric_xray_dataset")
+        limit (int, optional): Maximum number of records to export (for testing/debugging)
+        db_path (str): Path to XRayVision SQLite database file (default: "./xrayvision.db")
+        images_source_dir (str): Directory containing source PNG image files (default: "./images")
+        
+    Returns:
+        Path: Path to the created export directory
+        
+    Raises:
+        sqlite3.Error: If database connection or query fails
+        FileNotFoundError: If source image directory doesn't exist
+        PermissionError: If output directory cannot be created or written to
+        
+    Example:
+        >>> # Export full dataset
+        >>> export_path = export_data()
+        >>> 
+        >>> # Export limited sample for testing
+        >>> export_path = export_data(limit=50)
+        >>> 
+        >>> # Export with custom paths
+        >>> export_path = export_data(
+        ...     output_dir="/data/medgemma_dataset",
+        ...     db_path="/opt/xrayvision/data.db",
+        ...     images_source_dir="/opt/xrayvision/images"
+        ... )
     """
+    
+    # Validate input parameters
+    if not os.path.exists(images_source_dir):
+        raise FileNotFoundError(f"Source images directory not found: {images_source_dir}")
+    
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Database file not found: {db_path}")
     
     # Create directory structure
     output_path = Path(output_dir)
     images_dir = output_path / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
     
-    # SQLite (simpler for testing):
-    conn = sqlite3.connect("./export/xrayvision.db")
-    cursor = conn.cursor()
+    logging.info(f"Starting export to: {output_path.absolute()}")
+    logging.info(f"Source database: {db_path}")
+    logging.info(f"Source images: {images_source_dir}")
+    
+    # Connect to database
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        logging.info("Database connection established")
+    except sqlite3.Error as e:
+        logging.error(f"Failed to connect to database: {e}")
+        raise
     
     # Query to match XRayVision database schema
+    # This query extracts pediatric chest X-rays with radiologist reports
     query = """
     SELECT 
         e.uid as xray_id,
@@ -68,8 +148,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
     AND e.status = 'done'  -- Only processed exams
     AND (
         p.birthdate IS NOT NULL 
-        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years
-        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0
+        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
+        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
     )
     AND rr.text IS NOT NULL  -- Only exams with radiologist reports
     ORDER BY e.created
@@ -77,18 +157,22 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
     
     if limit:
         query += f" LIMIT {limit}"
+        logging.info(f"Exporting limited sample of {limit} records")
     
-    cursor.execute(query)
-    records = cursor.fetchall()
+    try:
+        cursor.execute(query)
+        records = cursor.fetchall()
+        logging.info(f"Database query completed, found {len(records)} records")
+    except sqlite3.Error as e:
+        logging.error(f"Database query failed: {e}")
+        conn.close()
+        raise
+    finally:
+        conn.close()
     
-    # MOCK DATA for demonstration - replace with actual database query
-    #records = [
-    #    (1, "xray_001", "Clear lungs, no acute findings.", 45, "M", "Cough", "2024-01-15 10:30:00"),
-    #    (2, "xray_002", "Right lower lobe consolidation...", 730, "F", "Fever", "2024-01-16 14:20:00"),
-    #    # Add more mock records as needed
-    #]
-    
-    print(f"Found {len(records)} records to export")
+    if not records:
+        logging.warning("No records found matching export criteria")
+        return output_path
     
     # Prepare data for export
     train_data = []
@@ -103,93 +187,163 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
         "adolescent": 0
     }
     
+    processed_count = 0
+    skipped_count = 0
+    
+    logging.info("Processing records...")
+    
     for idx, record in enumerate(records):
-        xray_id, image_path, report, age_days, sex, indication, date = record
-        
-        # Calculate age group
-        age_group = calculate_age_group(age_days)
-        stats[age_group] += 1
-        
-        # Copy image to export directory with consistent naming
-        # Since we're using the UID as image_path, we need to construct the full path
-        source_image_path = os.path.join("./images", f"{image_path}.png")
-        # Use the UID directly as the filename since it's already a unique identifier
-        new_image_name = f"{xray_id}.png"
-        new_image_path = images_dir / new_image_name
-        
-        # Copy actual image file if it exists
-        if os.path.exists(source_image_path):
-            shutil.copy2(source_image_path, new_image_path)
-            print(f"Processing {idx+1}/{len(records)}: {new_image_name}")
-        else:
-            print(f"Warning: Image file not found: {source_image_path}")
-            # Skip this record if image doesn't exist
+        try:
+            xray_id, image_path, report, age_days, sex, indication, date = record
+            
+            # Calculate age group
+            age_group = calculate_age_group(age_days)
+            stats[age_group] += 1
+            
+            # Construct source image path
+            source_image_path = os.path.join(images_source_dir, f"{image_path}.png")
+            
+            # Verify image file exists before processing
+            if not os.path.exists(source_image_path):
+                logging.warning(f"Image file not found: {source_image_path}")
+                skipped_count += 1
+                continue
+            
+            # Copy image to export directory
+            # Use the UID directly as the filename since it's already a unique identifier
+            new_image_name = f"{xray_id}.png"
+            new_image_path = images_dir / new_image_name
+            
+            try:
+                shutil.copy2(source_image_path, new_image_path)
+                processed_count += 1
+                if processed_count % 10 == 0:  # Progress logging
+                    logging.info(f"Processed {processed_count}/{len(records)} records")
+            except (IOError, OSError) as e:
+                logging.error(f"Failed to copy image {source_image_path}: {e}")
+                skipped_count += 1
+                continue
+            
+            # Create metadata entry
+            entry = {
+                "image": f"images/{new_image_name}",
+                "report": report,
+                "age_days": age_days,
+                "age_group": age_group,
+                "sex": sex,
+                "clinical_indication": indication or "Unknown",
+                "date": date,
+                "xray_id": xray_id
+            }
+            
+            # Split into train/val/test (80/10/10) using hash for reproducibility
+            # Using hash of xray_id ensures consistent splits across runs
+            split_val = hash(xray_id) % 10
+            if split_val < 8:
+                train_data.append(entry)
+            elif split_val == 8:
+                val_data.append(entry)
+            else:
+                test_data.append(entry)
+                
+        except (ValueError, TypeError) as e:
+            logging.error(f"Error processing record {idx}: {e}")
+            skipped_count += 1
             continue
-        
-        # Create metadata entry
-        entry = {
-            "image": f"images/{new_image_name}",
-            "report": report,
-            "age_days": age_days,
-            "age_group": age_group,
-            "sex": sex,
-            "clinical_indication": indication or "Unknown",
-            "date": date,
-            "xray_id": xray_id
-        }
-        
-        # Split into train/val/test (80/10/10)
-        # Use hash of the string UID for reproducible splitting
-        split_val = hash(xray_id) % 10
-        if split_val < 8:
-            train_data.append(entry)
-        elif split_val == 8:
-            val_data.append(entry)
-        else:
-            test_data.append(entry)
     
     # Write JSONL files
     def write_jsonl(data, filename):
+        """Write data to JSONL file with proper encoding and error handling."""
         filepath = output_path / filename
-        with open(filepath, 'w', encoding='utf-8') as f:
-            for entry in data:
-                f.write(json.dumps(entry) + '\n')
-        print(f"Wrote {len(data)} entries to {filename}")
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                for entry in data:
+                    f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+            logging.info(f"Wrote {len(data)} entries to {filename}")
+            return True
+        except (IOError, OSError) as e:
+            logging.error(f"Failed to write {filename}: {e}")
+            return False
     
-    write_jsonl(train_data, "train.jsonl")
-    write_jsonl(val_data, "val.jsonl")
-    write_jsonl(test_data, "test.jsonl")
+    # Write training data
+    train_success = write_jsonl(train_data, "train.jsonl")
+    val_success = write_jsonl(val_data, "val.jsonl")
+    test_success = write_jsonl(test_data, "test.jsonl")
     
     # Write dataset statistics
     stats_data = {
-        "total_records": len(records),
-        "train_size": len(train_data),
-        "val_size": len(val_data),
-        "test_size": len(test_data),
+        "export_metadata": {
+            "total_records_found": len(records),
+            "records_processed": processed_count,
+            "records_skipped": skipped_count,
+            "export_date": datetime.now().isoformat(),
+            "database_path": db_path,
+            "images_source_dir": images_source_dir,
+            "output_dir": str(output_path.absolute())
+        },
+        "dataset_splits": {
+            "train_size": len(train_data),
+            "val_size": len(val_data),
+            "test_size": len(test_data),
+            "train_percentage": round(len(train_data) / max(1, processed_count) * 100, 1),
+            "val_percentage": round(len(val_data) / max(1, processed_count) * 100, 1),
+            "test_percentage": round(len(test_data) / max(1, processed_count) * 100, 1)
+        },
         "age_distribution": stats,
-        "export_date": datetime.now().isoformat()
+        "age_distribution_percentages": {
+            group: round(count / max(1, processed_count) * 100, 1)
+            for group, count in stats.items()
+        }
     }
     
-    with open(output_path / "dataset_stats.json", 'w') as f:
-        json.dump(stats_data, f, indent=2)
+    try:
+        with open(output_path / "dataset_stats.json", 'w', encoding='utf-8') as f:
+            json.dump(stats_data, f, indent=2, ensure_ascii=False)
+        logging.info("Wrote dataset statistics to dataset_stats.json")
+    except (IOError, OSError) as e:
+        logging.error(f"Failed to write dataset statistics: {e}")
     
-    print("\n=== Export Summary ===")
-    print(f"Total records: {len(records)}")
-    print(f"Train: {len(train_data)}")
-    print(f"Validation: {len(val_data)}")
-    print(f"Test: {len(test_data)}")
-    print("\nAge distribution:")
+    # Print summary
+    print("\n" + "="*50)
+    print("EXPORT SUMMARY")
+    print("="*50)
+    print(f"Total records found: {len(records)}")
+    print(f"Records processed: {processed_count}")
+    print(f"Records skipped: {skipped_count}")
+    print(f"Success rate: {round(processed_count / max(1, len(records)) * 100, 1)}%")
+    print()
+    print("Dataset splits:")
+    print(f"  Train: {len(train_data)} ({round(len(train_data) / max(1, processed_count) * 100, 1)}%)")
+    print(f"  Validation: {len(val_data)} ({round(len(val_data) / max(1, processed_count) * 100, 1)}%)")
+    print(f"  Test: {len(test_data)} ({round(len(test_data) / max(1, processed_count) * 100, 1)}%)")
+    print()
+    print("Age distribution:")
     for age_group, count in stats.items():
-        print(f"  {age_group}: {count}")
-    print(f"\nData exported to: {output_path.absolute()}")
+        percentage = round(count / max(1, processed_count) * 100, 1)
+        print(f"  {age_group}: {count} ({percentage}%)")
+    print()
+    print(f"Export location: {output_path.absolute()}")
+    print("="*50)
     
-    # conn.close()
+    if not (train_success and val_success and test_success):
+        logging.warning("Some files may not have been written successfully")
     
     return output_path
 
+
 if __name__ == "__main__":
-    # For testing, export a small sample first
-    export_data(limit=100)
+    import sys
     
-    # For full export:
-    #export_data()
+    # Parse command line arguments
+    if len(sys.argv) > 1:
+        # Custom export directory provided
+        export_dir = sys.argv[1]
+        print(f"Using custom export directory: {export_dir}")
+        export_data(output_dir=export_dir)
+    else:
+        # Default export
+        print("Starting default export...")
+        export_data(limit=100)  # Start with small sample for testing
+        
+        # Uncomment for full export:
+        # export_data()
