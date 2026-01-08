@@ -1307,12 +1307,13 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
 
     # Apply the limits (pagination)
     query = f"""
-        SELECT 
+        SELECT
             e.uid, e.created, e.protocol, e.region, e.status, e.type, e.study, e.series, e.id,
             p.name, p.cnp, p.id, p.birthdate, p.sex,
             ar.created, ar.text, ar.updated, ar.confidence, ar.severity, ar.summary, ar.model, ar.latency,
-            rr.text, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, rr.model, rr.latency,
-            CASE 
+            rr.text, rr.text_en, rr.severity, rr.summary, rr.created, rr.updated, rr.id, rr.type, rr.radiologist, rr.justification, 
+rr.model, rr.latency,
+            CASE
                 WHEN (rr.severity = -1 OR rr.severity IS NULL) THEN -1
                 WHEN (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?) THEN 1
                 ELSE 0
