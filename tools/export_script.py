@@ -297,9 +297,9 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     from PIL import Image
                     img = Image.open(source_image_path)
                 
-                    # Convert to RGB (in case of grayscale or RGBA)
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
+                    # Convert to grayscale (L mode) since medical images are typically grayscale
+                    if img.mode != 'L':
+                        img = img.convert('L')
                 
                     # Target size for MedGemma - maintain aspect ratio
                     target_size = 896
