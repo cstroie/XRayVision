@@ -46,19 +46,34 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
     conn = sqlite3.connect("./export/xrayvision.db")
     cursor = conn.cursor()
     
-    # TODO: Replace this query with your actual database schema
+    # Query to match XRayVision database schema
     query = """
     SELECT 
-        xray_id,
-        image_path,
-        report_text,
-        patient_age_days,
-        patient_sex,
-        clinical_indication,
-        image_date
-    FROM pediatric_chest_xrays
-    WHERE patient_age_days <= 6570  -- 18 years
-    ORDER BY xray_id
+        e.uid as xray_id,
+        e.uid as image_path,  -- Use UID as image path since images are stored as {uid}.png
+        ar.text as report_text,
+        CASE 
+            WHEN p.birthdate IS NOT NULL THEN 
+                CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER)
+            ELSE -1
+        END as patient_age_days,
+        p.sex as patient_sex,
+        rr.justification as clinical_indication,
+        e.created as image_date
+    FROM exams e
+    INNER JOIN patients p ON e.cnp = p.cnp
+    LEFT JOIN ai_reports ar ON e.uid = ar.uid
+    LEFT JOIN rad_reports rr ON e.uid = rr.uid
+    WHERE e.type = 'CR'  -- Computed Radiography
+    AND e.region = 'chest'  -- Chest X-rays only
+    AND e.status = 'done'  -- Only processed exams
+    AND (
+        p.birthdate IS NOT NULL 
+        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years
+        AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0
+    )
+    AND ar.text IS NOT NULL  -- Only exams with AI reports
+    ORDER BY e.created
     """
     
     if limit:
@@ -69,8 +84,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
     
     # MOCK DATA for demonstration - replace with actual database query
     #records = [
-    #    (1, "/path/to/xray_001.png", "Clear lungs, no acute findings.", 45, "M", "Cough", "2024-01-15"),
-    #    (2, "/path/to/xray_002.png", "Right lower lobe consolidation...", 730, "F", "Fever", "2024-01-16"),
+    #    (1, "xray_001", "Clear lungs, no acute findings.", 45, "M", "Cough", "2024-01-15 10:30:00"),
+    #    (2, "xray_002", "Right lower lobe consolidation...", 730, "F", "Fever", "2024-01-16 14:20:00"),
     #    # Add more mock records as needed
     #]
     
@@ -97,12 +112,19 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
         stats[age_group] += 1
         
         # Copy image to export directory with consistent naming
+        # Since we're using the UID as image_path, we need to construct the full path
+        source_image_path = os.path.join("../images", f"{image_path}.png")
         new_image_name = f"xray_{xray_id:06d}.png"
         new_image_path = images_dir / new_image_name
         
-        # TODO: Copy actual image file
-        # shutil.copy2(image_path, new_image_path)
-        print(f"Processing {idx+1}/{len(records)}: {new_image_name}")
+        # Copy actual image file if it exists
+        if os.path.exists(source_image_path):
+            shutil.copy2(source_image_path, new_image_path)
+            print(f"Processing {idx+1}/{len(records)}: {new_image_name}")
+        else:
+            print(f"Warning: Image file not found: {source_image_path}")
+            # Skip this record if image doesn't exist
+            continue
         
         # Create metadata entry
         entry = {
@@ -111,7 +133,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
             "age_days": age_days,
             "age_group": age_group,
             "sex": sex,
-            "clinical_indication": indication,
+            "clinical_indication": indication or "Unknown",
             "date": date,
             "xray_id": xray_id
         }
