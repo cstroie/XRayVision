@@ -289,33 +289,35 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
             # Use the UID directly as the filename since it's already a unique identifier
             new_image_name = f"{xray_id}.png"
             new_image_path = images_dir / new_image_name
-
+        
             # Copy and resize image if it exists
             if os.path.exists(source_image_path):
                 try:
                     # Load image using PIL
                     from PIL import Image
                     img = Image.open(source_image_path)
-
+                
                     # Convert to RGB (in case of grayscale or RGBA)
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
-
+                
                     # Target size for MedGemma
                     target_size = (896, 896)
-
-                    # Resize while maintaining aspect ratio
+                
+                    # Resize while maintaining aspect ratio using thumbnail
+                    # This preserves the aspect ratio and fits within the target size
                     img.thumbnail(target_size, Image.Resampling.LANCZOS)
-
+                
                     # Create a new image with target size and paste the resized image
+                    # This centers the image on a black background
                     new_img = Image.new('RGB', target_size, (0, 0, 0))
                     paste_x = (target_size[0] - img.size[0]) // 2
                     paste_y = (target_size[1] - img.size[1]) // 2
                     new_img.paste(img, (paste_x, paste_y))
-
+                
                     # Save processed image with optimization
                     new_img.save(new_image_path, 'PNG', optimize=True)
-
+                
                     processed_count += 1
                     if processed_count % 10 == 0:  # Progress logging
                         logging.info(f"Processed {processed_count}/{len(records)} records")
