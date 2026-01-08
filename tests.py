@@ -373,7 +373,7 @@ class TestXRayVisionDatabase(unittest.TestCase):
         """Test that db_add_rad_report inserts a new radiologist report"""
         # Initialize the database
         xrayvision.db_init()
-        
+
         # Add a patient and exam first
         cnp = "1234567890123"
         patient_id = "P001"
@@ -381,7 +381,7 @@ class TestXRayVisionDatabase(unittest.TestCase):
         patient_age = 30
         patient_sex = "M"
         xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
-        
+
         exam_info = {
             'uid': '1.2.3.4.5',
             'patient': {
@@ -402,11 +402,12 @@ class TestXRayVisionDatabase(unittest.TestCase):
             }
         }
         xrayvision.db_add_exam(exam_info)
-        
+
         # Add a radiologist report
         uid = '1.2.3.4.5'
         report_id = "R001"
         report_text = "Confirmed pneumonia with consolidation in right lower lobe."
+        report_text_en = "Pneumonia confirmed with consolidation in the right lower lobe."
         positive = 1  # Using integer instead of boolean
         severity = 7
         summary = "pneumonia"
@@ -415,30 +416,31 @@ class TestXRayVisionDatabase(unittest.TestCase):
         justification = "Clinical presentation consistent with pneumonia"
         model = "test-model"
         latency = 5.0
-        
-        xrayvision.db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency)
-        
+
+        xrayvision.db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency, report_text_en)
+
         # Verify the radiologist report was inserted
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT uid, id, text, positive, severity, summary, type, radiologist, justification, model, latency
+                SELECT uid, id, text, text_en, positive, severity, summary, type, radiologist, justification, model, latency
                 FROM rad_reports WHERE uid = ?
             """, (uid,))
             row = cursor.fetchone()
-            
+
             self.assertIsNotNone(row, "Radiologist report should be inserted")
             self.assertEqual(row[0], uid)
             self.assertEqual(row[1], report_id)
             self.assertEqual(row[2], report_text)
-            self.assertEqual(row[3], positive)
-            self.assertEqual(row[4], severity)
-            self.assertEqual(row[5], summary)
-            self.assertEqual(row[6], report_type)
-            self.assertEqual(row[7], radiologist)
-            self.assertEqual(row[8], justification)
-            self.assertEqual(row[9], model)
-            self.assertEqual(row[10], latency)
+            self.assertEqual(row[3], report_text_en)
+            self.assertEqual(row[4], positive)
+            self.assertEqual(row[5], severity)
+            self.assertEqual(row[6], summary)
+            self.assertEqual(row[7], report_type)
+            self.assertEqual(row[8], radiologist)
+            self.assertEqual(row[9], justification)
+            self.assertEqual(row[10], model)
+            self.assertEqual(row[11], latency)
 
     def test_db_set_status_updates_exam_status(self):
         """Test that db_set_status updates the status of an exam"""
@@ -612,10 +614,78 @@ class TestXRayVision(unittest.TestCase):
     def test_db_get_previous_reports_called(self, mock_db_get):
         """Test that db_get_previous_reports is called correctly"""
         mock_db_get.return_value = []
-        
+
         result = xrayvision.db_get_previous_reports("12345", "chest", 3)
         mock_db_get.assert_called_once_with("12345", "chest", 3)
         self.assertEqual(result, [])
+
+    @patch('xrayvision.send_to_openai')
+    async def test_translate_report_success(self, mock_send_to_openai):
+        """Test that translate_report successfully translates Romanian to English"""
+        # Mock the AI response
+        mock_response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"translation": "Clear costo-diaphragmatic sinuses, no pleural effusion."}'
+                    }
+                }
+            ]
+        }
+        mock_send_to_openai.return_value = mock_response
+
+        # Test translation
+        romanian_text = "SCD libere, fără lichid pleural."
+        result = await xrayvision.translate_report(romanian_text)
+
+        # Verify the translation
+        self.assertEqual(result, "Clear costo-diaphragmatic sinuses, no pleural effusion.")
+
+    @patch('xrayvision.send_to_openai')
+    async def test_translate_report_failure(self, mock_send_to_openai):
+        """Test that translate_report handles AI failures gracefully"""
+        # Mock a failed AI response
+        mock_send_to_openai.return_value = None
+
+        # Test translation
+        romanian_text = "SCD libere, fără lichid pleural."
+        result = await xrayvision.translate_report(romanian_text)
+
+        # Verify the result is None
+        self.assertIsNone(result)
+
+    @patch('xrayvision.send_to_openai')
+    async def test_translate_report_invalid_json(self, mock_send_to_openai):
+        """Test that translate_report handles invalid JSON responses"""
+        # Mock an invalid JSON response
+        mock_response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"invalid_field": "some text"}'
+                    }
+                }
+            ]
+        }
+        mock_send_to_openai.return_value = mock_response
+
+        # Test translation
+        romanian_text = "SCD libere, fără lichid pleural."
+        result = await xrayvision.translate_report(romanian_text)
+
+        # Verify the result is None
+        self.assertIsNone(result)
+
+    @patch('xrayvision.send_to_openai')
+    async def test_translate_report_empty_input(self, mock_send_to_openai):
+        """Test that translate_report handles empty input"""
+        # Test with empty string
+        result = await xrayvision.translate_report("")
+
+        # Verify the result is None
+        self.assertIsNone(result)
+        # Verify AI was not called
+        mock_send_to_openai.assert_not_called()
 
 
 class TestXRayVisionConfig(unittest.TestCase):
