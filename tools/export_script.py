@@ -192,9 +192,9 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         age_ranges = {
             'neonate': (0, 28),
             'infant': (29, 730),
-            'preschool': (731, 1825),
-            'school_age': (1826, 4380),
-            'adolescent': (4381, 6570)
+            'preschool': (731, 1826),
+            'school_age': (1827, 4383),
+            'adolescent': (4384, 6574)
         }
         if age_group in age_ranges:
             min_age, max_age = age_ranges[age_group]
