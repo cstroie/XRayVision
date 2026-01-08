@@ -104,8 +104,25 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     if not os.path.exists(images_source_dir):
         raise FileNotFoundError(f"Source images directory not found: {images_source_dir}")
     
+    # Ensure the export directory exists
+    export_dir = os.path.dirname(db_path)
+    if export_dir and not os.path.exists(export_dir):
+        os.makedirs(export_dir, exist_ok=True)
+    
+    # Check if database exists, if not, copy from xrayvision-multi.db
     if not os.path.exists(db_path):
-        raise FileNotFoundError(f"Database file not found: {db_path}")
+        source_db = "xrayvision-multi.db"
+        if os.path.exists(source_db):
+            logging.info(f"Database not found at {db_path}, copying from {source_db}")
+            try:
+                # Use shutil.copy2 for secure copying with metadata preservation
+                shutil.copy2(source_db, db_path)
+                logging.info(f"Successfully copied database to {db_path}")
+            except (IOError, OSError) as e:
+                logging.error(f"Failed to copy database from {source_db} to {db_path}: {e}")
+                raise FileNotFoundError(f"Could not create database at {db_path}: {e}")
+        else:
+            raise FileNotFoundError(f"Database file not found at {db_path} and source {source_db} does not exist")
     
     # Create directory structure
     output_path = Path(output_dir)
