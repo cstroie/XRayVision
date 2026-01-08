@@ -2727,15 +2727,45 @@ async def websocket_handler(request):
     """
     ws = web.WebSocketResponse()
     await ws.prepare(request)
+    
+    # Add client to the set
     websocket_clients.add(ws)
-    await broadcast_dashboard_update(event = "connected", payload = {'address': request.remote}, client = ws)
-    logging.info(f"Dashboard connected via WebSocket from {request.remote}")
+    
     try:
+        # Send connection notification
+        await broadcast_dashboard_update(event="connected", payload={'address': request.remote}, client=ws)
+        logging.info(f"Dashboard connected via WebSocket from {request.remote}")
+        
+        # Handle incoming messages
         async for msg in ws:
+            # Currently we don't process incoming messages, but this could be extended
+            # to handle client requests or commands
             pass
+            
+    except asyncio.CancelledError:
+        # Handle task cancellation gracefully
+        logging.debug(f"WebSocket connection cancelled for {request.remote}")
+        raise
+    except Exception as e:
+        # Log any unexpected errors
+        logging.error(f"WebSocket error for {request.remote}: {e}")
     finally:
-        websocket_clients.remove(ws)
-        logging.info("Dashboard WebSocket disconnected.")
+        # Ensure client is removed from the set, even if an exception occurs
+        try:
+            if ws in websocket_clients:
+                websocket_clients.remove(ws)
+        except KeyError:
+            # Client was already removed, which is fine
+            pass
+        finally:
+            # Close the WebSocket connection
+            try:
+                await ws.close()
+            except Exception as e:
+                logging.debug(f"Error closing WebSocket for {request.remote}: {e}")
+            
+            logging.info(f"Dashboard WebSocket disconnected from {request.remote}")
+    
     return ws
 
 
