@@ -301,12 +301,22 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
                 
-                    # Target size for MedGemma
-                    target_size = (896, 896)
-                
-                    # Resize image to exactly match target size (may change aspect ratio)
-                    # This scales the image to fill the entire target size
-                    img = img.resize(target_size, Image.Resampling.LANCZOS)
+                    # Target size for MedGemma - maintain aspect ratio
+                    target_size = 896
+
+                    # Calculate new dimensions while maintaining aspect ratio
+                    width, height = img.size
+                    if width > height:
+                        # Landscape orientation - scale by width
+                        new_width = min(width, target_size)
+                        new_height = int(height * (new_width / width))
+                    else:
+                        # Portrait or square orientation - scale by height
+                        new_height = min(height, target_size)
+                        new_width = int(width * (new_height / height))
+
+                    # Resize image while maintaining aspect ratio
+                    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
                 
                     # Save processed image with optimization
                     img.save(new_image_path, 'PNG', optimize=True)
