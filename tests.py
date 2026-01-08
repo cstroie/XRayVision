@@ -442,6 +442,78 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[10], model)
             self.assertEqual(row[11], latency)
 
+    def test_db_add_rad_report_inserts_new_report_without_translation(self):
+        """Test that db_add_rad_report inserts a new radiologist report without translation"""
+        # Initialize the database
+        xrayvision.db_init()
+
+        # Add a patient and exam first
+        cnp = "1234567890124"
+        patient_id = "P002"
+        patient_name = "Jane Smith"
+        patient_age = 25
+        patient_sex = "F"
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+
+        exam_info = {
+            'uid': '1.2.3.4.6',
+            'patient': {
+                'cnp': cnp,
+                'id': patient_id,
+                'name': patient_name,
+                'age': patient_age,
+                'sex': patient_sex
+            },
+            'exam': {
+                'id': 'E002',
+                'created': '2025-01-01 11:00:00',
+                'protocol': 'Chest X-ray',
+                'region': 'chest',
+                'type': 'CR',
+                'study': '1.2.3.4.5.7',
+                'series': '1.2.3.4.5.6.8'
+            }
+        }
+        xrayvision.db_add_exam(exam_info)
+
+        # Add a radiologist report without translation
+        uid = '1.2.3.4.6'
+        report_id = "R002"
+        report_text = "No significant findings."
+        positive = 0  # Using integer instead of boolean
+        severity = 0
+        summary = "normal"
+        report_type = "CR"
+        radiologist = "Dr. Johnson"
+        justification = "Routine screening"
+        model = "test-model"
+        latency = 3.0
+
+        xrayvision.db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency)
+
+        # Verify the radiologist report was inserted
+        with sqlite3.connect(self.db_file) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT uid, id, text, text_en, positive, severity, summary, type, radiologist, justification, model, latency
+                FROM rad_reports WHERE uid = ?
+            """, (uid,))
+            row = cursor.fetchone()
+
+            self.assertIsNotNone(row, "Radiologist report should be inserted")
+            self.assertEqual(row[0], uid)
+            self.assertEqual(row[1], report_id)
+            self.assertEqual(row[2], report_text)
+            self.assertIsNone(row[3], "text_en should be None when not provided")
+            self.assertEqual(row[4], positive)
+            self.assertEqual(row[5], severity)
+            self.assertEqual(row[6], summary)
+            self.assertEqual(row[7], report_type)
+            self.assertEqual(row[8], radiologist)
+            self.assertEqual(row[9], justification)
+            self.assertEqual(row[10], model)
+            self.assertEqual(row[11], latency)
+
     def test_db_set_status_updates_exam_status(self):
         """Test that db_set_status updates the status of an exam"""
         # Initialize the database
