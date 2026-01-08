@@ -1,7 +1,11 @@
-"""
-Preprocess X-ray images for MedGemma fine-tuning
-Run this after export_xray_data.py
-"""
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# XRayVision - Async DICOM processor with AI and WebSocket dashboard.
+# Copyright (C) 2026 Costin Stroie <costinstroie@eridu.eu.org>
+# 
+# Preprocess X-ray images for MedGemma fine-tuning
+# Run this after export_xray_data.py
 
 import os
 from pathlib import Path
@@ -9,7 +13,7 @@ from PIL import Image
 import json
 from tqdm import tqdm
 
-def preprocess_images(dataset_dir="./pediatric_xray_dataset", target_size=(512, 512)):
+def preprocess_images(dataset_dir="./pediatric_xray_dataset", target_size=(896, 896)):
     """
     Preprocess images: resize, normalize, convert to RGB
     
