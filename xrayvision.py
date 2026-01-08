@@ -466,116 +466,131 @@ def db_init():
         - idx_exams_cnp: Efficient patient lookup
         - idx_patients_name: Fast patient name searches
     """
-    with sqlite3.connect(DB_FILE) as conn:
-        # Enable foreign key constraints
+    with sqlite3.connect(DB_FILE, isolation_level=None) as conn:
+        # Configure SQLite for concurrent access
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
         conn.execute('PRAGMA foreign_keys = ON')
+        conn.execute('PRAGMA cache_size = 10000')
+        conn.execute('PRAGMA temp_store = MEMORY')
+        conn.execute('PRAGMA mmap_size = 268435456')  # 256MB
         
-        # Patients table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS patients (
-                cnp TEXT PRIMARY KEY,
-                id TEXT,
-                name TEXT,
-                birthdate TEXT,
-                sex TEXT CHECK(sex IN ('M', 'F', 'O'))
-            )
-        ''')
-        
-        # Exams table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS exams (
-                uid TEXT PRIMARY KEY,
-                cnp TEXT,
-                id TEXT,
-                created TIMESTAMP,
-                protocol TEXT,
-                region TEXT,
-                type TEXT,
-                status TEXT DEFAULT 'none',
-                study TEXT,
-                series TEXT,
-                FOREIGN KEY (cnp) REFERENCES patients(cnp)
-            )
-        ''')
-        
-        # AI reports table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS ai_reports (
-                uid TEXT PRIMARY KEY,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                text TEXT,
-                positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
-                confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
-                severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
-                summary TEXT,
-                model TEXT,
-                latency INTEGER DEFAULT -1,
-                FOREIGN KEY (uid) REFERENCES exams(uid)
-            )
-        ''')
-        
-        # Radiologist reports table
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS rad_reports (
-                uid TEXT PRIMARY KEY,
-                id TEXT,
-                created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                text TEXT,
-                positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
-                severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
-                summary TEXT,
-                type TEXT,
-                radiologist TEXT,
-                justification TEXT,
-                model TEXT,
-                latency INTEGER DEFAULT -1,
-                FOREIGN KEY (uid) REFERENCES exams(uid)
-            )
-        ''')
-        
-        # Indexes for common query filters
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_exams_status
-            ON exams(status)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_exams_region
-            ON exams(region)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_exams_cnp
-            ON exams(cnp)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_exams_created
-            ON exams(created)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_exams_study
-            ON exams(study)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_ai_reports_created
-            ON ai_reports(created)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_rad_reports_created
-            ON rad_reports(created)
-        ''')
-        conn.execute('''
-            CREATE INDEX IF NOT EXISTS idx_patients_name
-            ON patients(name)
-        ''')
-        logging.info("Initialized SQLite database with normalized schema.")
+        # Create tables within a transaction
+        try:
+            conn.execute('BEGIN IMMEDIATE')
+            
+            # Patients table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS patients (
+                    cnp TEXT PRIMARY KEY,
+                    id TEXT,
+                    name TEXT,
+                    birthdate TEXT,
+                    sex TEXT CHECK(sex IN ('M', 'F', 'O'))
+                )
+            ''')
+            
+            # Exams table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS exams (
+                    uid TEXT PRIMARY KEY,
+                    cnp TEXT,
+                    id TEXT,
+                    created TIMESTAMP,
+                    protocol TEXT,
+                    region TEXT,
+                    type TEXT,
+                    status TEXT DEFAULT 'none',
+                    study TEXT,
+                    series TEXT,
+                    FOREIGN KEY (cnp) REFERENCES patients(cnp)
+                )
+            ''')
+            
+            # AI reports table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS ai_reports (
+                    uid TEXT PRIMARY KEY,
+                    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    text TEXT,
+                    positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
+                    confidence INTEGER DEFAULT -1 CHECK(confidence BETWEEN -1 AND 100),
+                    severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
+                    summary TEXT,
+                    model TEXT,
+                    latency INTEGER DEFAULT -1,
+                    FOREIGN KEY (uid) REFERENCES exams(uid)
+                )
+            ''')
+            
+            # Radiologist reports table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS rad_reports (
+                    uid TEXT PRIMARY KEY,
+                    id TEXT,
+                    created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    text TEXT,
+                    positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
+                    severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
+                    summary TEXT,
+                    type TEXT,
+                    radiologist TEXT,
+                    justification TEXT,
+                    model TEXT,
+                    latency INTEGER DEFAULT -1,
+                    FOREIGN KEY (uid) REFERENCES exams(uid)
+                )
+            ''')
+            
+            # Indexes for common query filters
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_exams_status
+                ON exams(status)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_exams_region
+                ON exams(region)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_exams_cnp
+                ON exams(cnp)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_exams_created
+                ON exams(created)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_exams_study
+                ON exams(study)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_ai_reports_created
+                ON ai_reports(created)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_rad_reports_created
+                ON rad_reports(created)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_patients_name
+                ON patients(name)
+            ''')
+            
+            conn.commit()
+            logging.info("Initialized SQLite database with normalized schema.")
+        except Exception as e:
+            conn.rollback()
+            logging.error(f"Failed to initialize database: {e}")
+            raise
 
 
 def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') -> Optional[list]:
     """Execute a database query and return results.
 
-    Executes a parameterized SQL query and returns results based on the
-    specified fetch mode.
+    Executes a parameterized SQL query with proper transaction isolation
+    for concurrent operations.
 
     Args:
         query (str): SQL query to execute
@@ -585,7 +600,12 @@ def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') ->
     Returns:
         Query results based on fetch_mode, or None on error
     """
-    with sqlite3.connect(DB_FILE) as conn:
+    with sqlite3.connect(DB_FILE, isolation_level=None) as conn:
+        # Configure SQLite for concurrent access
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA foreign_keys = ON')
+        
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
@@ -598,6 +618,7 @@ def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') ->
                 conn.commit()
                 return cursor.rowcount
         except Exception as e:
+            conn.rollback()
             return handle_error(e, "database query execution", None, raise_on_error=False)
 
 
@@ -605,7 +626,7 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 5)
     """Execute a database query with retry logic.
 
     Executes a database query with exponential backoff retry logic in case
-    of failures.
+    of failures, with proper transaction isolation for concurrent operations.
 
     Args:
         query (str): SQL query to execute
@@ -615,19 +636,29 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 5)
     Returns:
         Number of affected rows or None on error
     """
-    with sqlite3.connect(DB_FILE) as conn:
+    with sqlite3.connect(DB_FILE, isolation_level=None) as conn:
+        # Configure SQLite for concurrent access
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA foreign_keys = ON')
+        
         for attempt in range(max_retries):
             try:
+                conn.execute('BEGIN IMMEDIATE')
                 cursor = conn.cursor()
                 cursor.execute(query, params)
                 conn.commit()
                 return cursor.rowcount
-            except Exception as e:
-                if attempt < max_retries - 1:
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
                     # Use sync sleep for synchronous function
                     import time
                     time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
                     continue
+                conn.rollback()
+                return handle_error(e, "database query with retry", None, raise_on_error=False)
+            except Exception as e:
+                conn.rollback()
                 return handle_error(e, "database query with retry", None, raise_on_error=False)
     return None
 
