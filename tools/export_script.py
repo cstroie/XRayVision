@@ -308,11 +308,11 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     width, height = img.size
                     if width > height:
                         # Landscape orientation - scale by width
-                        new_width = min(width, target_size)
+                        new_width = target_size
                         new_height = int(height * (new_width / width))
                     else:
                         # Portrait or square orientation - scale by height
-                        new_height = min(height, target_size)
+                        new_height = target_size
                         new_width = int(width * (new_height / height))
 
                     # Resize image while maintaining aspect ratio
