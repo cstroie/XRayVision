@@ -317,9 +317,19 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
 
                     # Resize image while maintaining aspect ratio
                     img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
+
+                    # Create a new square image with black padding
+                    square_img = Image.new('RGB', (896, 896), (0, 0, 0))
+
+                    # Calculate position to center the resized image
+                    x_offset = (896 - new_width) // 2
+                    y_offset = (896 - new_height) // 2
+
+                    # Paste the resized image onto the center of the square
+                    square_img.paste(img, (x_offset, y_offset))
+
                     # Save processed image with optimization
-                    img.save(new_image_path, 'PNG', optimize=True)
+                    square_img.save(new_image_path, 'PNG', optimize=True)
                 
                     processed_count += 1
                     if processed_count % 10 == 0:  # Progress logging
