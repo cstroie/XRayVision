@@ -56,7 +56,7 @@ def calculate_age_group(age_days):
         return "adolescent"
 
 
-def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_path="./export/xrayvision.db", images_source_dir="./images"):
+def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_path="./export/xrayvision.db", images_source_dir="./images", region=None, age_group=None):
     """
     Export pediatric chest X-ray data from XRayVision database for MedGemma fine-tuning.
     
@@ -76,6 +76,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         limit (int, optional): Maximum number of records to export (for testing/debugging)
         db_path (str): Path to XRayVision SQLite database file (default: "./export/xrayvision.db")
         images_source_dir (str): Directory containing source PNG image files (default: "./images")
+        region (str, optional): Filter by anatomic region (e.g., "chest", "abdomen")
+        age_group (str, optional): Filter by age group (e.g., "infant", "school_age")
         
     Returns:
         Path: Path to the created export directory
@@ -92,11 +94,13 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         >>> # Export limited sample for testing
         >>> export_path = export_data(limit=50)
         >>> 
-        >>> # Export with custom paths
+        >>> # Export with custom paths and filters
         >>> export_path = export_data(
         ...     output_dir="/data/medgemma_dataset",
         ...     db_path="/opt/xrayvision/data.db",
-        ...     images_source_dir="/opt/xrayvision/images"
+        ...     images_source_dir="/opt/xrayvision/images",
+        ...     region="chest",
+        ...     age_group="infant"
         ... )
     """
     
@@ -163,8 +167,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     FROM exams e
     INNER JOIN patients p ON e.cnp = p.cnp
     INNER JOIN rad_reports rr ON e.uid = rr.uid
-    WHERE e.region = 'chest'  -- Chest X-rays only
-    AND e.status = 'done'  -- Only processed exams
+    WHERE e.status = 'done'  -- Only processed exams
     -- AND e.type = 'CR'  -- Computed Radiography
     AND (
         p.birthdate IS NOT NULL 
@@ -173,8 +176,27 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     )
     AND rr.text IS NOT NULL  -- Only exams with radiologist reports
     AND TRIM(rr.text) != ''  -- Ensure report text is not empty after trimming whitespace
-    ORDER BY e.created
     """
+    
+    # Add region filter if specified
+    if region:
+        query += f" AND e.region = '{region}'"
+    
+    # Add age group filter if specified
+    if age_group:
+        # Map age group to age range in days
+        age_ranges = {
+            'neonate': (0, 28),
+            'infant': (29, 730),
+            'preschool': (731, 1825),
+            'school_age': (1826, 4380),
+            'adolescent': (4381, 6570)
+        }
+        if age_group in age_ranges:
+            min_age, max_age = age_ranges[age_group]
+            query += f" AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) BETWEEN {min_age} AND {max_age}"
+    
+    query += " ORDER BY e.created"
     
     if limit:
         query += f" LIMIT {limit}"
@@ -388,17 +410,38 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
 
 if __name__ == "__main__":
     import sys
+    import argparse
     
     # Parse command line arguments
-    if len(sys.argv) > 1:
-        # Custom export directory provided
-        export_dir = sys.argv[1]
-        print(f"Using custom export directory: {export_dir}")
-        export_data(output_dir=export_dir)
-    else:
-        # Default export
-        print("Starting export...")
-        # Start with small sample for testing
-        #export_data(limit=100)
-        # Uncomment for full export
-        export_data()
+    parser = argparse.ArgumentParser(description="Export pediatric X-ray data from XRayVision database")
+    parser.add_argument("--limit", type=int, help="Maximum number of exams to export (default: all)")
+    parser.add_argument("--region", type=str, help="Filter by anatomic region (e.g., chest, abdomen)")
+    parser.add_argument("--age-group", type=str, choices=['neonate', 'infant', 'preschool', 'school_age', 'adolescent'], 
+                       help="Filter by age group")
+    parser.add_argument("--output-dir", type=str, default="./export/pediatric_xray_dataset", 
+                       help="Output directory for exported data (default: ./export/pediatric_xray_dataset)")
+    parser.add_argument("--db-path", type=str, default="./export/xrayvision.db", 
+                       help="Path to XRayVision database file (default: ./export/xrayvision.db)")
+    parser.add_argument("--images-source-dir", type=str, default="./images", 
+                       help="Directory containing source PNG image files (default: ./images)")
+    
+    args = parser.parse_args()
+    
+    print("Starting export with the following parameters:")
+    print(f"  Limit: {args.limit or 'all'}")
+    print(f"  Region: {args.region or 'all'}")
+    print(f"  Age group: {args.age_group or 'all'}")
+    print(f"  Output directory: {args.output_dir}")
+    print(f"  Database path: {args.db_path}")
+    print(f"  Images source directory: {args.images_source_dir}")
+    print()
+    
+    # Run export with provided arguments
+    export_data(
+        output_dir=args.output_dir,
+        limit=args.limit,
+        db_path=args.db_path,
+        images_source_dir=args.images_source_dir,
+        region=args.region,
+        age_group=args.age_group
+    )
