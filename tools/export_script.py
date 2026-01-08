@@ -114,7 +114,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None):
         # Copy image to export directory with consistent naming
         # Since we're using the UID as image_path, we need to construct the full path
         source_image_path = os.path.join("../images", f"{image_path}.png")
-        new_image_name = f"xray_{xray_id:06d}.png"
+        # Use the UID directly as the filename since it's already a unique identifier
+        new_image_name = f"xray_{xray_id}.png"
         new_image_path = images_dir / new_image_name
         
         # Copy actual image file if it exists
