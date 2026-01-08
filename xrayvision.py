@@ -2559,7 +2559,7 @@ def apply_gamma_correction(image, gamma = 1.2):
     return cv2.LUT(image, table)
 
 
-def convert_dicom_to_png(dicom_file, max_size = 800):
+def convert_dicom_to_png(dicom_file, max_size = 896):
     """
     Convert DICOM to PNG with preprocessing for optimal AI analysis.
 
@@ -2573,7 +2573,7 @@ def convert_dicom_to_png(dicom_file, max_size = 800):
 
     Args:
         dicom_file: Path to the DICOM file
-        max_size: Maximum dimension for the output image (default: 800)
+        max_size: Maximum dimension for the output image (default: 896)
 
     Returns:
         str: Path to the saved PNG file
