@@ -143,9 +143,9 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     FROM exams e
     INNER JOIN patients p ON e.cnp = p.cnp
     LEFT JOIN rad_reports rr ON e.uid = rr.uid
-    WHERE e.type = 'CR'  -- Computed Radiography
-    AND e.region = 'chest'  -- Chest X-rays only
+    WHERE e.region = 'chest'  -- Chest X-rays only
     AND e.status = 'done'  -- Only processed exams
+    -- AND e.type = 'CR'  -- Computed Radiography
     AND (
         p.birthdate IS NOT NULL 
         AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
@@ -376,8 +376,8 @@ if __name__ == "__main__":
         export_data(output_dir=export_dir)
     else:
         # Default export
-        print("Starting default export...")
-        export_data(limit=100)  # Start with small sample for testing
-        
-        # Uncomment for full export:
-        # export_data()
+        print("Starting export...")
+        # Start with small sample for testing
+        #export_data(limit=100)
+        # Uncomment for full export
+        export_data()
