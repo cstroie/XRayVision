@@ -6014,7 +6014,7 @@ async def translate_existing_reports():
                     logging.warning(f"Translation failed for exam {uid}")
 
                 # Small delay to avoid overwhelming the AI service
-                await asyncio.sleep(1)
+                await asyncio.sleep(10)
 
             except Exception as e:
                 logging.error(f"Error translating report for exam {uid}: {e}")
@@ -6206,6 +6206,8 @@ async def main():
     tasks.append(asyncio.create_task(query_retrieve_loop()))
     tasks.append(asyncio.create_task(maintenance_loop()))
     tasks.append(asyncio.create_task(fhir_loop()))
+    if TRANSLATE_EXISTING:
+        tasks.append(asyncio.create_task(translate_existing_reports()))
     # Preload the existing dicom files
     if LOAD_DICOM:
         await load_existing_dicom_files()
@@ -6244,15 +6246,12 @@ if __name__ == '__main__':
     ENABLE_NTFY = args.enable_ntfy
     MODEL_NAME = args.model
     RETRIEVAL_METHOD = args.retrieval_method
+    TRANSLATE_EXISTING = args.translate_existing
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
     # Run
     try:
-        if args.translate_existing:
-            # Just run the translation task and exit
-            asyncio.run(translate_existing_reports())
-        else:
-            asyncio.run(main())
+        asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
     finally:
