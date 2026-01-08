@@ -532,6 +532,7 @@ def db_init():
                     created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     text TEXT,
+                    text_en TEXT,
                     positive INTEGER DEFAULT -1 CHECK(positive IN (-1, 0, 1)),
                     severity INTEGER DEFAULT -1 CHECK(severity BETWEEN -1 AND 10),
                     summary TEXT,
@@ -945,7 +946,7 @@ def db_add_ai_report(uid, report_text, positive, confidence, model, latency, sev
               latency=latency)
 
 
-def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency):
+def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency, text_en=None):
     """
     Add or update a radiologist report entry in the database.
 
@@ -961,11 +962,13 @@ def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, 
         justification: Clinical diagnostic text
         model: Name of the model used
         latency: Processing time in seconds
+        text_en: English translation of the report (optional)
     """
     db_insert('rad_reports',
               uid=uid,
               id=report_id,
               text=report_text,
+              text_en=text_en,
               positive=positive,
               severity=severity,
               summary=summary,
@@ -1337,7 +1340,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             (uid, exam_created, exam_protocol, exam_region, exam_status, exam_type, exam_study, exam_series, exam_id,
              patient_name, patient_cnp, patient_id, patient_birthdate, patient_sex,
              ai_created, ai_text, ai_updated, ai_confidence, ai_severity, ai_summary, ai_model, ai_latency,
-             rad_text, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
+             rad_text, rad_text_en, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
              correct, reviewed) = row
                 
             dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
@@ -1390,6 +1393,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
                     },
                     'rad': {
                         'text': rad_text,
+                        'text_en': rad_text_en,
                         'positive': rad_severity is not None and rad_severity >= SEVERITY_THRESHOLD,
                         'severity': rad_severity,
                         'summary': rad_summary,
@@ -4064,12 +4068,104 @@ async def check_ai_report_and_update(uid):
         return False
 
 
+async def translate_report(report_text):
+    """Translate a Romanian radiology report to English using the LLM.
+
+    Takes a radiology report text and sends it to the LLM for translation
+    using a specialized prompt.
+
+    Args:
+        report_text: Romanian radiology report text to translate
+
+    Returns:
+        str: English translation of the report, or None if translation failed
+    """
+    try:
+        logging.debug(f"Translation request received with report length: {len(report_text)} characters")
+
+        if not report_text:
+            logging.warning("Translation request failed: no report text provided")
+            return None
+
+        # Prepare the request headers
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+
+        # Prepare the JSON data
+        payload = {
+            "model": MODEL_NAME,
+            "stream": False,
+            "keep_alive": 1800,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": TRN_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": report_text}
+                    ]
+                }
+            ]
+        }
+
+        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
+
+        async with aiohttp.ClientSession() as session:
+            result = await send_to_openai(session, headers, payload)
+            if not result:
+                logging.error("Failed to get response from AI service for translation")
+                return None
+
+            response_text = result["choices"][0]["message"]["content"].strip()
+            logging.debug(f"Raw AI translation response: {response_text}")
+
+            # Clean up markdown code fences if present
+            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
+            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
+
+            try:
+                parsed_response = json.loads(response_text)
+                logging.debug(f"AI translation response: {parsed_response}")
+
+                # Handle case where AI returns an array instead of single object
+                if isinstance(parsed_response, list):
+                    if len(parsed_response) == 0:
+                        raise ValueError("Empty array response from AI")
+                    # Take the first valid entry from the array
+                    parsed_response = parsed_response[0]
+                    logging.debug(f"Extracted first entry from array: {parsed_response}")
+
+                # Validate required fields
+                if "translation" not in parsed_response:
+                    raise ValueError("Missing translation field in AI response")
+
+                # Validate translation field
+                if not isinstance(parsed_response["translation"], str):
+                    raise ValueError("Invalid translation value in AI response")
+
+                translation = parsed_response["translation"].strip()
+                logging.debug(f"Translation completed: {translation[:50]}...")
+                return translation
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse AI translation response as JSON: {response_text}")
+                return None
+            except ValueError as e:
+                logging.error(f"Invalid AI translation response format: {e} ({response_text})")
+                return None
+    except Exception as e:
+        logging.error(f"Error processing translation request: {e}")
+        return None
+
 async def check_rad_report_and_update(uid):
     """Send radiologist report text to CHECK prompt and update database with severity/summary.
 
     Takes a radiologist report from the database, sends it to the LLM for analysis using
     the CHECK prompt, and updates the database with the extracted severity score
-    and summary.
+    and summary. Also translates the report from Romanian to English.
 
     Args:
         uid: Exam unique identifier
@@ -4083,47 +4179,64 @@ async def check_rad_report_and_update(uid):
         if not rad_report or not rad_report.get('text'):
             logging.warning(f"No radiologist report text found for exam {uid}")
             return False
-            
+
         # Extract the report text
         report_text = rad_report['text']
-        
+
+        # Translate the report from Romanian to English
+        logging.info(f"Translating radiologist report for exam {uid}")
+        translation = await translate_report(report_text)
+        if translation:
+            logging.info(f"Translation successful for exam {uid}")
+        else:
+            logging.warning(f"Translation failed for exam {uid}")
+
         # Summarize the radiologist report
         logging.info(f"Summarizing radiologist report for exam {uid}")
         start_time = asyncio.get_event_loop().time()
         analysis_result = await check_report(report_text)
         end_time = asyncio.get_event_loop().time()
         processing_time = end_time - start_time  # In seconds
-        
+
         # Check if analysis was successful
         if 'error' in analysis_result:
             logging.error(f"AI check failed for exam {uid}: {analysis_result['error']}")
             return False
-            
+
         # Extract values from analysis result
         try:
             # Validate that all required fields are present
             if 'pathologic' not in analysis_result or 'severity' not in analysis_result or 'summary' not in analysis_result:
                 logging.error(f"AI check response missing required fields for exam {uid}: {list(analysis_result.keys())}")
                 return False
-                
+
             positive = 1 if analysis_result['pathologic'] == 'yes' else 0
             severity = analysis_result['severity']
             summary = analysis_result['summary'].lower()
         except Exception as e:
             logging.error(f"Could not extract analysis results for exam {uid}: {e}")
             return False
-        
-        # Update the radiologist report in database with severity, summary, and latency
-        db_update('rad_reports', 'uid = ?', (uid,),
-                  positive=positive,
-                  severity=severity,
-                  summary=summary,
-                  model=MODEL_NAME,
-                  latency=int(processing_time))
+
+        # Update the radiologist report in database with severity, summary, latency, and translation
+        update_fields = {
+            'positive': positive,
+            'severity': severity,
+            'summary': summary,
+            'model': MODEL_NAME,
+            'latency': int(processing_time)
+        }
+
+        # Add translation if successful
+        if translation:
+            update_fields['text_en'] = translation
+
+        db_update('rad_reports', 'uid = ?', (uid,), **update_fields)
 
         logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {int(processing_time)}s")
+        if translation:
+            logging.info(f"Added English translation for exam {uid}")
         return True
-        
+
     except Exception as e:
         logging.error(f"Error processing CHECK prompt for exam {uid}: {e}")
         return False
@@ -4269,17 +4382,44 @@ async def detailed_analysis_handler(request):
     try:
         data = await request.json()
         report_text = data.get('report', '').strip()
-        
+
         result = await detailed_analysis_report(report_text)
-        
+
         # Check if there was an error
         if 'error' in result:
             status = 500 if result['error'] != 'No report text provided' else 400
             return web.json_response(result, status=status)
-        
+
         return web.json_response(result)
     except Exception as e:
         logging.error(f"Error processing detailed analysis request: {e}")
+        return web.json_response({'error': 'Internal server error'}, status=500)
+
+async def translate_handler(request):
+    """Translate a Romanian radiology report to English.
+
+    Takes a radiology report text and sends it to the LLM for translation
+    using the TRN_PROMPT.
+
+    Args:
+        request: aiohttp request object with JSON body containing report text
+
+    Returns:
+        web.json_response: JSON response with translation results
+    """
+    try:
+        data = await request.json()
+        report_text = data.get('report', '').strip()
+
+        result = await translate_report(report_text)
+
+        # Check if there was an error
+        if result is None:
+            return web.json_response({'error': 'Translation failed'}, status=500)
+
+        return web.json_response({'translation': result})
+    except Exception as e:
+        logging.error(f"Error processing translation request: {e}")
         return web.json_response({'error': 'Internal server error'}, status=500)
 
 
@@ -5329,6 +5469,7 @@ async def start_dashboard():
     app.router.add_post('/api/getrad', get_report_handler)
     app.router.add_post('/api/check', check_report_handler)
     app.router.add_post('/api/analyse', detailed_analysis_handler)
+    app.router.add_post('/api/translate', translate_handler)
     
     # API endpoints - Metadata
     app.router.add_get('/api/spec', serve_api_spec)
@@ -5802,6 +5943,54 @@ async def query_retrieve_loop():
         await asyncio.sleep(delay)
 
 
+async def translate_existing_reports():
+    """
+    Translate existing radiologist reports that don't have English translations yet.
+
+    This function finds all radiologist reports without English translations
+    and translates them using the LLM.
+    """
+    try:
+        # Get all exams with radiologist reports that don't have translations
+        query = """
+            SELECT uid, text
+            FROM rad_reports
+            WHERE text IS NOT NULL
+            AND (text_en IS NULL OR text_en = '')
+            AND severity > -1
+        """
+        rows = db_execute_query(query, fetch_mode='all')
+
+        if not rows:
+            logging.info("No reports found that need translation")
+            return
+
+        logging.info(f"Found {len(rows)} reports to translate")
+
+        for row in rows:
+            uid, report_text = row
+            try:
+                logging.info(f"Translating report for exam {uid}")
+                translation = await translate_report(report_text)
+
+                if translation:
+                    # Update the database with the translation
+                    db_update('rad_reports', 'uid = ?', (uid,), text_en=translation)
+                    logging.info(f"Successfully translated and updated exam {uid}")
+                else:
+                    logging.warning(f"Translation failed for exam {uid}")
+
+                # Small delay to avoid overwhelming the AI service
+                await asyncio.sleep(1)
+
+            except Exception as e:
+                logging.error(f"Error translating report for exam {uid}: {e}")
+
+        logging.info("Translation of existing reports completed")
+
+    except Exception as e:
+        logging.error(f"Error in translate_existing_reports: {e}")
+
 async def maintenance_loop():
     """
     Perform daily maintenance tasks including database cleanup and backup.
@@ -6013,6 +6202,7 @@ if __name__ == '__main__':
     parser.add_argument("--model", type=str, default=MODEL_NAME, help="Model name to use for analysis")
     parser.add_argument("--retrieval-method", type=str, choices=['C-MOVE', 'C-GET'], default=RETRIEVAL_METHOD, help="DICOM retrieval method")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Set logging level")
+    parser.add_argument("--translate-existing", action = "store_true", help = "Translate existing radiologist reports without English translations")
     args = parser.parse_args()
     # Store in globals
     KEEP_DICOM = args.keep_dicom
@@ -6025,7 +6215,11 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(getattr(logging, args.log_level))
     # Run
     try:
-        asyncio.run(main())
+        if args.translate_existing:
+            # Just run the translation task and exit
+            asyncio.run(translate_existing_reports())
+        else:
+            asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
     finally:
