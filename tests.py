@@ -514,6 +514,55 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[10], model)
             self.assertEqual(row[11], latency)
 
+    def test_db_get_exams_includes_translation(self):
+        """Test that db_get_exams includes English translation in results"""
+        # Initialize the database
+        xrayvision.db_init()
+
+        # Add a patient and exam first
+        cnp = "1234567890125"
+        patient_id = "P003"
+        patient_name = "Bob Johnson"
+        patient_age = 40
+        patient_sex = "M"
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+
+        exam_info = {
+            'uid': '1.2.3.4.7',
+            'patient': {
+                'cnp': cnp,
+                'id': patient_id,
+                'name': patient_name,
+                'age': patient_age,
+                'sex': patient_sex
+            },
+            'exam': {
+                'id': 'E003',
+                'created': '2025-01-01 12:00:00',
+                'protocol': 'Chest X-ray',
+                'region': 'chest',
+                'type': 'CR',
+                'study': '1.2.3.4.5.8',
+                'series': '1.2.3.4.5.6.9'
+            }
+        }
+        xrayvision.db_add_exam(exam_info)
+
+        # Add AI report
+        xrayvision.db_add_ai_report('1.2.3.4.7', "No significant findings.", 0, 95, "test-model", 2.5, 0, "normal")
+
+        # Add radiologist report with translation
+        xrayvision.db_add_rad_report('1.2.3.4.7', "R003", "Fără semne de patologie.", 0, 0, "normal", "CR", "Dr. Brown", "Screening de rutină", "test-model", 4.0, "No signs of pathology.")
+
+        # Get exams
+        exams, total = xrayvision.db_get_exams(limit=1, uid='1.2.3.4.7')
+
+        # Verify the exam includes translation
+        self.assertEqual(len(exams), 1)
+        exam = exams[0]
+        self.assertEqual(exam['report']['rad']['text'], "Fără semne de patologie.")
+        self.assertEqual(exam['report']['rad']['text_en'], "No signs of pathology.")
+
     def test_db_set_status_updates_exam_status(self):
         """Test that db_set_status updates the status of an exam"""
         # Initialize the database
