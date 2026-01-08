@@ -319,12 +319,11 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
                     # Create a new square image with black padding
-                    square_img = Image.new('RGB', (896, 896), (0, 0, 0))
+                    square_img = Image.new('RGB', (target_size, target_size), (0, 0, 0))
 
                     # Calculate position to center the resized image
-                    x_offset = (896 - new_width) // 2
-                    y_offset = (896 - new_height) // 2
-
+                    x_offset = (target_size - new_width) // 2
+                    y_offset = (target_size - new_height) // 2
                     # Paste the resized image onto the center of the square
                     square_img.paste(img, (x_offset, y_offset))
 
