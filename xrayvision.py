@@ -337,6 +337,39 @@ RULES:
 - Do not include any text before or after the JSON object
 """)
 
+TRN_PROMPT = ("""
+You are a professional medical translator specializing in radiology reports.
+
+TASK: Translate the Romanian radiology report into English.
+
+OUTPUT FORMAT:
+{
+  "translation": "English translation of the report"
+}
+
+RULES:
+- Translate the entire report text from Romanian to English
+- Maintain all medical terminology and anatomical references
+- Preserve the original meaning and clinical context
+- Use professional medical English terminology
+- Keep the same structure and formatting as the original
+- Do not add any explanations, comments, or additional text
+- Respond ONLY with the JSON object containing the translation
+- Ensure proper escaping of special characters in the translation string
+
+EXAMPLES:
+
+Romanian: "SCD libere, fără lichid pleural."
+English: "Clear costo-diaphragmatic sinuses, no pleural effusion."
+
+Romanian: "Proces de condensare paracardiac dreapta."
+English: "Right paracardiac consolidation process."
+
+Romanian: "Fără semne de fractură sau leziuni osteolitice."
+English: "No signs of fracture or osteolytic lesions."
+""")
+
+
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
 # Static directory
