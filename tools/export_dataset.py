@@ -54,7 +54,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
     cursor.execute(query, params)
     return cursor.fetchall()
 
-def process_record(record, images_source_dir, images_dir, stats, processed_count, skipped_count):
+def process_record(record, images_source_dir, stats, processed_count, skipped_count):
     """Process a single record and prepare it for export."""
     (cnp, name, birthdate, sex, uid, datetime_str, region, projection, modality, 
      report_text, ai_report_text, rad_report_text, rad_name, status, image_path) = record
@@ -164,7 +164,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None,
     skipped_count = {'value': 0}
     
     for record in records:
-        result = process_record(record, images_source_dir, images_dir, stats, 
+        result = process_record(record, images_source_dir, stats, 
                                processed_count, skipped_count)
         if result:
             metadata, image_path = result
