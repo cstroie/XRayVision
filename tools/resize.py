@@ -70,15 +70,9 @@ def resize_images(input_dir, target_width, target_height):
                 
                 # Resize using high-quality resampling
                 img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
-                # Create canvas and center the image
-                canvas = Image.new('L', (target_width, target_height), 0)
-                x_offset = (target_width - new_width) // 2
-                y_offset = (target_height - new_height) // 2
-                canvas.paste(img, (x_offset, y_offset))
-                
+                                
                 # Save with high compression
-                canvas.save(output_path, 'PNG', compress_level=9)
+                img.save(output_path, 'PNG', compress_level=9)
             
             processed += 1
             print(f"Processed: {filename}")
