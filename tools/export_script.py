@@ -134,7 +134,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
         patient_sex,
         image_date
     FROM ExamData
-    WHERE 1=1
+    WHERE patient_age_days > 0 AND patient_age_days < 6570
     """
 
     # Add region filter if specified
