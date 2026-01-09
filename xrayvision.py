@@ -6115,7 +6115,14 @@ def process_dicom_file(dicom_file, uid):
             info = extract_dicom_metadata(ds)
         except Exception as e:
             logging.error(f"Error getting info {dicom_file}: {e}")
-            db_set_status(uid, "error")
+            # Remove the exam entry from the database
+            db_execute_query_retry("DELETE FROM exams WHERE uid = ?", (uid,))
+            # Remove the DICOM file
+            try:
+                os.remove(dicom_file)
+                logging.info(f"Removed DICOM file {dicom_file} due to metadata extraction error")
+            except Exception as rm_err:
+                logging.error(f"Failed to remove DICOM file {dicom_file}: {rm_err}")
             return
         # Try to convert to PNG
         png_file = None
