@@ -169,7 +169,6 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
             ELSE -1
         END as patient_age_days,
         p.sex as patient_sex,
-        rr.justification as clinical_indication,
         e.created as image_date
     FROM exams e
     INNER JOIN patients p ON e.cnp = p.cnp
@@ -268,7 +267,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
 
     for idx, record in enumerate(records):
         try:
-            xray_id, image_path, report, age_days, sex, indication, date = record
+            xray_id, image_path, report, age_days, sex, date = record
 
             # Calculate age group
             age_group = calculate_age_group(age_days)
@@ -317,7 +316,6 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                 "age_days": age_days,
                 "age_group": age_group,
                 "sex": sex,
-                "clinical_indication": indication or "Unknown",
                 "date": date,
                 "xray_id": xray_id
             }
