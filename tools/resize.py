@@ -44,12 +44,15 @@ def resize_images(input_dir, target_width, target_height):
                 img = img.convert('L')
             
             width, height = img.size
+            print(f"Processing {filename}: original size {width}x{height}")
             
             # Check if resizing is needed
             # Resize if either dimension is larger than target, or if one dimension matches but the other is smaller
             needs_resize = (width > target_width or height > target_height) or \
                           (width == target_width and height < target_height) or \
                           (height == target_height and width < target_width)
+            
+            print(f"Needs resize: {needs_resize}")
             
             if not needs_resize:
                 # Already correct size or smaller in both dimensions, just save with high compression
