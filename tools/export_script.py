@@ -362,8 +362,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     else:
         output_path = Path(output_dir)
 
-    images_dir = output_path / "images"
-    images_dir.mkdir(parents=True, exist_ok=True)
+    images_dir = f"{output_path}/images"
+    os.makedirs(images_dir, exist_ok=True)
 
     logging.info(f"Starting export to: {output_path.absolute()}")
     logging.info(f"Source database: {db_path}")
