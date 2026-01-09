@@ -92,7 +92,7 @@ def query_records(conn, limit=None, region=None):
     return records
 
 def create_medgemma_entry(record, images_source_dir):
-    """Create a MedGemma-optimized dataset entry."""
+    """Create a MedGemma-optimized dataset entry for report generation."""
     study_id, image_name, report_text, report_summary, region, created = record
 
     # Determine modality based on region
@@ -101,22 +101,23 @@ def create_medgemma_entry(record, images_source_dir):
     else:
         modality = f"{region.lower()}_xray"
 
-    # Create instruction based on modality
-    if modality == 'chest_xray':
-        instruction = "Describe the findings in this chest X-ray."
-    else:
-        instruction = f"Describe the findings in this {region} X-ray."
+    # Create instruction for report generation
+    instruction = "Generate a radiology report for this chest X-ray."
 
+    # Format the response as a structured radiology report
     # Use report summary if available, otherwise use full report
-    response = report_summary if report_summary else report_text
+    if report_summary:
+        response = report_summary
+    else:
+        response = report_text
 
-    # Create entry
+    # Create entry with the new schema
     entry = {
         "image": f"images/{image_name}.png",
         "instruction": instruction,
         "response": response,
-        "modality": modality,
-        "study_id": study_id
+        "study_id": study_id,
+        "modality": modality
     }
 
     return entry
