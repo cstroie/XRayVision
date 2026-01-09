@@ -15,6 +15,9 @@ def resize_images(input_dir, target_width, target_height):
         target_width (int): Target width in pixels
         target_height (int): Target height in pixels
     """
+    # Ensure target dimensions are integers
+    target_width = int(target_width)
+    target_height = int(target_height)
     # Create output directory
     output_dir = os.path.join(input_dir, 'output')
     os.makedirs(output_dir, exist_ok=True)
