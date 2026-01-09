@@ -110,9 +110,10 @@ def query_records(conn, limit=None, region=None, age_group=None):
             e.uid as xray_id,
             e.uid as image_path,
             rr.text_en as report_text,
+            rr.summary as report_summary,
             CASE
                 WHEN p.birthdate IS NOT NULL THEN
-                    CAST((julianday(date(e.created)) - julianday(p.birthdate)) * 365 AS INTEGER)
+                    CAST((julianday(e.created) - julianday(p.birthdate)) AS INTEGER)
                 ELSE -1
             END as patient_age_days,
             p.sex as patient_sex,
@@ -130,11 +131,12 @@ def query_records(conn, limit=None, region=None, age_group=None):
         xray_id,
         image_path,
         report_text,
+        report_summary,
         patient_age_days,
         patient_sex,
         image_date
     FROM ExamData
-    WHERE patient_age_days > 0 
+    WHERE patient_age_days > 0 AND patient_age_days <= 6574
     """
 
     # Add region filter if specified
@@ -154,33 +156,6 @@ def query_records(conn, limit=None, region=None, age_group=None):
 
     cursor = conn.cursor()
 
-    # Debug: Check what's in the database first
-    debug_query = "SELECT COUNT(*) FROM exams WHERE status = 'done'"
-    if region:
-        debug_query += f" AND region = '{region}'"
-    cursor.execute(debug_query)
-    total_chest_exams = cursor.fetchone()[0]
-    logging.info(f"Total {region} exams in database: {total_chest_exams}")
-
-    debug_query = "SELECT COUNT(*) FROM exams e INNER JOIN patients p ON e.cnp = p.cnp LEFT JOIN rad_reports rr ON e.uid = rr.uid WHERE e.status = 'done' AND p.birthdate IS NOT NULL AND rr.text IS NOT NULL"
-    if region:
-        debug_query += f" AND region = '{region}'"
-    cursor.execute(debug_query)
-    total_with_reports = cursor.fetchone()[0]
-    logging.info(f"Total {region} exams with radiologist reports: {total_with_reports}")
-
-    # Debug: Check what regions are actually in the database
-    region_query = "SELECT DISTINCT region FROM exams WHERE status = 'done' ORDER BY region"
-    cursor.execute(region_query)
-    regions = cursor.fetchall()
-    logging.info(f"Available regions in database: {[r[0] for r in regions]}")
-
-    # Debug: Check what types are actually in the database
-    type_query = "SELECT DISTINCT type FROM exams WHERE status = 'done' ORDER BY type"
-    cursor.execute(type_query)
-    types = cursor.fetchall()
-    logging.info(f"Available types in database: {[t[0] for t in types]}")
-
     cursor.execute(query)
     records = cursor.fetchall()
     logging.info(f"Database query completed, found {len(records)} records")
@@ -190,7 +165,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
 
 def process_record(record, images_source_dir, images_dir, stats, processed_count, skipped_count):
     """Process a single record: validate image, copy file, create entry."""
-    xray_id, image_path, report, age_days, sex, date = record
+    xray_id, image_path, report, report_summary, age_days, sex, date = record
 
     # Calculate age group
     age_group = calculate_age_group(age_days)
@@ -239,11 +214,11 @@ def process_record(record, images_source_dir, images_dir, stats, processed_count
     entry = {
         "image": f"images/{new_image_name}",
         "report": report,
+        "report_summary": report_summary,
         "age_days": age_days,
         "age_group": age_group,
         "gender": gender,
-        "date": date,
-        "xray_id": xray_id
+        "date": date
     }
 
     return entry, processed_count, skipped_count
@@ -425,8 +400,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     continue
 
                 # Split into train/val/test (80/10/10) using hash for reproducibility
-                # Using hash of xray_id ensures consistent splits across runs
-                split_val = hash(entry["xray_id"]) % 10
+                # Using hash of image ensures consistent splits across runs
+                split_val = hash(entry["image"]) % 10
                 if split_val < 8:
                     train_data.append(entry)
                 elif split_val == 8:

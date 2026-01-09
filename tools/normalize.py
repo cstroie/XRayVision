@@ -116,7 +116,7 @@ def main():
     parser = argparse.ArgumentParser(description="Normalize PNG images for better visualization")
     parser.add_argument("input", help="Input PNG file path")
     parser.add_argument("-o", "--output", help="Output PNG file path (default: save in 'output' subdirectory with same name)")
-    parser.add_argument("--max-size", type=int, default=800, help="Maximum dimension for output image")
+    parser.add_argument("--max-size", type=int, default=896, help="Maximum dimension for output image")
     
     args = parser.parse_args()
     
