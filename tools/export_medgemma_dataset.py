@@ -123,7 +123,7 @@ def create_medgemma_entry(record, images_source_dir):
 
     return entry
 
-def export_medgemma_dataset(output_dir="./medgemma_dataset", limit=None, db_path="./export/xrayvision.db", images_source_dir="./images", region=None):
+def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, db_path="./export/xrayvision.db", images_source_dir="./images", region=None):
     """
     Export pediatric chest X-ray data in MedGemma-optimized format.
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Export data in MedGemma-optimized format")
     parser.add_argument("--limit", type=int, help="Maximum number of exams to export")
     parser.add_argument("--region", type=str, help="Filter by anatomic region (e.g., chest)")
-    parser.add_argument("--output-dir", type=str, default="./medgemma_dataset",
+    parser.add_argument("--output-dir", type=str, default="./export/medgemma_dataset",
                        help="Output directory for exported data")
     parser.add_argument("--db-path", type=str, default="./export/xrayvision.db",
                        help="Path to XRayVision database file")
