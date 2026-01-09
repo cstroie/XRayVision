@@ -157,6 +157,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
 
     # Query to match XRayVision database schema
     # This query extracts pediatric chest X-rays with radiologist reports
+    # TODO Fix the age selection and classification
     query = """
     SELECT
         e.uid as xray_id,
@@ -175,7 +176,6 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     INNER JOIN rad_reports rr ON e.uid = rr.uid
     WHERE e.status = 'done'
     AND p.birthdate IS NOT NULL
-    AND e.type = 'CR'
     -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
     -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
     AND rr.text_en IS NOT NULL
@@ -208,22 +208,22 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
 
     try:
         # Debug: Check what's in the database first
-        debug_query = "SELECT COUNT(*) FROM exams WHERE type = 'CR' AND status = 'done'"
+        debug_query = "SELECT COUNT(*) FROM exams WHERE status = 'done'"
         if region:
             debug_query += f" AND region = '{region}'"
         cursor.execute(debug_query)
         total_chest_exams = cursor.fetchone()[0]
-        logging.info(f"Total {region} CR exams in database: {total_chest_exams}")
+        logging.info(f"Total {region} exams in database: {total_chest_exams}")
 
-        debug_query = "SELECT COUNT(*) FROM exams e INNER JOIN patients p ON e.cnp = p.cnp LEFT JOIN rad_reports rr ON e.uid = rr.uid WHERE e.type = 'CR' AND e.status = 'done' AND p.birthdate IS NOT NULL AND rr.text IS NOT NULL"
+        debug_query = "SELECT COUNT(*) FROM exams e INNER JOIN patients p ON e.cnp = p.cnp LEFT JOIN rad_reports rr ON e.uid = rr.uid WHERE e.status = 'done' AND p.birthdate IS NOT NULL AND rr.text IS NOT NULL"
         if region:
             debug_query += f" AND region = '{region}'"
         cursor.execute(debug_query)
         total_with_reports = cursor.fetchone()[0]
-        logging.info(f"Total {region} CR exams with radiologist reports: {total_with_reports}")
+        logging.info(f"Total {region} exams with radiologist reports: {total_with_reports}")
 
         # Debug: Check what regions are actually in the database
-        region_query = "SELECT DISTINCT region FROM exams WHERE type = 'CR' AND status = 'done' ORDER BY region"
+        region_query = "SELECT DISTINCT region FROM exams WHERE status = 'done' ORDER BY region"
         cursor.execute(region_query)
         regions = cursor.fetchall()
         logging.info(f"Available regions in database: {[r[0] for r in regions]}")
@@ -289,46 +289,48 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
             # Use the UID directly as the filename since it's already a unique identifier
             new_image_name = f"{xray_id}.png"
             new_image_path = images_dir / new_image_name
-        
+
             # Copy and resize image if it exists
             if os.path.exists(source_image_path):
                 try:
-                    # Load image using PIL
-                    from PIL import Image
-                    img = Image.open(source_image_path)
-                
-                    # Convert to grayscale (L mode) since medical images are typically grayscale
-                    if img.mode != 'L':
-                        img = img.convert('L')
-                
-                    # Target size for MedGemma - maintain aspect ratio
-                    target_size = 896
+                    # Skip over existing images
+                    if not os.path.exists(new_image_path):
+                        # Load image using PIL
+                        from PIL import Image
+                        img = Image.open(source_image_path)
+                    
+                        # Convert to grayscale (L mode) since medical images are typically grayscale
+                        if img.mode != 'L':
+                            img = img.convert('L')
+                    
+                        # Target size for MedGemma - maintain aspect ratio
+                        target_size = 896
 
-                    # Calculate new dimensions while maintaining aspect ratio
-                    width, height = img.size
-                    if width > height:
-                        # Landscape orientation - scale by width
-                        new_width = target_size
-                        new_height = int(height * (new_width / width))
-                    else:
-                        # Portrait or square orientation - scale by height
-                        new_height = target_size
-                        new_width = int(width * (new_height / height))
+                        # Calculate new dimensions while maintaining aspect ratio
+                        width, height = img.size
+                        if width > height:
+                            # Landscape orientation - scale by width
+                            new_width = target_size
+                            new_height = int(height * (new_width / width))
+                        else:
+                            # Portrait or square orientation - scale by height
+                            new_height = target_size
+                            new_width = int(width * (new_height / height))
 
-                    # Resize image while maintaining aspect ratio
-                    img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                        # Resize image while maintaining aspect ratio
+                        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-                    # Create a new square image with black padding
-                    square_img = Image.new('RGB', (target_size, target_size), (0, 0, 0))
+                        # Create a new square image with black padding
+                        square_img = Image.new('RGB', (target_size, target_size), (0, 0, 0))
 
-                    # Calculate position to center the resized image
-                    x_offset = (target_size - new_width) // 2
-                    y_offset = (target_size - new_height) // 2
-                    # Paste the resized image onto the center of the square
-                    square_img.paste(img, (x_offset, y_offset))
+                        # Calculate position to center the resized image
+                        x_offset = (target_size - new_width) // 2
+                        y_offset = (target_size - new_height) // 2
+                        # Paste the resized image onto the center of the square
+                        square_img.paste(img, (x_offset, y_offset))
 
-                    # Save processed image with optimization
-                    square_img.save(new_image_path, 'PNG', optimize=True)
+                        # Save processed image with optimization
+                        img.save(new_image_path, 'PNG', optimize=True)
                 
                     processed_count += 1
                     if processed_count % 10 == 0:  # Progress logging

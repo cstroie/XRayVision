@@ -2,6 +2,7 @@
 .vscode*
 images/*
 backup/*
+export/*
 __pycache__
 local.cfg
 *.db
