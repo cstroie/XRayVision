@@ -170,6 +170,10 @@
                         <summary></summary>
                         <div></div>
                     </details>
+                    <details class="report rad-report-en" close>
+                        <summary>English Translation</summary>
+                        <div></div>
+                    </details>
                 </aside>
             </section>
         </template>
@@ -573,6 +577,7 @@
             } else {
                 aiReportElement.style.display = 'none';
             }
+            
 
             // Update radiologist report
             const radReportElement = cardElement.querySelector('.rad-report');
@@ -583,6 +588,15 @@
                 radReportElement.style.display = 'block';
             } else {
                 radReportElement.style.display = 'none';
+            }
+            // Update English translation of radiologist report
+            const radReportEnElement = cardElement.querySelector('.rad-report-en');
+            if (exam.report.rad.text_en) {
+                radReportEnElement.querySelector('summary').innerHTML = `English Translation`;
+                radReportEnElement.querySelector('summary').nextSibling.textContent = exam.report.rad.text_en;
+                radReportEnElement.style.display = 'block';
+            } else {
+                radReportEnElement.style.display = 'none';
             }
         }
 
