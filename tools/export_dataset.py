@@ -134,7 +134,8 @@ def query_records(conn, limit=None, region=None, age_group=None):
         report_summary,
         patient_age_days,
         patient_sex,
-        image_date
+        image_date,
+        region
     FROM ExamData
     WHERE patient_age_days > 0 AND patient_age_days <= 6574
     """
@@ -159,13 +160,13 @@ def query_records(conn, limit=None, region=None, age_group=None):
     cursor.execute(query)
     records = cursor.fetchall()
     logging.info(f"Database query completed, found {len(records)} records")
-    
+
     return records
 
 
 def process_record(record, images_source_dir, split_dirs, stats, processed_count, skipped_count):
     """Process a single record: validate image, copy file, create entry."""
-    xray_id, image_path, report, report_summary, age_days, sex, date = record
+    xray_id, image_path, report, report_summary, age_days, sex, date, region = record
 
     # Calculate age group
     age_group = calculate_age_group(age_days)
@@ -195,7 +196,8 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
         "age_days": age_days,
         "age_group": age_group,
         "gender": gender,
-        "date": date
+        "date": date,
+        "region": region
     }
 
     return entry, split_dirs, processed_count, skipped_count
