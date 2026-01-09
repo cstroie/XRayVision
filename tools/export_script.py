@@ -112,7 +112,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
             rr.text_en as report_text,
             CASE
                 WHEN p.birthdate IS NOT NULL THEN
-                    CAST((julianday(e.created) - julianday(p.birthdate)) * 365 AS INTEGER)
+                    CAST((julianday(date(e.created)) - julianday(p.birthdate)) * 365 AS INTEGER)
                 ELSE -1
             END as patient_age_days,
             p.sex as patient_sex,
