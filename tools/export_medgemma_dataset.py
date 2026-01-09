@@ -111,11 +111,12 @@ def create_medgemma_entry(record, images_source_dir):
     else:
         response = report_text
 
-    # Create entry with the new schema
+    # Create entry with the new schema including summary field
     entry = {
         "image": f"images/{image_name}.png",
         "instruction": instruction,
         "response": response,
+        "summary": report_summary,
         "study_id": study_id,
         "modality": modality
     }
