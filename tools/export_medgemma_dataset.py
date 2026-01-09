@@ -115,7 +115,7 @@ def create_medgemma_entry(record, images_source_dir):
     entry = {
         "image": f"images/{image_name}.png",
         "instruction": instruction,
-        "response": response,
+        "response": report_text,  # Use text_en for the response field
         "summary": report_summary,
         "study_id": study_id,
         "modality": modality
