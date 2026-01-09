@@ -93,51 +93,60 @@ def connect_to_database(db_path):
 
 def query_records(conn, limit=None, region=None, age_group=None):
     """Query records from database with filters."""
-    # Query to match XRayVision database schema
-    # This query extracts pediatric chest X-rays with radiologist reports
-    # TODO Fix the age selection and classification
+    # Map age group to age range in days
+    age_ranges = {
+        'neonate': (0, 28),
+        'infant': (29, 730),
+        'preschool': (731, 1826),
+        'school_age': (1827, 4383),
+        'adolescent': (4384, 6574)
+    }
+
+    # Base query using CTE to calculate age first
+    # This allows us to filter by the calculated age_days
     query = """
+    WITH ExamData AS (
+        SELECT
+            e.uid as xray_id,
+            e.uid as image_path,
+            rr.text_en as report_text,
+            CASE
+                WHEN p.birthdate IS NOT NULL THEN
+                    CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER)
+                ELSE -1
+            END as patient_age_days,
+            p.sex as patient_sex,
+            e.created as image_date,
+            e.region
+        FROM exams e
+        INNER JOIN patients p ON e.cnp = p.cnp
+        INNER JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE e.status = 'done'
+        AND p.birthdate IS NOT NULL
+        AND rr.text_en IS NOT NULL
+        AND TRIM(rr.text_en) != ''
+    )
     SELECT
-        e.uid as xray_id,
-        e.uid as image_path,  -- Use UID as image path since images are stored as {uid}.png
-        rr.text_en as report_text,
-        CASE
-            WHEN p.birthdate IS NOT NULL THEN
-                CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER)
-            ELSE -1
-        END as patient_age_days,
-        p.sex as patient_sex,
-        e.created as image_date
-    FROM exams e
-    INNER JOIN patients p ON e.cnp = p.cnp
-    INNER JOIN rad_reports rr ON e.uid = rr.uid
-    WHERE e.status = 'done'
-    AND p.birthdate IS NOT NULL
-    -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) <= 6570  -- 18 years max
-    -- AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) >= 0     -- 0 years min
-    AND rr.text_en IS NOT NULL
-    AND TRIM(rr.text_en) != ''
+        xray_id,
+        image_path,
+        report_text,
+        patient_age_days,
+        patient_sex,
+        image_date
+    FROM ExamData
+    WHERE 1=1
     """
 
     # Add region filter if specified
     if region:
-        query += f" AND e.region = '{region}'"
+        query += f" AND region = '{region}'"
 
-    # Add age group filter if specified
-    if age_group:
-        # Map age group to age range in days
-        age_ranges = {
-            'neonate': (0, 28),
-            'infant': (29, 730),
-            'preschool': (731, 1826),
-            'school_age': (1827, 4383),
-            'adolescent': (4384, 6574)
-        }
-        if age_group in age_ranges:
-            min_age, max_age = age_ranges[age_group]
-            query += f" AND CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER) BETWEEN {min_age} AND {max_age}"
+    # Add age group filter if specified using the calculated patient_age_days
+    if age_group and age_group in age_ranges:
+        min_age, max_age = age_ranges[age_group]
+        query += f" AND patient_age_days BETWEEN {min_age} AND {max_age}"
 
-    query += " ORDER BY e.created"
+    query += " ORDER BY image_date"
 
     if limit:
         query += f" LIMIT {limit}"
