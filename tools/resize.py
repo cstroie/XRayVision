@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import argparse
+from PIL import Image
+
+def resize_images(input_dir, target_width, target_height):
+    """
+    Resize all images in input_dir to target resolution if they don't already match.
+    Saves processed images to 'output' subdirectory.
+    
+    Args:
+        input_dir (str): Directory containing source images
+        target_width (int): Target width in pixels
+        target_height (int): Target height in pixels
+    """
+    # Create output directory
+    output_dir = os.path.join(input_dir, 'output')
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Get all image files
+    valid_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff')
+    image_files = [f for f in os.listdir(input_dir) 
+                   if f.lower().endswith(valid_extensions) and not f.startswith('.')]
+    
+    print(f"Found {len(image_files)} images in {input_dir}")
+    processed = 0
+    skipped = 0
+    
+    for filename in image_files:
+        input_path = os.path.join(input_dir, filename)
+        output_path = os.path.join(output_dir, filename)
+        
+        # Check if output already exists
+        if os.path.exists(output_path):
+            skipped += 1
+            continue
+        
+        try:
+            # Open and convert to grayscale
+            img = Image.open(input_path)
+            if img.mode != 'L':
+                img = img.convert('L')
+            
+            # Check if resizing is needed
+            if img.size == (target_width, target_height):
+                # Already correct size, just save with high compression
+                img.save(output_path, 'PNG', compress_level=9)
+            else:
+                # Resize maintaining aspect ratio
+                width, height = img.size
+                target_ratio = target_width / target_height
+                img_ratio = width / height
+                
+                if img_ratio > target_ratio:
+                    # Image is wider - scale by width
+                    new_width = target_width
+                    new_height = int(height * (target_width / width))
+                else:
+                    # Image is taller - scale by height
+                    new_height = target_height
+                    new_width = int(width * (target_height / height))
+                
+                # Resize using high-quality resampling
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # Create canvas and center the image
+                canvas = Image.new('L', (target_width, target_height), 0)
+                x_offset = (target_width - new_width) // 2
+                y_offset = (target_height - new_height) // 2
+                canvas.paste(img, (x_offset, y_offset))
+                
+                # Save with high compression
+                canvas.save(output_path, 'PNG', compress_level=9)
+            
+            processed += 1
+            print(f"Processed: {filename}")
+            
+        except Exception as e:
+            print(f"Error processing {filename}: {e}")
+            skipped += 1
+    
+    print(f"\nComplete: {processed} processed, {skipped} skipped")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Resize images to target resolution')
+    parser.add_argument('input_dir', help='Directory containing images to resize')
+    parser.add_argument('--width', type=int, required=True, help='Target width in pixels')
+    parser.add_argument('--height', type=int, required=True, help='Target height in pixels')
+    
+    args = parser.parse_args()
+    
+    if not os.path.isdir(args.input_dir):
+        print(f"Error: Input directory '{args.input_dir}' does not exist")
+        exit(1)
+    
+    resize_images(args.input_dir, args.width, args.height)
