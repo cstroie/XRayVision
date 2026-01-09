@@ -187,6 +187,14 @@ def process_record(record, images_source_dir, images_dir, stats, processed_count
     age_group = calculate_age_group(age_days)
     stats[age_group] += 1
 
+    # Map sex to gender (boy/girl/child)
+    if sex == 'M':
+        gender = 'boy'
+    elif sex == 'F':
+        gender = 'girl'
+    else:
+        gender = 'child'
+
     # Construct source image path
     source_image_path = os.path.join(images_source_dir, f"{image_path}.png")
 
@@ -224,7 +232,7 @@ def process_record(record, images_source_dir, images_dir, stats, processed_count
         "report": report,
         "age_days": age_days,
         "age_group": age_group,
-        "sex": sex,
+        "gender": gender,
         "date": date,
         "xray_id": xray_id
     }
