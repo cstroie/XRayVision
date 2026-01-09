@@ -290,53 +290,19 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
             new_image_name = f"{xray_id}.png"
             new_image_path = images_dir / new_image_name
 
-            # Copy and resize image if it exists
+            # Copy image if it exists and target doesn't exist
             if os.path.exists(source_image_path):
                 try:
                     # Skip over existing images
                     if not os.path.exists(new_image_path):
-                        # Load image using PIL
-                        from PIL import Image
-                        img = Image.open(source_image_path)
-                    
-                        # Convert to grayscale (L mode) since medical images are typically grayscale
-                        if img.mode != 'L':
-                            img = img.convert('L')
-                    
-                        # Target size for MedGemma - maintain aspect ratio
-                        target_size = 896
-
-                        # Calculate new dimensions while maintaining aspect ratio
-                        width, height = img.size
-                        if width > height:
-                            # Landscape orientation - scale by width
-                            new_width = target_size
-                            new_height = int(height * (new_width / width))
-                        else:
-                            # Portrait or square orientation - scale by height
-                            new_height = target_size
-                            new_width = int(width * (new_height / height))
-
-                        # Resize image while maintaining aspect ratio
-                        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-                        # Create a new square image with black padding
-                        square_img = Image.new('RGB', (target_size, target_size), (0, 0, 0))
-
-                        # Calculate position to center the resized image
-                        x_offset = (target_size - new_width) // 2
-                        y_offset = (target_size - new_height) // 2
-                        # Paste the resized image onto the center of the square
-                        square_img.paste(img, (x_offset, y_offset))
-
-                        # Save processed image with optimization
-                        img.save(new_image_path, 'PNG', optimize=True)
+                        # Just copy the file without resizing
+                        shutil.copy2(source_image_path, new_image_path)
                 
                     processed_count += 1
                     if processed_count % 10 == 0:  # Progress logging
                         logging.info(f"Processed {processed_count}/{len(records)} records")
                 except Exception as e:
-                    logging.error(f"Failed to process image {source_image_path}: {e}")
+                    logging.error(f"Failed to copy image {source_image_path}: {e}")
                     skipped_count += 1
                     continue
             else:
