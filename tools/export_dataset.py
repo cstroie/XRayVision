@@ -163,7 +163,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
     return records
 
 
-def process_record(record, images_source_dir, images_dir, stats, processed_count, skipped_count):
+def process_record(record, images_source_dir, split_dirs, stats, processed_count, skipped_count):
     """Process a single record: validate image, copy file, create entry."""
     xray_id, image_path, report, report_summary, age_days, sex, date = record
 
@@ -187,32 +187,9 @@ def process_record(record, images_source_dir, images_dir, stats, processed_count
         logging.warning(f"Image file not found: {source_image_path}")
         return None, processed_count, skipped_count + 1
 
-    # Copy image to export directory with consistent naming
-    # Use the UID directly as the filename since it's already a unique identifier
-    new_image_name = f"{xray_id}.png"
-    new_image_path = f"{images_dir}/{new_image_name}"
-
-    # Copy image if it exists and target doesn't exist
-    if os.path.exists(source_image_path):
-        try:
-            # Skip over existing images
-            if not os.path.exists(new_image_path):
-                # Just copy the file without resizing
-                shutil.copy2(source_image_path, new_image_path)
-            
-            processed_count += 1
-            if processed_count % 10 == 0:  # Progress logging
-                logging.info(f"Processed {processed_count} records")
-        except Exception as e:
-            logging.error(f"Failed to copy image {source_image_path}: {e}")
-            return None, processed_count, skipped_count + 1
-    else:
-        logging.warning(f"Image file not found: {source_image_path}")
-        return None, processed_count, skipped_count + 1
-
     # Create metadata entry
     entry = {
-        "image": f"images/{new_image_name}",
+        "file_name": f"{xray_id}.png",
         "report": report,
         "report_summary": report_summary,
         "age_days": age_days,
@@ -221,21 +198,49 @@ def process_record(record, images_source_dir, images_dir, stats, processed_count
         "date": date
     }
 
-    return entry, processed_count, skipped_count
+    return entry, split_dirs, processed_count, skipped_count
 
 
-def write_jsonl(data, filename, output_path):
-    """Write data to JSONL file with proper encoding and error handling."""
-    filepath = output_path / filename
+def write_metadata_and_copy_images(data, split_name, output_path, images_source_dir):
+    """
+    Write metadata.jsonl and copy images to the appropriate split directory.
+
+    Args:
+        data: List of metadata entries for this split
+        split_name: Name of the split (train, val, test)
+        output_path: Base output directory
+        images_source_dir: Source directory containing PNG images
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    split_dir = output_path / split_name
+    os.makedirs(split_dir, exist_ok=True)
+
+    # Write metadata.jsonl
+    metadata_path = split_dir / "metadata.jsonl"
     try:
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(metadata_path, 'w', encoding='utf-8') as f:
             for entry in data:
                 f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-        logging.info(f"Wrote {len(data)} entries to {filename}")
-        return True
+        logging.info(f"Wrote {len(data)} entries to {split_name}/metadata.jsonl")
     except (IOError, OSError) as e:
-        logging.error(f"Failed to write {filename}: {e}")
+        logging.error(f"Failed to write {split_name}/metadata.jsonl: {e}")
         return False
+
+    # Copy images to split directory
+    for entry in data:
+        source_path = os.path.join(images_source_dir, f"{entry['file_name'].replace('.png', '')}.png")
+        target_path = split_dir / entry['file_name']
+
+        if not os.path.exists(target_path):
+            try:
+                shutil.copy2(source_path, target_path)
+            except Exception as e:
+                logging.error(f"Failed to copy image {source_path} to {target_path}: {e}")
+                return False
+
+    return True
 
 
 def print_summary(records, processed_count, skipped_count, train_data, val_data, test_data, stats, output_path):
@@ -247,7 +252,8 @@ def print_summary(records, processed_count, skipped_count, train_data, val_data,
             "records_processed": processed_count,
             "records_skipped": skipped_count,
             "export_date": datetime.now().isoformat(),
-            "output_dir": str(output_path.absolute())
+            "output_dir": str(output_path.absolute()),
+            "dataset_format": "image_dataset"
         },
         "dataset_splits": {
             "train_size": len(train_data),
@@ -261,6 +267,11 @@ def print_summary(records, processed_count, skipped_count, train_data, val_data,
         "age_distribution_percentages": {
             group: round(count / max(1, processed_count) * 100, 1)
             for group, count in stats.items()
+        },
+        "dataset_structure": {
+            "train": "train/ - contains images and metadata.jsonl",
+            "val": "val/ - contains images and metadata.jsonl",
+            "test": "test/ - contains images and metadata.jsonl"
         }
     }
 
@@ -291,6 +302,7 @@ def print_summary(records, processed_count, skipped_count, train_data, val_data,
         print(f"  {age_group}: {count} ({percentage}%)")
     print()
     print(f"Export location: {output_path.absolute()}")
+    print(f"Dataset format: image_dataset (train/val/test directories with metadata.jsonl)")
     print("="*50)
 
 
@@ -307,7 +319,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     2. Image file validation and copying
     3. Reproducible dataset splitting (80/10/10 train/val/test)
     4. Metadata generation and statistics collection
-    5. JSONL format output for compatibility with ML training pipelines
+    5. Image dataset format output compatible with Hugging Face datasets library
 
     Args:
         output_dir (str): Directory to save exported data (default: "./export/pediatric_xray_dataset")
@@ -354,8 +366,10 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
     else:
         output_path = Path(output_dir)
 
-    images_dir = f"{output_path}/images"
-    os.makedirs(images_dir, exist_ok=True)
+    # Create split directories (train, val, test)
+    os.makedirs(output_path / "train", exist_ok=True)
+    os.makedirs(output_path / "val", exist_ok=True)
+    os.makedirs(output_path / "test", exist_ok=True)
 
     logging.info(f"Starting export to: {output_path.absolute()}")
     logging.info(f"Source database: {db_path}")
@@ -392,16 +406,16 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
 
         for idx, record in enumerate(records):
             try:
-                entry, processed_count, skipped_count = process_record(
-                    record, images_source_dir, images_dir, stats, processed_count, skipped_count
+                entry, split_dirs, processed_count, skipped_count = process_record(
+                    record, images_source_dir, None, stats, processed_count, skipped_count
                 )
 
                 if entry is None:
                     continue
 
                 # Split into train/val/test (80/10/10) using hash for reproducibility
-                # Using hash of image ensures consistent splits across runs
-                split_val = hash(entry["image"]) % 10
+                # Using hash of filename ensures consistent splits across runs
+                split_val = hash(entry["file_name"]) % 10
                 if split_val < 8:
                     train_data.append(entry)
                 elif split_val == 8:
@@ -414,10 +428,10 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                 skipped_count += 1
                 continue
 
-        # Write JSONL files
-        train_success = write_jsonl(train_data, "train.jsonl", output_path)
-        val_success = write_jsonl(val_data, "val.jsonl", output_path)
-        test_success = write_jsonl(test_data, "test.jsonl", output_path)
+        # Write metadata and copy images to split directories
+        train_success = write_metadata_and_copy_images(train_data, "train", output_path, images_source_dir)
+        val_success = write_metadata_and_copy_images(val_data, "val", output_path, images_source_dir)
+        test_success = write_metadata_and_copy_images(test_data, "test", output_path, images_source_dir)
 
         # Print summary
         print_summary(records, processed_count, skipped_count, train_data, val_data, test_data, stats, output_path)
