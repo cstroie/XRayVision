@@ -112,7 +112,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
             rr.text_en as report_text,
             CASE
                 WHEN p.birthdate IS NOT NULL THEN
-                    CAST((julianday(e.created) - julianday(p.birthdate)) * 365.25 AS INTEGER)
+                    CAST((julianday(e.created) - julianday(p.birthdate)) * 365 AS INTEGER)
                 ELSE -1
             END as patient_age_days,
             p.sex as patient_sex,
@@ -134,7 +134,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
         patient_sex,
         image_date
     FROM ExamData
-    WHERE patient_age_days > 0 AND patient_age_days < 6570
+    WHERE patient_age_days > 0 
     """
 
     # Add region filter if specified
@@ -215,7 +215,7 @@ def process_record(record, images_source_dir, images_dir, stats, processed_count
     # Copy image to export directory with consistent naming
     # Use the UID directly as the filename since it's already a unique identifier
     new_image_name = f"{xray_id}.png"
-    new_image_path = images_dir / new_image_name
+    new_image_path = f"{images_dir}/{new_image_name}"
 
     # Copy image if it exists and target doesn't exist
     if os.path.exists(source_image_path):
