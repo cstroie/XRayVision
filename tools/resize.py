@@ -47,18 +47,16 @@ def resize_images(input_dir, target_width, target_height):
             print(f"Processing {filename}: original size {width}x{height}")
             
             # Check if resizing is needed
-            # Resize if either dimension is larger than target, or if one dimension matches but the other is smaller
-            needs_resize = (width > target_width or height > target_height) or \
-                          (width == target_width and height < target_height) or \
-                          (height == target_height and width < target_width)
+            # Resize if image is larger than target OR if image is smaller than target
+            needs_resize = (width != target_width or height != target_height)
             
             print(f"Needs resize: {needs_resize}")
             
             if not needs_resize:
-                # Already correct size or smaller in both dimensions, just save with high compression
+                # Already correct size, just save with high compression
                 img.save(output_path, 'PNG', compress_level=9)
             else:
-                # Resize maintaining aspect ratio
+                # Resize maintaining aspect ratio to fit within target dimensions
                 target_ratio = target_width / target_height
                 img_ratio = width / height
                 
