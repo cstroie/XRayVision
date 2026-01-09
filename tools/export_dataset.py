@@ -118,7 +118,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
             END as patient_age_days,
             p.sex as patient_sex,
             e.created as image_date,
-            e.region
+            e.region as region
         FROM exams e
         INNER JOIN patients p ON e.cnp = p.cnp
         INNER JOIN rad_reports rr ON e.uid = rr.uid
@@ -134,7 +134,8 @@ def query_records(conn, limit=None, region=None, age_group=None):
         report_summary,
         patient_age_days,
         patient_sex,
-        image_date
+        image_date,
+        region
     FROM ExamData
     WHERE patient_age_days > 0 AND patient_age_days <= 6574
     """
@@ -165,7 +166,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
 
 def process_record(record, images_source_dir, images_dir, stats, processed_count, skipped_count):
     """Process a single record: validate image, copy file, create entry."""
-    xray_id, image_path, report, report_summary, age_days, sex, date = record
+    xray_id, image_path, report, report_summary, age_days, sex, date, region = record
 
     # Calculate age group
     age_group = calculate_age_group(age_days)
@@ -213,6 +214,7 @@ def process_record(record, images_source_dir, images_dir, stats, processed_count
     # Create metadata entry
     entry = {
         "image": f"images/{new_image_name}",
+        "region": region,
         "report": report,
         "report_summary": report_summary,
         "age_days": age_days,
