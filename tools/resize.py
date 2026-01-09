@@ -43,13 +43,19 @@ def resize_images(input_dir, target_width, target_height):
             if img.mode != 'L':
                 img = img.convert('L')
             
+            width, height = img.size
+            
             # Check if resizing is needed
-            if img.size == (target_width, target_height):
-                # Already correct size, just save with high compression
+            # Resize if either dimension is larger than target, or if one dimension matches but the other is smaller
+            needs_resize = (width > target_width or height > target_height) or \
+                          (width == target_width and height < target_height) or \
+                          (height == target_height and width < target_width)
+            
+            if not needs_resize:
+                # Already correct size or smaller in both dimensions, just save with high compression
                 img.save(output_path, 'PNG', compress_level=9)
             else:
                 # Resize maintaining aspect ratio
-                width, height = img.size
                 target_ratio = target_width / target_height
                 img_ratio = width / height
                 
