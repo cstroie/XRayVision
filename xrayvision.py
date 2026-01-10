@@ -1031,10 +1031,10 @@ def db_update_rad_report(uid, positive, severity, summary, model, latency):
 def db_get_exams_without_rad_report():
     """
     Get all exams for a patient that don't have radiologist reports yet.
-    
+
     First identifies a patient with at least one exam without a radiologist report,
     then retrieves all exams for that patient without radiologist reports.
-    Newer exams have a higher chance of being selected. If no exam is found in the initial
+    Exams are selected randomly from the available time window. If no exam is found in the initial
     time window, the window is doubled (up to 52 weeks) and tried once more.
 
     Returns:
@@ -2154,7 +2154,7 @@ async def query_and_retrieve(minutes=60):
 
     Args:
         minutes (int): Number of minutes to look back for new studies (default: 60)
-        
+
     DICOM Workflow:
         1. C-FIND: Query remote PACS for studies matching criteria
         2. Study Filtering: Skip studies already in local database
@@ -2167,6 +2167,8 @@ async def query_and_retrieve(minutes=60):
         with DICOM time range format limitations:
         - First query: From start time to 23:59:59
         - Second query: From 00:00:00 to end time
+
+        This is necessary because DICOM time ranges can't wrap around midnight.
 
     Retrieval Methods:
         - C-MOVE: Server pushes studies to configured AE title
@@ -2381,7 +2383,7 @@ def extract_dicom_metadata(ds):
     Parses patient demographics, exam details, and timestamps from a DICOM dataset.
     Handles missing or malformed data gracefully with fallback values. This function
     performs several key operations:
-    
+
     1. Patient Age Calculation: Computes age from birth date or Romanian CNP
     2. Timestamp Processing: Extracts and validates study/series timestamps
     3. Anatomic Region Identification: Maps protocol names to standardized regions
@@ -2430,6 +2432,8 @@ def extract_dicom_metadata(ds):
            - Gracefully handles missing/invalid DICOM fields
            - Provides sensible default values
            - Logs extraction errors for debugging
+        6. County Extraction:
+           - Extracts county code from CNP validation if available
     """
     age = -1
     birthdate = None
@@ -5350,6 +5354,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         8. Database Storage: Save results with processing timing metrics
         9. Notification: Alert for positive findings via ntfy.sh
         10. Dashboard Update: Broadcast processing completion status
+        11. Error Handling: Update status to 'error' on failure and broadcast update
     """
     try:
         # Try to get additional patient and exam information from FHIR before processing
