@@ -5843,8 +5843,14 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     if not srv_req:
         srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
 
+    # If no service request found, log and return
     if not srv_req or 'id' not in srv_req:
-        if not rad_report:
+        # If we don't have a record yet, insert a negative ID to mark as not found
+        if rad_report:
+            # Update existing record with negative ID
+            db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
+            logging.info(f"Updated report for exam {exam_uid} to mark service request as not found")
+        else:
             # Insert a negative service request ID into our database to mark as not found
             db_insert('rad_reports', uid=exam_uid, id=-1)
             logging.info(f"Service request missing for exam {exam_uid}")
