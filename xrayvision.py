@@ -5866,17 +5866,31 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     # Extract justification from supportingInfo if available
     justification = ''
     try:
-        if 'supportingInfo' in srv_req and len(srv_req['supportingInfo']) > 0:
+        # First try supportingInfo
+        if 'supportingInfo' in srv_req and isinstance(srv_req['supportingInfo'], list) and len(srv_req['supportingInfo']) > 0:
             supporting_info = srv_req['supportingInfo'][0]
-            if 'display' in supporting_info:
+            if isinstance(supporting_info, dict) and 'display' in supporting_info and isinstance(supporting_info['display'], str):
                 justification = supporting_info['display']
-        # Fallback to reason array if supportingInfo is empty
-        elif 'reason' in srv_req and len(srv_req['reason']) > 0:
+                logging.debug(f"Extracted justification from supportingInfo: {justification}")
+
+        # If no justification found, try reason array
+        if not justification and 'reason' in srv_req and isinstance(srv_req['reason'], list) and len(srv_req['reason']) > 0:
             reason = srv_req['reason'][0]
-            if 'display' in reason:
+            if isinstance(reason, dict) and 'display' in reason and isinstance(reason['display'], str):
                 justification = reason['display']
+                logging.debug(f"Extracted justification from reason: {justification}")
+
+        # If still no justification, log what we found in the service request
+        if not justification:
+            logging.debug(f"No justification found in service request. Available fields: {list(srv_req.keys())}")
+            if 'supportingInfo' in srv_req:
+                logging.debug(f"supportingInfo content: {srv_req['supportingInfo']}")
+            if 'reason' in srv_req:
+                logging.debug(f"reason content: {srv_req['reason']}")
+
     except Exception as e:
-        logging.debug(f"Could not extract justification from supportingInfo or reason: {e}")
+        logging.warning(f"Error extracting justification from service request: {e}")
+        logging.debug(f"Service request structure: {srv_req}")
     
     # Get diagnostic report first
     report = await get_fhir_diagnosticreport(session, srv_req['id'])
