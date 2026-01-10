@@ -4157,14 +4157,13 @@ async def translate_report(report_text):
             logging.debug(f"Raw AI translation response: {response_text}")
 
             # Clean up markdown code fences if present
+            response_text = response_text.replace('\n', ' ')
             response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
             response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
 
             # For translation, we expect simple text response, not JSON
             # Just return the cleaned response text directly
             if response_text:
-                # Replace newlines with spaces in the translation
-                response_text = response_text.replace('\n', ' ')
                 logging.info(f"Translation completed: {response_text[:50]}...")
                 return response_text
             else:
