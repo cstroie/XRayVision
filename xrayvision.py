@@ -4163,7 +4163,7 @@ async def translate_report(report_text):
             # For translation, we expect simple text response, not JSON
             # Just return the cleaned response text directly
             if response_text:
-                logging.debug(f"Translation completed: {response_text[:50]}...")
+                logging.info(f"Translation completed: {response_text[:50]}...")
                 return response_text
             else:
                 logging.warning("Empty translation response received")
@@ -4420,15 +4420,14 @@ async def translate_handler(request):
         web.json_response: JSON response with translation results
     """
     try:
+        # Get report text from request
         data = await request.json()
         report_text = data.get('report', '').strip()
-
+        # Translate the report
         result = await translate_report(report_text)
-
         # Check if there was an error
         if result is None:
             return web.json_response({'error': 'Translation failed'}, status=500)
-
         return web.json_response({'translation': result})
     except Exception as e:
         logging.error(f"Error processing translation request: {e}")
@@ -6003,7 +6002,7 @@ async def translate_existing_reports():
             return
 
         logging.info(f"Found {len(rows)} reports to translate")
-
+        # Process each report
         for row in rows:
             uid, report_text = row
             try:
