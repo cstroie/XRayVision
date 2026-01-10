@@ -5845,15 +5845,25 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
 
     # If no service request found, log and return
     if not srv_req or 'id' not in srv_req:
-        # If we don't have a record yet, insert a negative ID to mark as not found
-        if rad_report:
-            # Update existing record with negative ID
-            db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
-            logging.info(f"Updated report for exam {exam_uid} to mark service request as not found")
+        # Check if exam is older than 1 month
+        exam_date = datetime.strptime(exam_datetime, "%Y-%m-%d %H:%M:%S")
+        one_month_ago = datetime.now() - timedelta(days=30)
+        is_old_exam = exam_date < one_month_ago
+
+        # Only insert/update rad report if exam is older than 1 month
+        if is_old_exam:
+            # If we don't have a record yet, insert a negative ID to mark as not found
+            if rad_report:
+                # Update existing record with negative ID
+                db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
+                logging.info(f"Updated report for exam {exam_uid} to mark service request as not found")
+            else:
+                # Insert a negative service request ID into our database to mark as not found
+                db_insert('rad_reports', uid=exam_uid, id=-1)
+                logging.info(f"Service request missing for exam {exam_uid}")
         else:
-            # Insert a negative service request ID into our database to mark as not found
-            db_insert('rad_reports', uid=exam_uid, id=-1)
-            logging.info(f"Service request missing for exam {exam_uid}")
+            logging.info(f"Service request missing for recent exam {exam_uid} (less than 1 month old), skipping rad report creation")
+
         # Return if no service request found
         return
     # Extract justification from supportingInfo if available
