@@ -4163,6 +4163,8 @@ async def translate_report(report_text):
             # For translation, we expect simple text response, not JSON
             # Just return the cleaned response text directly
             if response_text:
+                # Replace newlines with spaces in the translation
+                response_text = response_text.replace('\n', ' ')
                 logging.info(f"Translation completed: {response_text[:50]}...")
                 return response_text
             else:
