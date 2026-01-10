@@ -343,9 +343,7 @@ You are a professional medical translator specializing in radiology reports.
 TASK: Translate the Romanian radiology report into English.
 
 OUTPUT FORMAT:
-{
-  "translation": "English translation of the report"
-}
+[English translation of the report]
 
 RULES:
 - Translate the entire report text from Romanian to English
@@ -354,19 +352,19 @@ RULES:
 - Use professional medical English terminology
 - Keep the same structure and formatting as the original
 - Do not add any explanations, comments, or additional text
-- Respond ONLY with the JSON object containing the translation
-- Ensure proper escaping of special characters in the translation string
+- Respond ONLY with the translation text, no JSON, no formatting, no additional content
+- Do not include any text before or after the translation
 
 EXAMPLES:
 
 Romanian: "SCD libere, fără lichid pleural."
-English: "Clear costo-diaphragmatic sinuses, no pleural effusion."
+English: Clear costo-diaphragmatic sinuses, no pleural effusion.
 
 Romanian: "Proces de condensare paracardiac dreapta."
-English: "Right paracardiac consolidation process."
+English: Right paracardiac consolidation process.
 
 Romanian: "Fără semne de fractură sau leziuni osteolitice."
-English: "No signs of fracture or osteolytic lesions."
+English: No signs of fracture or osteolytic lesions.
 """)
 
 
@@ -4161,34 +4159,13 @@ async def translate_report(report_text):
             response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
             response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
 
-            try:
-                parsed_response = json.loads(response_text)
-                logging.debug(f"AI translation response: {parsed_response}")
-
-                # Handle case where AI returns an array instead of single object
-                if isinstance(parsed_response, list):
-                    if len(parsed_response) == 0:
-                        raise ValueError("Empty array response from AI")
-                    # Take the first valid entry from the array
-                    parsed_response = parsed_response[0]
-                    logging.debug(f"Extracted first entry from array: {parsed_response}")
-
-                # Validate required fields
-                if "translation" not in parsed_response:
-                    raise ValueError("Missing translation field in AI response")
-
-                # Validate translation field
-                if not isinstance(parsed_response["translation"], str):
-                    raise ValueError("Invalid translation value in AI response")
-
-                translation = parsed_response["translation"].strip()
-                logging.debug(f"Translation completed: {translation[:50]}...")
-                return translation
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse AI translation response as JSON: {response_text}")
-                return None
-            except ValueError as e:
-                logging.error(f"Invalid AI translation response format: {e} ({response_text})")
+            # For translation, we expect simple text response, not JSON
+            # Just return the cleaned response text directly
+            if response_text:
+                logging.debug(f"Translation completed: {response_text[:50]}...")
+                return response_text
+            else:
+                logging.warning("Empty translation response received")
                 return None
     except Exception as e:
         logging.error(f"Error processing translation request: {e}")
