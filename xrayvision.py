@@ -1233,10 +1233,10 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         - rad_reports (rr): Radiologist reports linked by exam UID
 
     Correctness Calculation:
-        - correct = 1: True positives (both AI and radiologist positive) or 
-                     True negatives (both AI and radiologist negative)
-        - correct = 0: False positives (AI positive, radiologist negative) or
-                     False negatives (AI negative, radiologist positive)
+        - correct = 1: True positives (both AI and radiologist severity >= threshold) or
+                     True negatives (both AI and radiologist severity < threshold)
+        - correct = 0: False positives (AI severity >= threshold, radiologist severity < threshold) or
+                     False negatives (AI severity < threshold, radiologist severity >= threshold)
         - correct = -1: Not reviewed (radiologist severity = -1 or NULL)
 
     Performance Considerations:
