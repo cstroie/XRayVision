@@ -159,6 +159,8 @@ Timestamps, info, warnings, and errors are all captured.
 * `/api/requeue` - Re-queue an exam for processing
 * `/api/dicomquery` - Manually trigger DICOM QueryRetrieve
 * `/api/check` - Analyze a free-text radiology report
+* `/api/analyse` - Perform detailed three-pass analysis of a radiology report
+* `/api/translate` - Translate a Romanian radiology report to English
 * `/api/getrad` - Retrieve radiologist report from FHIR
 * `/api/spec` - Get OpenAPI specification
 
