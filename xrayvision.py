@@ -4872,7 +4872,6 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                     for entry in data['entry']:
                         if 'resource' in entry and entry['resource'].get('resourceType') == 'Patient':
                             patients.append(entry['resource'])
-                    
                     if patients:
                         logging.info(f"Found {len(patients)} patients in bundle for CNP {cnp}")
                         # Validate CNP before proceeding
@@ -4880,22 +4879,20 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                         if not cnp_result['valid']:
                             logging.warning(f"Invalid CNP {cnp}, skipping patient selection")
                             return None
-                        
                         # Log warning about multiple patients
-                        logging.warning(f"Multiple patients found for CNP {cnp}, selecting the one with the greatest ID")
-                        
+                        logging.info(f"Multiple patients found for CNP {cnp}, selecting the one with the greatest ID")
                         # Sort patients by ID (assuming IDs are numeric or comparable)
                         # and select the one with the greatest ID
                         patients.sort(key=lambda p: p.get('id', ''), reverse=True)
                         logging.info(f"Selected patient with ID {patients[0].get('id')} for CNP {cnp}")
                         return patients[0]
                     else:
-                        logging.error(f"FHIR patient search error: no valid patients found in bundle for CNP {cnp}")
+                        logging.warning(f"FHIR patient search error: no valid patients found in bundle for CNP {cnp}")
                 elif data.get('resourceType') == 'OperationOutcome':
                     # Handle OperationOutcome responses (typically errors)
                     issues = data.get('issue', [])
                     error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
-                    logging.warning(f"FHIR patient search returned OperationOutcome for CNP {cnp}: {error_details}")
+                    logging.debug(f"FHIR patient search returned OperationOutcome for CNP {cnp}: {error_details}")
                     # Check if all issues are just informational - if so, we should still try name search
                     all_info = all(issue.get('severity', '').lower() == 'information' for issue in issues)
                     if not all_info:
@@ -5004,14 +5001,14 @@ async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_type
                     if len(srv_reqs) == 1:
                         return srv_reqs
                     elif len(srv_reqs) > 1:
-                        logging.warning(f"FHIR service requests search returned {len(srv_reqs)} service requests, expected exactly one")
+                        logging.info(f"FHIR service requests search returned {len(srv_reqs)} service requests, expected exactly one")
                     # Return empty list if no service requests or more than one
                     return []
                 elif data.get('resourceType') == 'OperationOutcome':
                     # Handle OperationOutcome responses (typically errors)
                     issues = data.get('issue', [])
                     error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
-                    logging.warning(f"FHIR service requests search returned OperationOutcome: {error_details}")
+                    logging.debug(f"FHIR service requests search returned OperationOutcome: {error_details}")
                     return []
                 else:
                     logging.error(f"FHIR service requests search error: unexpected response format")
@@ -5862,7 +5859,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
                 db_insert('rad_reports', uid=exam_uid, id=-1)
                 logging.info(f"Service request missing for exam {exam_uid}")
         else:
-            logging.info(f"Service request missing for recent exam {exam_uid} (less than 1 month old), skipping rad report creation")
+            logging.info(f"Service request missing for recent exam {exam_uid}, skipping rad report creation")
 
         # Return if no service request found
         return
