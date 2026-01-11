@@ -295,9 +295,9 @@ This dataset is licensed under CC-BY-4.0. Please review the license terms before
 
             with open(readme_path, 'w', encoding='utf-8') as f:
                 f.write(readme_content)
-            print("Successfully created README.md dataset card")
+            print("Created README.md dataset card")
         except (IOError, OSError) as e:
-            print(f"Failed to write README.md: {e}")
+            print(f"Error: Failed to write README.md: {e}")
             print(f"Attempted to write to: {readme_path}")
             print(f"Output path exists: {output_path.exists()}")
             print(f"Output path is writable: {os.access(str(output_path), os.W_OK)}")
