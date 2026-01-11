@@ -210,9 +210,7 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
         "age_days": age_days,
         "age_group": age_group,
         "gender": gender,
-        "date": date,
-        "region": region,
-        "original_id": xray_id  # Keep original ID for reference if needed
+        "region": region
     }
 
     return entry, split_dirs, processed_count, skipped_count
@@ -247,9 +245,10 @@ def write_metadata_and_copy_images(data, split_name, output_path, images_source_
 
     # Copy images to split directory with MD5 filenames
     for entry in data:
-        # Use original_id to find the source file
-        original_id = entry.get('original_id', entry['file_name'].replace('.png', ''))
-        source_path = os.path.join(images_source_dir, f"{original_id}.png")
+        # Use the original filename (without .png) to find the source file
+        # The original filename is the xray_id from the database
+        original_filename = entry['file_name'].replace('.png', '')
+        source_path = os.path.join(images_source_dir, f"{original_filename}.png")
         target_path = split_dir / entry['file_name']
 
         if not os.path.exists(target_path):
@@ -315,9 +314,7 @@ Each entry in the metadata.jsonl files contains:
 - `age_days`: Patient age in days since birth
 - `age_group`: Pediatric age classification (neonate, infant, preschool, school_age, adolescent)
 - `gender`: Patient gender (boy, girl, child)
-- `date`: Exam date (YYYY-MM-DD)
 - `region`: Anatomic region (e.g., "chest")
-- `original_id`: Original exam ID for reference (if needed for debugging or tracking)
 
 ## Usage
 
@@ -513,8 +510,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     continue
 
                 # Split into train/val/test (80/10/10) using hash for reproducibility
-                # Using hash of original_id ensures consistent splits across runs
-                split_val = hash(entry["original_id"]) % 10
+                # Using hash of file_name ensures consistent splits across runs
+                split_val = hash(entry["file_name"]) % 10
                 if split_val < 8:
                     train_data.append(entry)
                 elif split_val == 8:
