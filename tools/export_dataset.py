@@ -206,7 +206,7 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
     entry = {
         "file_name": f"{md5_filename}.png",
         "report": report,
-        "report_summary": report_summary,
+        "summary": report_summary,
         "age_days": age_days,
         "age_group": age_group,
         "gender": gender,
@@ -311,7 +311,7 @@ Each entry in the metadata.jsonl files contains:
 
 - `file_name`: MD5-hashed image filename (e.g., "a1b2c3d4e5f6.png") for anonymization
 - `report`: Full radiologist report text in English
-- `report_summary`: Summary of the radiologist findings
+- `summary`: Summary of the radiologist findings
 - `age_days`: Patient age in days since birth
 - `age_group`: Pediatric age classification (neonate, infant, preschool, school_age, adolescent)
 - `gender`: Patient gender (boy, girl, child)
