@@ -66,7 +66,9 @@ def query_records(conn, limit=None, region=None):
         rr.text_en as report_text,
         rr.summary as report_summary,
         e.region,
-        e.created
+        e.created,
+        p.age_days,
+        p.sex
     FROM exams e
     INNER JOIN patients p ON e.cnp = p.cnp
     INNER JOIN rad_reports rr ON e.uid = rr.uid
@@ -96,15 +98,33 @@ def generate_md5_filename(filename):
     """Generate MD5 hash from filename for consistent naming."""
     return hashlib.md5(filename.encode('utf-8')).hexdigest()
 
+def calculate_age_category(age_days):
+    """Calculate age category based on age in days."""
+    if age_days < 30:
+        return "neonatal"
+    elif age_days < 365:
+        return "infant"
+    elif age_days < 1825:  # 5 years
+        return "toddler"
+    elif age_days < 3650:  # 10 years
+        return "child"
+    elif age_days < 5475:  # 15 years
+        return "adolescent"
+    else:
+        return "adult"
+
 def create_medgemma_entry(record, images_source_dir):
     """Create a MedGemma-optimized dataset entry for report generation."""
-    study_id, image_name, report_text, report_summary, region, created = record
+    study_id, image_name, report_text, report_summary, region, created, age_days, gender = record
 
     # Determine modality based on region
     if region.lower() == 'chest':
         modality = 'chest_xray'
     else:
         modality = f"{region.lower()}_xray"
+
+    # Calculate age category
+    age_category = calculate_age_category(age_days)
 
     # Format the response as a structured radiology report
     # Use report summary if available, otherwise use full report
@@ -122,7 +142,11 @@ def create_medgemma_entry(record, images_source_dir):
         "response": report_text,  # Use text_en for the response field
         "summary": report_summary,
         "modality": modality,
-        "original_filename": image_name  # Keep original filename for reference
+        "original_filename": image_name,  # Keep original filename for reference
+        "region": region,
+        "age_days": age_days,
+        "age_category": age_category,
+        "gender": gender
     }
 
     return entry
