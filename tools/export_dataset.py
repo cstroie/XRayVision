@@ -239,6 +239,85 @@ def write_metadata_and_copy_images(data, split_name, output_path, images_source_
 
     return True
 
+def write_dataset_card(output_path, region=None):
+    """
+    Write dataset card (README.md) to the output directory.
+
+    Args:
+        output_path: Base output directory
+        region: Optional region filter used for export
+    """
+    dataset_card_content = """---
+license: cc-by-4.0
+task_categories:
+- image-classification
+- image-to-text
+---
+
+## Dataset description
+
+This dataset contains pediatric chest X-ray images with associated radiologist reports for medical AI research and model training.
+The dataset is optimized for MedGemma fine-tuning and includes comprehensive metadata for each case.
+"""
+
+    if region:
+        dataset_card_content += f"\n\n### Region Filter\nThis export is filtered for the anatomic region: `{region}`\n"
+
+    dataset_card_content += """
+## Dataset Structure
+
+The dataset is organized in the standard Hugging Face image dataset format:
+
+```
+pediatric_xray_dataset/
+├── train/
+│   ├── metadata.jsonl      # Training set metadata
+│   └── *.png               # Training images
+├── val/
+│   ├── metadata.jsonl      # Validation set metadata
+│   └── *.png               # Validation images
+├── test/
+│   ├── metadata.jsonl      # Test set metadata
+│   └── *.png               # Test images
+├── dataset_stats.json      # Comprehensive dataset statistics
+└── README.md               # This dataset card
+```
+
+## Metadata Fields
+
+Each entry in the metadata.jsonl files contains:
+
+- `file_name`: Image filename (e.g., "12345.png")
+- `report`: Full radiologist report text in English
+- `report_summary`: Summary of the radiologist findings
+- `age_days`: Patient age in days since birth
+- `age_group`: Pediatric age classification (neonate, infant, preschool, school_age, adolescent)
+- `gender`: Patient gender (boy, girl, child)
+- `date`: Exam date (YYYY-MM-DD)
+- `region`: Anatomic region (e.g., "chest")
+
+## Usage
+
+This dataset is designed for fine-tuning medical vision-language models like MedGemma:
+
+```python
+from datasets import load_dataset
+
+dataset = load_dataset("path/to/pediatric_xray_dataset")
+```
+
+## Citation
+
+If you use this dataset in your research, please cite the original XRayVision project and the source medical institution.
+"""
+
+    try:
+        with open(output_path / "README.md", 'w', encoding='utf-8') as f:
+            f.write(dataset_card_content)
+        logging.info("Wrote dataset card to README.md")
+    except (IOError, OSError) as e:
+        logging.error(f"Failed to write dataset card: {e}")
+
 
 def print_summary(records, processed_count, skipped_count, train_data, val_data, test_data, stats, output_path):
     """Print export summary and write statistics file."""
@@ -429,6 +508,9 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         train_success = write_metadata_and_copy_images(train_data, "train", output_path, images_source_dir)
         val_success = write_metadata_and_copy_images(val_data, "val", output_path, images_source_dir)
         test_success = write_metadata_and_copy_images(test_data, "test", output_path, images_source_dir)
+
+        # Write dataset card
+        write_dataset_card(output_path, region)
 
         # Print summary
         print_summary(records, processed_count, skipped_count, train_data, val_data, test_data, stats, output_path)
