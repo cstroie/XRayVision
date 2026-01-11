@@ -16,11 +16,6 @@ import shutil
 import sqlite3
 import logging
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)8s | %(message)s'
-)
 
 def calculate_age_group(age_days):
     """
