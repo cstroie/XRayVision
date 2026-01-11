@@ -59,6 +59,7 @@ def connect_to_database(db_path):
 def query_records(conn, limit=None, region=None):
     """Query records from database with filters."""
     # Base query to get exams with radiologist reports
+    # Calculate age_days from birthdate and created date
     query = """
     SELECT
         e.uid as study_id,
@@ -67,12 +68,17 @@ def query_records(conn, limit=None, region=None):
         rr.summary as report_summary,
         e.region,
         e.created,
-        p.age_days,
+        CASE
+            WHEN p.birthdate IS NOT NULL THEN
+                CAST((julianday(e.created) - julianday(p.birthdate)) AS INTEGER)
+            ELSE -1
+        END as age_days,
         p.sex
     FROM exams e
     INNER JOIN patients p ON e.cnp = p.cnp
     INNER JOIN rad_reports rr ON e.uid = rr.uid
     WHERE e.status = 'done'
+    AND p.birthdate IS NOT NULL
     AND rr.text_en IS NOT NULL
     AND TRIM(rr.text_en) != ''
     """
