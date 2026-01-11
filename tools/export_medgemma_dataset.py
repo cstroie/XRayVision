@@ -106,9 +106,6 @@ def create_medgemma_entry(record, images_source_dir):
     else:
         modality = f"{region.lower()}_xray"
 
-    # Create instruction for report generation
-    instruction = "Generate a radiology report for this chest X-ray."
-
     # Format the response as a structured radiology report
     # Use report summary if available, otherwise use full report
     if report_summary:
@@ -122,7 +119,6 @@ def create_medgemma_entry(record, images_source_dir):
     # Create entry with the new schema including summary field
     entry = {
         "image": f"images/{md5_filename}.png",
-        "instruction": instruction,
         "response": report_text,  # Use text_en for the response field
         "summary": report_summary,
         "study_id": study_id,
