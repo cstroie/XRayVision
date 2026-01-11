@@ -145,7 +145,6 @@ def create_medgemma_entry(record, images_source_dir):
         "response": report_text,  # Use text_en for the response field
         "summary": report_summary,
         "modality": modality,
-        "original_filename": image_name,  # Keep original filename for reference
         "region": region,
         "age_days": age_days,
         "age_category": age_category,
