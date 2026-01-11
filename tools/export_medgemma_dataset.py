@@ -12,6 +12,7 @@ import os
 import shutil
 import sqlite3
 import logging
+import hashlib
 from pathlib import Path
 from datetime import datetime
 
@@ -91,6 +92,10 @@ def query_records(conn, limit=None, region=None):
 
     return records
 
+def generate_md5_filename(filename):
+    """Generate MD5 hash from filename for consistent naming."""
+    return hashlib.md5(filename.encode('utf-8')).hexdigest()
+
 def create_medgemma_entry(record, images_source_dir):
     """Create a MedGemma-optimized dataset entry for report generation."""
     study_id, image_name, report_text, report_summary, region, created = record
@@ -111,14 +116,18 @@ def create_medgemma_entry(record, images_source_dir):
     else:
         response = report_text
 
+    # Generate MD5 hash for filename
+    md5_filename = generate_md5_filename(image_name)
+
     # Create entry with the new schema including summary field
     entry = {
-        "image": f"images/{image_name}.png",
+        "image": f"images/{md5_filename}.png",
         "instruction": instruction,
         "response": report_text,  # Use text_en for the response field
         "summary": report_summary,
         "study_id": study_id,
-        "modality": modality
+        "modality": modality,
+        "original_filename": image_name  # Keep original filename for reference
     }
 
     return entry
@@ -179,9 +188,13 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
                 entry = create_medgemma_entry(record, images_source_dir)
                 dataset_entries.append(entry)
 
-                # Copy image file
-                source_image_path = os.path.join(images_source_dir, f"{record[1]}.png")
-                target_image_path = images_output_dir / f"{record[1]}.png"
+                # Generate MD5 filename for the image
+                original_filename = record[1]
+                md5_filename = generate_md5_filename(original_filename)
+
+                # Copy image file with MD5 filename
+                source_image_path = os.path.join(images_source_dir, f"{original_filename}.png")
+                target_image_path = images_output_dir / f"{md5_filename}.png"
 
                 if os.path.exists(source_image_path):
                     shutil.copy2(source_image_path, target_image_path)
