@@ -56,7 +56,7 @@ def find_acronyms():
         return []
 
 def print_acronyms(acronyms):
-    """Print acronyms in a formatted way.
+    """Print acronyms in a simple one-column list.
 
     Args:
         acronyms: List of acronyms to print
@@ -68,15 +68,9 @@ def print_acronyms(acronyms):
     print(f"Found {len(acronyms)} unique acronyms in radiologist reports:")
     print("=" * 50)
 
-    # Print acronyms in columns
-    for i, acronym in enumerate(acronyms, 1):
-        print(f"{acronym:10}", end="")
-        if i % 5 == 0:
-            print()
-
-    # Print newline if we didn't end on a new line
-    if len(acronyms) % 5 != 0:
-        print()
+    # Print acronyms in a simple one-column list
+    for acronym in acronyms:
+        print(acronym)
 
 def save_acronyms_to_file(acronyms, filename="acronyms.txt"):
     """Save acronyms to a text file.
