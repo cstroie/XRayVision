@@ -16,11 +16,6 @@ import hashlib
 from pathlib import Path
 from datetime import datetime
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)8s | %(message)s'
-)
 
 def connect_to_database(db_path):
     """Connect to database and copy from source if needed."""
@@ -33,16 +28,16 @@ def connect_to_database(db_path):
     if not os.path.exists(db_path):
         source_db = "xrayvision-multi.db"
         if os.path.exists(source_db):
-            logging.info(f"Database not found at {db_path}, copying from {source_db}")
+            print(f"Database not found at {db_path}, copying from {source_db}")
             try:
                 # Use SQLite backup API for secure copying with proper transaction handling
                 with sqlite3.connect(source_db) as source_conn:
                     backup_conn = sqlite3.connect(db_path)
                     source_conn.backup(backup_conn)
                     backup_conn.close()
-                logging.info(f"Successfully copied database to {db_path}")
+                print(f"Successfully copied database to {db_path}")
             except (IOError, OSError, sqlite3.Error) as e:
-                logging.error(f"Failed to copy database from {source_db} to {db_path}: {e}")
+                print(f"Error: Failed to copy database from {source_db} to {db_path}: {e}")
                 raise FileNotFoundError(f"Could not create database at {db_path}: {e}")
         else:
             raise FileNotFoundError(f"Database file not found at {db_path} and source {source_db} does not exist")
@@ -50,10 +45,10 @@ def connect_to_database(db_path):
     # Connect to database
     try:
         conn = sqlite3.connect(db_path)
-        logging.info("Database connection established")
+        print("Database connection established")
         return conn
     except sqlite3.Error as e:
-        logging.error(f"Failed to connect to database: {e}")
+        print(f"Error: Failed to connect to database: {e}")
         raise
 
 def query_records(conn, limit=None, region=None):
@@ -91,12 +86,12 @@ def query_records(conn, limit=None, region=None):
 
     if limit:
         query += f" LIMIT {limit}"
-        logging.info(f"Exporting limited sample of {limit} records")
+        print(f"Exporting limited sample of {limit} records")
 
     cursor = conn.cursor()
     cursor.execute(query)
     records = cursor.fetchall()
-    logging.info(f"Database query completed, found {len(records)} records")
+    print(f"Database query completed, found {len(records)} records")
 
     return records
 
@@ -182,9 +177,9 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
     # Create output directory structure
     os.makedirs(images_output_dir, exist_ok=True)
 
-    logging.info(f"Starting MedGemma dataset export to: {output_path.absolute()}")
-    logging.info(f"Source database: {db_path}")
-    logging.info(f"Source images: {images_source_dir}")
+    print(f"Starting MedGemma dataset export to: {output_path.absolute()}")
+    print(f"Source database: {db_path}")
+    print(f"Source images: {images_source_dir}")
 
     # Connect to database
     conn = connect_to_database(db_path)
@@ -194,7 +189,7 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
         records = query_records(conn, limit, region)
 
         if not records:
-            logging.warning("No records found matching export criteria")
+            print("Warning: No records found matching export criteria")
             return output_path
 
         # Process records and create dataset entries
@@ -202,7 +197,7 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
         processed_count = 0
         skipped_count = 0
 
-        logging.info("Processing records...")
+        print("Processing records...")
 
         for idx, record in enumerate(records):
             try:
@@ -221,11 +216,11 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
                     shutil.copy2(source_image_path, target_image_path)
                     processed_count += 1
                 else:
-                    logging.warning(f"Image file not found: {source_image_path}")
+                    print(f"Warning: Image file not found: {source_image_path}")
                     skipped_count += 1
 
             except Exception as e:
-                logging.error(f"Error processing record {idx}: {e}")
+                print(f"Error processing record {idx}: {e}")
                 skipped_count += 1
                 continue
 
@@ -235,7 +230,7 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
             with open(data_jsonl_path, 'w', encoding='utf-8') as f:
                 for entry in dataset_entries:
                     f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-            logging.info(f"Wrote {len(dataset_entries)} entries to data.jsonl")
+            print(f"Wrote {len(dataset_entries)} entries to data.jsonl")
         except (IOError, OSError) as e:
             logging.error(f"Failed to write data.jsonl: {e}")
             return output_path
