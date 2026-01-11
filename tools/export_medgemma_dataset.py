@@ -243,6 +243,7 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
         # Create README.md with dataset card
         readme_path = output_path / "README.md"
         try:
+            print(f"Creating README.md dataset card at: {readme_path}")
             readme_content = """---
 license: cc-by-4.0
 task_categories:
@@ -252,8 +253,7 @@ task_categories:
 
 ## Dataset description
 
-This dataset contains pediatric chest X-ray images with associated radiologist reports for medical AI research and model training. The
-dataset is optimized for MedGemma fine-tuning and includes comprehensive metadata for each case.
+This dataset contains pediatric chest X-ray images with associated radiologist reports for medical AI research and model training. The dataset is optimized for MedGemma fine-tuning and includes comprehensive metadata for each case.
 
 ### Dataset Features
 
@@ -265,11 +265,13 @@ dataset is optimized for MedGemma fine-tuning and includes comprehensive metadat
 
 ### Dataset Structure
 
+```
 medgemma_dataset/
-├── images/                 # Directory containing PNG images
-│   ├── {md5_hash}.png      # Images with MD5-hashed filenames
+├── images/                # Directory containing PNG images
+│   ├── {md5_hash}.png     # Images with MD5-hashed filenames
 │   └── ...
-└── data.jsonl              # Dataset entries in JSON Lines format
+└── data.jsonl             # Dataset entries in JSON Lines format
+```
 
 ### Data Fields
 
@@ -298,9 +300,12 @@ This dataset is licensed under CC-BY-4.0. Please review the license terms before
 
             with open(readme_path, 'w', encoding='utf-8') as f:
                 f.write(readme_content)
-            logging.info("Created README.md dataset card")
+            print("Successfully created README.md dataset card")
         except (IOError, OSError) as e:
-            logging.error(f"Failed to write README.md: {e}")
+            print(f"Failed to write README.md: {e}")
+            print(f"Attempted to write to: {readme_path}")
+            print(f"Output path exists: {output_path.exists()}")
+            print(f"Output path is writable: {os.access(str(output_path), os.W_OK)}")
 
         # Print summary
         print("\n" + "="*50)
