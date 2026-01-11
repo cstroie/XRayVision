@@ -240,6 +240,68 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
             logging.error(f"Failed to write data.jsonl: {e}")
             return output_path
 
+        # Create README.md with dataset card
+        readme_path = output_path / "README.md"
+        try:
+            readme_content = """---
+license: cc-by-4.0
+task_categories:
+- image-classification
+- image-captioning
+---
+
+## Dataset description
+
+This dataset contains pediatric chest X-ray images with associated radiologist reports for medical AI research and model training. The
+dataset is optimized for MedGemma fine-tuning and includes comprehensive metadata for each case.
+
+### Dataset Features
+
+- **Image modality**: Chest X-ray (CR)
+- **Patient age range**: Neonatal to adolescent (0-18 years)
+- **Image format**: PNG
+- **Report format**: Structured radiology reports in English
+- **Metadata**: Age, gender, region, and severity information
+
+### Dataset Structure
+
+medgemma_dataset/
+├── images/                 # Directory containing PNG images
+│   ├── {md5_hash}.png      # Images with MD5-hashed filenames
+│   └── ...
+└── data.jsonl              # Dataset entries in JSON Lines format
+
+### Data Fields
+
+Each entry in `data.jsonl` contains:
+- `image`: Path to the X-ray image file
+- `response`: Full radiology report text
+- `summary`: Report summary (if available)
+- `modality`: Imaging modality (CR for chest X-ray)
+- `region`: Anatomic region examined
+- `age_days`: Patient age in days
+- `age_category`: Age group classification
+- `gender`: Patient gender
+
+### Usage
+
+This dataset is designed for fine-tuning medical vision-language models like MedGemma for pediatric radiology applications.
+
+### Citation
+
+If you use this dataset in your research, please cite the original XRayVision project and include appropriate acknowledgments.
+
+### License
+
+This dataset is licensed under CC-BY-4.0. Please review the license terms before use.
+"""
+
+            with open(readme_path, 'w', encoding='utf-8') as f:
+                f.write(readme_content)
+            logging.info("Created README.md dataset card")
+        except (IOError, OSError) as e:
+            logging.error(f"Failed to write README.md: {e}")
+
         # Print summary
         print("\n" + "="*50)
         print("MEDGEMMA DATASET EXPORT SUMMARY")
