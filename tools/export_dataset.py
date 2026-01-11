@@ -10,6 +10,7 @@
 
 import json
 import os
+import hashlib
 from pathlib import Path
 from datetime import datetime
 import shutil
@@ -159,6 +160,21 @@ def query_records(conn, limit=None, region=None, age_group=None):
     return records
 
 
+def generate_md5_filename(filename):
+    """
+    Generate MD5 hash of filename to anonymize while maintaining consistency.
+
+    Args:
+        filename (str): Original filename
+
+    Returns:
+        str: MD5 hash of the filename (without extension)
+    """
+    # Create MD5 hash of the filename (without extension)
+    filename_without_ext = filename.replace('.png', '')
+    md5_hash = hashlib.md5(filename_without_ext.encode('utf-8')).hexdigest()
+    return md5_hash
+
 def process_record(record, images_source_dir, split_dirs, stats, processed_count, skipped_count):
     """Process a single record: validate image, copy file, create entry."""
     xray_id, image_path, report, report_summary, age_days, sex, date, region = record
@@ -183,16 +199,20 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
         logging.warning(f"Image file not found: {source_image_path}")
         return None, processed_count, skipped_count + 1
 
-    # Create metadata entry
+    # Generate MD5 hash of the original filename for anonymization
+    md5_filename = generate_md5_filename(f"{xray_id}.png")
+
+    # Create metadata entry with MD5 filename
     entry = {
-        "file_name": f"{xray_id}.png",
+        "file_name": f"{md5_filename}.png",
         "report": report,
         "report_summary": report_summary,
         "age_days": age_days,
         "age_group": age_group,
         "gender": gender,
         "date": date,
-        "region": region
+        "region": region,
+        "original_id": xray_id  # Keep original ID for reference if needed
     }
 
     return entry, split_dirs, processed_count, skipped_count
@@ -225,9 +245,11 @@ def write_metadata_and_copy_images(data, split_name, output_path, images_source_
         logging.error(f"Failed to write {split_name}/metadata.jsonl: {e}")
         return False
 
-    # Copy images to split directory
+    # Copy images to split directory with MD5 filenames
     for entry in data:
-        source_path = os.path.join(images_source_dir, f"{entry['file_name'].replace('.png', '')}.png")
+        # Use original_id to find the source file
+        original_id = entry.get('original_id', entry['file_name'].replace('.png', ''))
+        source_path = os.path.join(images_source_dir, f"{original_id}.png")
         target_path = split_dir / entry['file_name']
 
         if not os.path.exists(target_path):
@@ -287,7 +309,7 @@ pediatric_xray_dataset/
 
 Each entry in the metadata.jsonl files contains:
 
-- `file_name`: Image filename (e.g., "12345.png")
+- `file_name`: MD5-hashed image filename (e.g., "a1b2c3d4e5f6.png") for anonymization
 - `report`: Full radiologist report text in English
 - `report_summary`: Summary of the radiologist findings
 - `age_days`: Patient age in days since birth
@@ -295,6 +317,7 @@ Each entry in the metadata.jsonl files contains:
 - `gender`: Patient gender (boy, girl, child)
 - `date`: Exam date (YYYY-MM-DD)
 - `region`: Anatomic region (e.g., "chest")
+- `original_id`: Original exam ID for reference (if needed for debugging or tracking)
 
 ## Usage
 
@@ -490,8 +513,8 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                     continue
 
                 # Split into train/val/test (80/10/10) using hash for reproducibility
-                # Using hash of filename ensures consistent splits across runs
-                split_val = hash(entry["file_name"]) % 10
+                # Using hash of original_id ensures consistent splits across runs
+                split_val = hash(entry["original_id"]) % 10
                 if split_val < 8:
                     train_data.append(entry)
                 elif split_val == 8:
