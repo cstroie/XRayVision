@@ -117,11 +117,8 @@ def create_medgemma_entry(record, images_source_dir):
     """Create a MedGemma-optimized dataset entry for report generation."""
     study_id, image_name, report_text, report_summary, region, created, age_days, gender = record
 
-    # Determine modality based on region
-    if region.lower() == 'chest':
-        modality = 'chest_xray'
-    else:
-        modality = f"{region.lower()}_xray"
+    # Set modality to CR (Computed Radiography) for all entries
+    modality = 'CR'
 
     # Calculate age category
     age_category = calculate_age_category(age_days)
