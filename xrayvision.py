@@ -402,6 +402,9 @@ RULES:
 - Do not add any explanations, comments, or additional text
 - Respond ONLY with the translation text, no JSON, no formatting, no additional content
 - Do not include any text before or after the translation
+- IMPORTANT: Translate ALL medical acronyms using the provided translation list below
+- If you encounter an acronym, ALWAYS use its English translation from the list
+- Never leave acronyms untranslated or in their original form
 
 MEDICAL ACROYNMS TO TRANSLATE:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
@@ -416,6 +419,9 @@ English: Right paracardiac consolidation process.
 
 Romanian: "Fără semne de fractură sau leziuni osteolitice."
 English: No signs of fracture or osteolytic lesions.
+
+Romanian: "Pneumotorax dreapta. IOT la T2. CVC în AD."
+English: Right pneumothorax. Tracheal tube at T2. Central venous catheter in right atrium.
 """)
 
 
