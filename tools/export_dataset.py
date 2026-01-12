@@ -246,37 +246,25 @@ def write_metadata_and_copy_images(data, split_name, output_path, images_source_
 
     # Copy images to split directory with MD5 filenames
     for entry in data:
-        # Extract the original UID from the entry
-        # The entry contains the MD5-hashed filename, but we need to find the original source
-        # The original source filename is the xray_id from the database record
-        # We need to pass this through the processing chain
-
-        # For now, we'll try to find the source by looking for any PNG file
-        # This is a temporary workaround - the proper fix would be to track the original UID
-        source_files = [f for f in os.listdir(images_source_dir) if f.endswith('.png')]
-
-        if not source_files:
-            logging.error(f"No source PNG files found in {images_source_dir}")
+        # Use the preserved original UID to find the source file
+        original_uid = entry.get('_original_uid', '')
+        if not original_uid:
+            logging.error(f"No original UID found for entry {entry['file_name']}")
             return False
 
-        # Try to find a matching file by checking if any source file exists
-        found_source = False
-        for source_file in source_files:
-            source_path = os.path.join(images_source_dir, source_file)
-            target_path = split_dir / entry['file_name']
+        source_path = os.path.join(images_source_dir, f"{original_uid}.png")
+        target_path = split_dir / entry['file_name']
 
-            if os.path.exists(source_path) and not os.path.exists(target_path):
-                try:
-                    shutil.copy2(source_path, target_path)
-                    found_source = True
-                    break
-                except Exception as e:
-                    logging.error(f"Failed to copy image {source_path} to {target_path}: {e}")
-                    continue
-
-        if not found_source:
-            logging.error(f"Could not find source image for entry {entry['file_name']}")
+        if not os.path.exists(source_path):
+            logging.error(f"Source image not found: {source_path}")
             return False
+
+        if not os.path.exists(target_path):
+            try:
+                shutil.copy2(source_path, target_path)
+            except Exception as e:
+                logging.error(f"Failed to copy image {source_path} to {target_path}: {e}")
+                return False
 
     return True
 
