@@ -4160,13 +4160,14 @@ async def translate_report(report_text):
     """Translate a Romanian radiology report to English using the LLM.
 
     Takes a radiology report text and sends it to the LLM for translation
-    using a specialized prompt.
+    using a specialized prompt. Performs validation checks on the translation
+    before returning it.
 
     Args:
         report_text: Romanian radiology report text to translate
 
     Returns:
-        str: English translation of the report, or None if translation failed
+        str: English translation of the report, or None if translation failed or validation checks fail
     """
     try:
         logging.debug(f"Translation request received with report length: {len(report_text)} characters")
@@ -4216,17 +4217,96 @@ async def translate_report(report_text):
             response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
             response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
 
-            # For translation, we expect simple text response, not JSON
-            # Just return the cleaned response text directly
-            if response_text:
-                logging.info(f"Translation completed: {response_text[:50]}...")
-                return response_text
-            else:
+            # Validate the translation before returning
+            if not response_text:
                 logging.warning("Empty translation response received")
                 return None
+
+            # Check if translation is identical to source (no translation performed)
+            if response_text.strip() == report_text.strip():
+                logging.warning("Translation is identical to source text - no translation performed")
+                return None
+
+            # Check if translation is too short (less than 10 characters)
+            if len(response_text.strip()) < 10:
+                logging.warning(f"Translation is too short ({len(response_text)} characters)")
+                return None
+
+            # Check if translation contains only placeholder text or error messages
+            placeholder_patterns = [
+                r"\b(no translation available)\b",
+                r"\b(could not translate)\b",
+                r"\b(translation failed)\b",
+                r"\b(error)\b",
+                r"\b(sorry)\b",
+                r"\b(unable)\b",
+                r"\b(failed)\b"
+            ]
+
+            for pattern in placeholder_patterns:
+                if re.search(pattern, response_text, re.IGNORECASE):
+                    logging.warning(f"Translation contains placeholder/error text: {response_text}")
+                    return None
+
+            logging.info(f"Translation completed and validated: {response_text[:50]}...")
+            return response_text
     except Exception as e:
         logging.error(f"Error processing translation request: {e}")
         return None
+
+def validate_translation(source_text, translated_text):
+    """
+    Validate a translation before saving it to the database.
+
+    Performs several validation checks to ensure the translation is valid:
+    1. Not empty or None
+    2. Not identical to source text
+    3. Minimum length requirement
+    4. No placeholder/error text patterns
+    5. Contains some English words (basic check)
+
+    Args:
+        source_text: Original text in source language
+        translated_text: Translated text to validate
+
+    Returns:
+        tuple: (bool, str) where bool indicates validity and str contains error message if invalid
+    """
+    if not translated_text or not translated_text.strip():
+        return False, "Translation is empty or None"
+
+    # Check if translation is identical to source (no translation performed)
+    if translated_text.strip() == source_text.strip():
+        return False, "Translation is identical to source text - no translation performed"
+
+    # Check if translation is too short (less than 10 characters)
+    if len(translated_text.strip()) < 10:
+        return False, f"Translation is too short ({len(translated_text)} characters)"
+
+    # Check if translation contains only placeholder text or error messages
+    placeholder_patterns = [
+        r"\b(no translation available)\b",
+        r"\b(could not translate)\b",
+        r"\b(translation failed)\b",
+        r"\b(error)\b",
+        r"\b(sorry)\b",
+        r"\b(unable)\b",
+        r"\b(failed)\b"
+    ]
+
+    for pattern in placeholder_patterns:
+        if re.search(pattern, translated_text, re.IGNORECASE):
+            return False, f"Translation contains placeholder/error text: {translated_text}"
+
+    # Basic check for English words (simple heuristic)
+    english_words = ['the', 'and', 'of', 'to', 'in', 'is', 'it', 'that', 'for', 'you']
+    translated_lower = translated_text.lower()
+    english_word_count = sum(1 for word in english_words if word in translated_lower)
+
+    if english_word_count < 2:  # At least 2 common English words
+        return False, "Translation doesn't appear to contain English text"
+
+    return True, "Translation is valid"
 
 async def check_rad_report_and_update(uid):
     """Send radiologist report text to CHECK prompt and update database with severity/summary.
@@ -4255,7 +4335,13 @@ async def check_rad_report_and_update(uid):
         logging.info(f"Translating radiologist report for exam {uid}")
         translation = await translate_report(report_text)
         if translation:
-            logging.info(f"Translation successful for exam {uid}")
+            # Validate the translation before using it
+            is_valid, validation_msg = validate_translation(report_text, translation)
+            if not is_valid:
+                logging.warning(f"Translation validation failed for exam {uid}: {validation_msg}")
+                translation = None
+            else:
+                logging.info(f"Translation successful and validated for exam {uid}")
         else:
             logging.warning(f"Translation failed for exam {uid}")
 
@@ -4294,7 +4380,7 @@ async def check_rad_report_and_update(uid):
             'latency': int(processing_time)
         }
 
-        # Add translation if successful
+        # Add translation if successful and validated
         if translation:
             update_fields['text_en'] = translation
 
@@ -6041,7 +6127,7 @@ async def translate_existing_reports():
     Translate existing radiologist reports that don't have English translations yet.
 
     This function finds all radiologist reports without English translations
-    and translates them using the LLM.
+    and translates them using the LLM. Validates translations before saving.
     """
     try:
         # Get all exams with radiologist reports that don't have translations
@@ -6067,9 +6153,14 @@ async def translate_existing_reports():
                 translation = await translate_report(report_text)
 
                 if translation:
-                    # Update the database with the translation
-                    db_update('rad_reports', 'uid = ?', (uid,), text_en=translation)
-                    logging.info(f"Successfully translated and updated exam {uid}")
+                    # Validate the translation before saving
+                    is_valid, validation_msg = validate_translation(report_text, translation)
+                    if is_valid:
+                        # Update the database with the validated translation
+                        db_update('rad_reports', 'uid = ?', (uid,), text_en=translation)
+                        logging.info(f"Successfully translated and updated exam {uid}")
+                    else:
+                        logging.warning(f"Translation validation failed for exam {uid}: {validation_msg}")
                 else:
                     logging.warning(f"Translation failed for exam {uid}")
 
