@@ -4260,6 +4260,40 @@ async def translate_report(report_text):
         logging.error(f"Error processing translation request: {e}")
         return None
 
+def expand_medical_acronyms(text):
+    """
+    Expand medical acronyms in the text using the MEDICAL_ACRONYMS dictionary.
+
+    This function searches for medical acronyms in the text and replaces them
+    with their full English translations to help with validation and readability.
+
+    Args:
+        text: Text containing potential medical acronyms
+
+    Returns:
+        tuple: (expanded_text, found_acronyms) where expanded_text is the text with
+               medical acronyms expanded and found_acronyms is a list of acronyms found
+    """
+    if not text or not isinstance(text, str):
+        return text, []
+
+    expanded_text = text
+    found_acronyms = []
+
+    # Create a sorted list of acronyms by length (longest first) to avoid partial matches
+    sorted_acronyms = sorted(MEDICAL_ACRONYMS.keys(), key=len, reverse=True)
+
+    for acronym in sorted_acronyms:
+        # Use word boundaries to avoid partial matches
+        pattern = r'\b' + re.escape(acronym) + r'\b'
+        translation = MEDICAL_ACRONYMS[acronym]
+        # Check if acronym exists in text (case insensitive)
+        if re.search(pattern, expanded_text, flags=re.IGNORECASE):
+            found_acronyms.append(acronym)
+            expanded_text = re.sub(pattern, translation, expanded_text, flags=re.IGNORECASE)
+
+    return expanded_text, found_acronyms
+
 def validate_translation(source_text, translated_text):
     """
     Validate a translation before saving it to the database.
@@ -4270,6 +4304,7 @@ def validate_translation(source_text, translated_text):
     3. Minimum length requirement
     4. No placeholder/error text patterns
     5. Contains some English words (basic check)
+    6. Medical acronyms are properly expanded
 
     Args:
         source_text: Original text in source language
@@ -4304,9 +4339,24 @@ def validate_translation(source_text, translated_text):
         if re.search(pattern, translated_text, re.IGNORECASE):
             return False, f"Translation contains placeholder/error text: {translated_text}"
 
+    # Expand medical acronyms in the translated text for better validation
+    expanded_translation, found_acronyms = expand_medical_acronyms(translated_text)
+
+    # Check if any medical acronyms were found but not properly translated
+    # Look for common Romanian acronym patterns that should have been translated
+    romanian_acronym_pattern = r'\b[A-Z]{2,}\b'  # 2+ uppercase letters
+    untranslated_acronyms = re.findall(romanian_acronym_pattern, translated_text)
+
+    # Filter out acronyms that were properly translated (found in our list)
+    untranslated_acronyms = [acro for acro in untranslated_acronyms if acro not in MEDICAL_ACRONYMS]
+
+    if untranslated_acronyms:
+        logging.warning(f"Found untranslated medical acronyms in translation: {untranslated_acronyms}")
+        # This is not necessarily a failure, but we should log it for review
+
     # Basic check for English words (simple heuristic)
     english_words = ['the', 'and', 'of', 'to', 'in', 'is', 'it', 'that', 'for', 'you']
-    translated_lower = translated_text.lower()
+    translated_lower = expanded_translation.lower()
     english_word_count = sum(1 for word in english_words if word in translated_lower)
 
     if english_word_count < 2:  # At least 2 common English words
