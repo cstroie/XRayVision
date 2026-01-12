@@ -355,6 +355,47 @@ RULES:
 - Respond ONLY with the translation text, no JSON, no formatting, no additional content
 - Do not include any text before or after the translation
 
+MEDICAL ACROYNMS TO TRANSLATE:
+AD: right atrium
+AP: antero-posterior
+APP: pathological personal history
+ATI: intensive care unit
+CT: computed tomography
+CTL: cervico-toraco-lumbar
+CV: venous catheter
+CVC: central venous catheter
+DD: dorsal decubitus
+DR: right side
+DVP: ventriculo-peritoneal derivation
+FID: right iliac fossa
+FIS: left iliac fossa
+IOT: tracheal tube
+LID: inferior right lobe
+LIS: inferior left lobe
+LSD: superior right lobe
+LSS: superior left lobe
+NZG: naso-gastric
+PAI: interstitial pneumonia
+PU: pielo-uretheral
+RD: right kidney
+RG: xray
+RMN: MRI
+RS: left kidney
+RVU: vesico-uretheral reflux
+SAF: paranasal sinuses
+SCD: costo-diaphramatic sinuses
+SF: frontal sinus
+SM: maxilar sinus
+SNG: naso-gastric catheter
+STG: left
+TCC: cranio-cerebral trauma
+UPU: ER
+VCI: inferior vena cava
+VCS: superior vena cava
+VP: portal vein
+VS: left ventricle
+VU: bladder
+
 EXAMPLES:
 
 Romanian: "SCD libere, fără lichid pleural."
