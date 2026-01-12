@@ -405,6 +405,10 @@ RULES:
 - IMPORTANT: Translate ALL medical acronyms using the provided translation list below
 - If you encounter an acronym, ALWAYS use its English translation from the list
 - Never leave acronyms untranslated or in their original form
+- Create coherent, natural-sounding English translations
+- Rephrasing is allowed to improve readability and flow
+- Ensure the translation is grammatically correct and clinically accurate
+- Maintain the same clinical meaning while making the text sound natural in English
 
 MEDICAL ACROYNMS TO TRANSLATE:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
@@ -422,6 +426,12 @@ English: No signs of fracture or osteolytic lesions.
 
 Romanian: "Pneumotorax dreapta. IOT la T2. CVC în AD."
 English: Right pneumothorax. Tracheal tube at T2. Central venous catheter in right atrium.
+
+Romanian: "Pacientul prezintă opacitate în lobul inferior drept."
+English: The patient shows opacity in the right lower lobe.
+
+Romanian: "Nu se observă modificări patologice semnificative."
+English: No significant pathological changes are observed.
 """)
 
 
