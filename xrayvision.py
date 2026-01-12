@@ -118,6 +118,49 @@ county_names = {
     95: "Special", 96: "Special", 97: "Special", 98: "Special", 99: "Special"
 }
 
+# Medical acronyms for translation and analysis
+MEDICAL_ACRONYMS = {
+    "AD": "right atrium",
+    "AP": "antero-posterior",
+    "APP": "pathological personal history",
+    "ATI": "intensive care unit",
+    "CT": "computed tomography",
+    "CTL": "cervico-toraco-lumbar",
+    "CV": "venous catheter",
+    "CVC": "central venous catheter",
+    "DD": "dorsal decubitus",
+    "DR": "right side",
+    "DVP": "ventriculo-peritoneal derivation",
+    "FID": "right iliac fossa",
+    "FIS": "left iliac fossa",
+    "IOT": "tracheal tube",
+    "LID": "inferior right lobe",
+    "LIS": "inferior left lobe",
+    "LSD": "superior right lobe",
+    "LSS": "superior left lobe",
+    "NZG": "naso-gastric",
+    "PAI": "interstitial pneumonia",
+    "PU": "pielo-uretheral",
+    "RD": "right kidney",
+    "RG": "xray",
+    "RMN": "MRI",
+    "RS": "left kidney",
+    "RVU": "vesico-uretheral reflux",
+    "SAF": "paranasal sinuses",
+    "SCD": "costo-diaphramatic sinuses",
+    "SF": "frontal sinus",
+    "SM": "maxilar sinus",
+    "SNG": "naso-gastric catheter",
+    "STG": "left",
+    "TCC": "cranio-cerebral trauma",
+    "UPU": "ER",
+    "VCI": "inferior vena cava",
+    "VCS": "superior vena cava",
+    "VP": "portal vein",
+    "VS": "left ventricle",
+    "VU": "bladder"
+}
+
 # Load configuration from file if it exists, otherwise use defaults
 config = configparser.ConfigParser()
 config.read_dict(DEFAULT_CONFIG)
@@ -335,6 +378,9 @@ RULES:
 - IMPORTANT: Properly escape all special characters in JSON strings, especially double quotes (") should be escaped as (\")
 - Ensure all JSON keys and string values are properly quoted with double quotes
 - Do not include any text before or after the JSON object
+
+MEDICAL ACROYNMS TO TRANSLATE:
+""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 """)
 
 TRN_PROMPT = ("""
@@ -356,45 +402,7 @@ RULES:
 - Do not include any text before or after the translation
 
 MEDICAL ACROYNMS TO TRANSLATE:
-AD: right atrium
-AP: antero-posterior
-APP: pathological personal history
-ATI: intensive care unit
-CT: computed tomography
-CTL: cervico-toraco-lumbar
-CV: venous catheter
-CVC: central venous catheter
-DD: dorsal decubitus
-DR: right side
-DVP: ventriculo-peritoneal derivation
-FID: right iliac fossa
-FIS: left iliac fossa
-IOT: tracheal tube
-LID: inferior right lobe
-LIS: inferior left lobe
-LSD: superior right lobe
-LSS: superior left lobe
-NZG: naso-gastric
-PAI: interstitial pneumonia
-PU: pielo-uretheral
-RD: right kidney
-RG: xray
-RMN: MRI
-RS: left kidney
-RVU: vesico-uretheral reflux
-SAF: paranasal sinuses
-SCD: costo-diaphramatic sinuses
-SF: frontal sinus
-SM: maxilar sinus
-SNG: naso-gastric catheter
-STG: left
-TCC: cranio-cerebral trauma
-UPU: ER
-VCI: inferior vena cava
-VCS: superior vena cava
-VP: portal vein
-VS: left ventricle
-VU: bladder
+""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
 EXAMPLES:
 
