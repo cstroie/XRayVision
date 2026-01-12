@@ -34,7 +34,7 @@ def calculate_age_group(age_days):
             - "neonate": 0-28 days (newborn period)
             - "infant": 29 days - 2 years
             - "preschool": 2-5 years
-            - "school_age": 5-12 years
+            - "school age": 5-12 years
             - "adolescent": 12-18 years
 
     Note:
@@ -47,7 +47,7 @@ def calculate_age_group(age_days):
     elif age_days <= 1825:  # 5 years = 365 * 5 = 1825 days
         return "preschool"
     elif age_days <= 4380:  # 12 years = 365 * 12 = 4380 days
-        return "school_age"
+        return "school age"
     else:
         return "adolescent"
 
@@ -94,7 +94,7 @@ def query_records(conn, limit=None, region=None, age_group=None):
         'neonate': (0, 28),
         'infant': (29, 730),
         'preschool': (731, 1826),
-        'school_age': (1827, 4383),
+        'school age': (1827, 4383),
         'adolescent': (4384, 6574)
     }
 
@@ -320,7 +320,7 @@ Each entry in the metadata.jsonl files contains:
 - `report`: Full radiologist report text in English
 - `summary`: Summary of the radiologist findings
 - `age_days`: Patient age in days since birth
-- `age_group`: Pediatric age classification (neonate, infant, preschool, school_age, adolescent)
+- `age_group`: Pediatric age classification (neonate, infant, preschool, school age, adolescent)
 - `gender`: Patient gender (boy, girl, child)
 - `region`: Anatomic region (e.g., "chest")
 
@@ -431,7 +431,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
         db_path (str): Path to XRayVision SQLite database file (default: "./export/xrayvision.db")
         images_source_dir (str): Directory containing source PNG image files (default: "./images")
         region (str, optional): Filter by anatomic region (e.g., "chest", "abdomen")
-        age_group (str, optional): Filter by age group (e.g., "infant", "school_age")
+        age_group (str, optional): Filter by age group (e.g., "infant", "school age")
 
     Returns:
         Path: Path to the created export directory
@@ -499,7 +499,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
             "neonate": 0,
             "infant": 0,
             "preschool": 0,
-            "school_age": 0,
+            "school age": 0,
             "adolescent": 0
         }
 
@@ -560,7 +560,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Export pediatric X-ray data from XRayVision database")
     parser.add_argument("--limit", type=int, help="Maximum number of exams to export (default: all)")
     parser.add_argument("--region", type=str, help="Filter by anatomic region (e.g., chest, abdomen)")
-    parser.add_argument("--age-group", type=str, choices=['neonate', 'infant', 'preschool', 'school_age', 'adolescent'],
+    parser.add_argument("--age-group", type=str, choices=['neonate', 'infant', 'preschool', 'school age', 'adolescent'],
                        help="Filter by age group")
     parser.add_argument("--output-dir", type=str, default="./export/pediatric_xray_dataset",
                        help="Output directory for exported data (default: ./export/pediatric_xray_dataset)")

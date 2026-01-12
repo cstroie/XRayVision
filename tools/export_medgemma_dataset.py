@@ -243,7 +243,7 @@ def export_medgemma_dataset(output_dir="./export/medgemma_dataset", limit=None, 
 license: cc-by-4.0
 task_categories:
 - image-classification
-- image-captioning
+- image-to-text
 ---
 
 ## Dataset description
