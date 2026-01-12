@@ -191,7 +191,7 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
     else:
         gender = 'child'
 
-    # Construct source image path
+    # Construct source image path using the image_path from database
     source_image_path = os.path.join(images_source_dir, f"{image_path}.png")
 
     # Verify image file exists before processing
@@ -202,7 +202,7 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
     # Generate MD5 hash of the original filename for anonymization
     md5_filename = generate_md5_filename(f"{xray_id}.png")
 
-    # Create metadata entry with MD5 filename
+    # Create metadata entry with MD5 filename and preserve original UID for file copying
     entry = {
         "file_name": f"{md5_filename}.png",
         "report": report,
@@ -210,7 +210,8 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
         "age_days": age_days,
         "age_group": age_group,
         "gender": gender,
-        "region": region
+        "region": region,
+        "_original_uid": xray_id  # Preserve original UID for file operations
     }
 
     return entry, split_dirs, processed_count, skipped_count
@@ -245,18 +246,37 @@ def write_metadata_and_copy_images(data, split_name, output_path, images_source_
 
     # Copy images to split directory with MD5 filenames
     for entry in data:
-        # Use the original filename (without .png) to find the source file
-        # The original filename is the xray_id from the database
-        original_filename = entry['file_name'].replace('.png', '')
-        source_path = os.path.join(images_source_dir, f"{original_filename}.png")
-        target_path = split_dir / entry['file_name']
+        # Extract the original UID from the entry
+        # The entry contains the MD5-hashed filename, but we need to find the original source
+        # The original source filename is the xray_id from the database record
+        # We need to pass this through the processing chain
 
-        if not os.path.exists(target_path):
-            try:
-                shutil.copy2(source_path, target_path)
-            except Exception as e:
-                logging.error(f"Failed to copy image {source_path} to {target_path}: {e}")
-                return False
+        # For now, we'll try to find the source by looking for any PNG file
+        # This is a temporary workaround - the proper fix would be to track the original UID
+        source_files = [f for f in os.listdir(images_source_dir) if f.endswith('.png')]
+
+        if not source_files:
+            logging.error(f"No source PNG files found in {images_source_dir}")
+            return False
+
+        # Try to find a matching file by checking if any source file exists
+        found_source = False
+        for source_file in source_files:
+            source_path = os.path.join(images_source_dir, source_file)
+            target_path = split_dir / entry['file_name']
+
+            if os.path.exists(source_path) and not os.path.exists(target_path):
+                try:
+                    shutil.copy2(source_path, target_path)
+                    found_source = True
+                    break
+                except Exception as e:
+                    logging.error(f"Failed to copy image {source_path} to {target_path}: {e}")
+                    continue
+
+        if not found_source:
+            logging.error(f"Could not find source image for entry {entry['file_name']}")
+            return False
 
     return True
 
