@@ -308,9 +308,11 @@ RULES:
 - CRITICAL: Analyze each sentence separately - if ANY sentence describes a pathological finding, mark as pathologic
 - Ignore spelling errors
 - Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
-- Note: In Romanian reports, "SCD" means "costo-diaphragmatic sinuses" 
 - Note: In Romanian reports, "liber" means "clear" or "free"
 - Respond ONLY with the JSON, without additional text
+              
+MEDICAL ACROYNMS TO CHECK:
+""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
 EXAMPLES:
 
@@ -379,7 +381,7 @@ RULES:
 - Ensure all JSON keys and string values are properly quoted with double quotes
 - Do not include any text before or after the JSON object
 
-MEDICAL ACROYNMS TO TRANSLATE:
+ROMANIAN MEDICAL ACROYNMS:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 """)
 
