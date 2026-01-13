@@ -256,7 +256,7 @@ Review checklist:
 - Look for any missed abnormalities
 - Reassess systematically from top to bottom
 
-Output ONLY the JSON format. No apologies or explanations.
+Output ONLY the detailed findings as plain text. No apologies or explanations.
 """)
 
 CHK_PROMPT = ("""
