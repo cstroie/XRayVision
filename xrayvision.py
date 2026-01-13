@@ -272,13 +272,6 @@ The REPORT field should contain a complete radiological description including:
 - Additional incidental findings or lesions
 - Relevant negative findings if clinically important
 
-SEVERITY SCORING:
-- 0: Normal findings
-- 1-3: Minimal abnormalities, no immediate clinical concern
-- 4-6: Moderate findings requiring clinical correlation
-- 7-8: Significant abnormalities requiring prompt attention
-- 9-10: Critical findings requiring immediate intervention
-
 CONFIDENCE SCORING:
 - 90-100: High confidence in findings
 - 70-89: Moderate confidence, some uncertainty
@@ -326,7 +319,14 @@ RULES:
 - Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
 - Note: In Romanian reports, "liber" means "clear" or "free"
 - Respond ONLY with the JSON, without additional text
-              
+
+SEVERITY SCORING:
+- 0: Normal findings
+- 1-3: Minimal abnormalities, no immediate clinical concern
+- 4-6: Moderate findings requiring clinical correlation
+- 7-8: Significant abnormalities requiring prompt attention
+- 9-10: Critical findings requiring immediate intervention
+
 MEDICAL ACROYNMS TO CHECK:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
