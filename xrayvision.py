@@ -5392,71 +5392,6 @@ def prepare_ai_request_data(prompt, image_bytes):
     return headers, data
 
 
-def process_ai_response(response_text, exam_uid):
-    """
-    Process the AI response and extract relevant information.
-    
-    Args:
-        response_text: Raw response text from AI
-        exam_uid: Exam unique identifier
-        
-    Returns:
-        tuple: (short, report, confidence, severity, summary) or (None, None, None, None, None) if parsing failed
-    """
-    try:
-        # The AI now returns only the findings as plain text
-        # We need to determine if there are pathological findings
-        report = response_text.strip()
-        
-        if not report:
-            raise ValueError("Empty response from AI")
-        
-        # Simple heuristic: if the report contains words indicating pathology, mark as positive
-        # This is a basic approach - in production you might want more sophisticated logic
-        pathological_keywords = [
-            'consolidation', 'fracture', 'pneumonia', 'opacity', 'infiltrate',
-            'effusion', 'pneumothorax', 'obstruction', 'lesion', 'abnormality',
-            'mass', 'nodule', 'thickening', 'dilation', 'fluid', 'blood',
-            'distension', 'enlargement', 'calcification', 'deformity'
-        ]
-        
-        # Check for negative findings that might indicate normal
-        negative_keywords = [
-            'clear', 'normal', 'no', 'free', 'unremarkable', 'intact',
-            'without', 'fără', 'liber'
-        ]
-        
-        # Convert to lowercase for matching
-        report_lower = report.lower()
-        
-        # Count matches
-        pathology_count = sum(1 for word in pathological_keywords if word in report_lower)
-        negative_count = sum(1 for word in negative_keywords if word in report_lower)
-        
-        # Determine if positive or negative
-        # If we find pathological keywords, it's positive
-        # If we only find negative keywords, it's negative
-        # Otherwise, we need to make a judgment call
-        if pathology_count > 0:
-            short = 'yes'
-        elif negative_count > 0 and pathology_count == 0:
-            short = 'no'
-        else:
-            # Default to yes if we can't determine, but log it
-            logging.warning(f"Could not determine positivity for exam {exam_uid}, defaulting to yes")
-            short = 'yes'
-        
-        # For now, set default values for the other fields
-        # These could be calculated from the report text in future iterations
-        confidence = 85  # Default confidence
-        severity = 5     # Default severity
-        summary = "findings"  # Default summary
-        
-        return short, report, confidence, severity, summary
-    except Exception as e:
-        logging.error(f"Rejected malformed AI response: {e}")
-        logging.error(response_text)
-        return None, None, None, None, None
 
 
 async def handle_ai_success(exam, short, report, confidence, severity, summary, processing_time, response_model=None):
@@ -5575,11 +5510,49 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     # Extract the actual model name from the API response
                     response_model = result.get("model", MODEL_NAME)
                     
-                    # Process AI response
-                    short, report, confidence, severity, summary = process_ai_response(response_text, exam['uid'])
-                    if short is None:  # Parsing failed
+                    # Process AI response - extract report text
+                    report = response_text.strip()
+                    
+                    if not report:
+                        logging.error(f"Empty AI response for exam {exam['uid']}")
                         break
-                        
+                    
+                    # Simple heuristic: if the report contains words indicating pathology, mark as positive
+                    pathological_keywords = [
+                        'consolidation', 'fracture', 'pneumonia', 'opacity', 'infiltrate',
+                        'effusion', 'pneumothorax', 'obstruction', 'lesion', 'abnormality',
+                        'mass', 'nodule', 'thickening', 'dilation', 'fluid', 'blood',
+                        'distension', 'enlargement', 'calcification', 'deformity'
+                    ]
+                    
+                    # Check for negative findings that might indicate normal
+                    negative_keywords = [
+                        'clear', 'normal', 'no', 'free', 'unremarkable', 'intact',
+                        'without', 'fără', 'liber'
+                    ]
+                    
+                    # Convert to lowercase for matching
+                    report_lower = report.lower()
+                    
+                    # Count matches
+                    pathology_count = sum(1 for word in pathological_keywords if word in report_lower)
+                    negative_count = sum(1 for word in negative_keywords if word in report_lower)
+                    
+                    # Determine if positive or negative
+                    if pathology_count > 0:
+                        short = 'yes'
+                    elif negative_count > 0 and pathology_count == 0:
+                        short = 'no'
+                    else:
+                        # Default to yes if we can't determine, but log it
+                        logging.warning(f"Could not determine positivity for exam {exam['uid']}, defaulting to yes")
+                        short = 'yes'
+                    
+                    # Set default values for the other fields
+                    confidence = 85  # Default confidence
+                    severity = 5     # Default severity
+                    summary = "findings"  # Default summary
+                    
                     logging.info(f"AI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence}, severity: {severity}, summary: {summary})")
                     
                     # Calculate timing statistics
