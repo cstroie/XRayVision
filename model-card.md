@@ -3,21 +3,17 @@ base_model: google/medgemma-4b-it
 library_name: transformers
 model_name: medgemma-4b-it-ped
 tags:
-- generated_from_trainer
-- sft
-- trl
+  - generated_from_trainer
+  - sft
+  - trl
+  - medical
+  - radiology
+  - x-ray
 licence: apache-2.0
-tags:
-- generated_from_trainer
-- sft
-- trl
-- medical
-- radiology
-- x-ray
 datasets:
-- costinstroie/xray-chest-ped-test
+  - costinstroie/xray-chest-ped-test
 language:
-- en
+  - en
 pipeline_tag: image-text-to-text
 ---
 
@@ -77,12 +73,20 @@ report = processor.decode(outputs[0], skip_special_tokens=True)
 print(report)
 ```
 
-## Training procedure
+## Training Procedure
 
- 
+This model was trained using **Supervised Fine-Tuning (SFT)** via the [TRL library](https://github.com/huggingface/trl).
 
-
-This model was trained with SFT.
+**Hyperparameters:**
+*   **Learning Rate:** 2e-4
+*   **Epochs:** 3
+*   **Batch Size:** 1 (per device) with Gradient Accumulation (effective batch size 16)
+*   **Optimizer:** AdamW (fused)
+*   **Precision:** bfloat16
+*   **LoRA Configuration:**
+    *   Rank (r): 16
+    *   Alpha: 32
+    *   Target Modules: All linear layers
 
 ### Framework versions
 
@@ -93,8 +97,6 @@ This model was trained with SFT.
 - Tokenizers: 0.22.1
 
 ## Citations
-
-
 
 Cite TRL as:
     
