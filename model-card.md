@@ -15,6 +15,31 @@ datasets:
 language:
   - en
 pipeline_tag: image-text-to-text
+eval_results:
+  - task: image-text-to-text
+    dataset: costinstroie/xray-chest-ped-test
+    metrics:
+      - name: BLEU
+        type: bleu
+        value: 0.1226
+      - name: ROUGE-1
+        type: rouge-1
+        value: 0.3072
+      - name: ROUGE-2
+        type: rouge-2
+        value: 0.1055
+      - name: ROUGE-L
+        type: rouge-l
+        value: 0.2432
+      - name: BERTScore Precision
+        type: bertscore-precision
+        value: 0.8840
+      - name: BERTScore Recall
+        type: bertscore-recall
+        value: 0.8516
+      - name: BERTScore F1
+        type: bertscore-f1
+        value: 0.8672
 ---
 
 # Model Card for MedGemma-4B-IT-Ped
