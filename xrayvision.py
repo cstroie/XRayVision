@@ -211,74 +211,37 @@ SYS_PROMPT = ("""
 You are an experienced emergency radiologist analyzing imaging studies.
 
 OUTPUT FORMAT:
-You must respond with ONLY plain text in the following format:
-
-YES/NO: [yes or no]
-REPORT: [detailed findings as a string]
-CONFIDENCE: [integer from 0 to 100]
-SEVERITY: [integer from 0 to 10]
-SUMMARY: [diagnosis in 1-3 words]
+You must respond with ONLY the detailed findings as plain text. Do not include any additional formatting, labels, or metadata.
 
 CRITICAL RULES:
-- Output ONLY the plain text response - no additional text, explanations, or apologies before or after
-- The YES/NO line must be exactly "YES" or "NO" (uppercase)
-- "YES" means pathological findings are present
-- "NO" means no significant findings detected
-- The CONFIDENCE line must be a number between 0-100
-- The SEVERITY line must be a number between 0-10, where 0 is normal and 10 is critical
-- The SUMMARY line must be a brief diagnosis in 1-3 words, focusing on major category classifications (e.g., "pneumonia", "fracture", "normal", "interstitial infiltrate")
-- Each field must be on its own line starting with the field name followed by a colon
-- The REPORT field should contain a complete radiological description
+- Output ONLY the detailed radiological findings - no YES/NO, no confidence scores, no severity scores, no summaries
+- Do not include any explanations, apologies, or additional text before or after the findings
+- Use professional radiological terminology
+- Be factual - if uncertain, describe what you observe without assuming
+- Review the image multiple times if findings are ambiguous
+
+ANALYSIS APPROACH:
+- Systematically examine the entire image for all abnormalities
+- Report all identified lesions and pathological findings
+- Include relevant negative findings if clinically important
+- Focus on the primary findings related to the clinical question
+- Note any incidental findings
 
 EXAMPLES:
 
 Example 1 - Chest X-ray with pneumonia:
 Input: Chest X-ray, patient with cough and fever
-Output:
-YES/NO: YES
-REPORT: Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.
-CONFIDENCE: 92
-SEVERITY: 6
-SUMMARY: pneumonia
+Output: Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.
 
 Example 2 - Normal chest X-ray:
 Input: Chest X-ray, routine screening
-Output:
-YES/NO: NO
-REPORT: Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.
-CONFIDENCE: 95
-SEVERITY: 0
-SUMMARY: normal
+Output: Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.
 
 Example 3 - Abdominal X-ray with uncertain findings:
 Input: Abdominal X-ray, abdominal pain
-Output:
-YES/NO: YES
-REPORT: Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.
-CONFIDENCE: 78
-SEVERITY: 7
-SUMMARY: bowel obstruction
+Output: Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.
 
-ANALYSIS APPROACH:
-- Systematically examine the entire image for all abnormalities
-- Report all identified lesions and pathological findings
-- Be factual - if uncertain, describe what you observe without assuming
-- Use professional radiological terminology
-- Review the image multiple times if findings are ambiguous
-
-REPORT CONTENT:
-The REPORT field should contain a complete radiological description including:
-- Primary findings related to the clinical question
-- Additional incidental findings or lesions
-- Relevant negative findings if clinically important
-
-CONFIDENCE SCORING:
-- 90-100: High confidence in findings
-- 70-89: Moderate confidence, some uncertainty
-- 50-69: Low confidence, significant uncertainty
-- 0-49: Very low confidence, speculative findings
-
-Remember: Output ONLY the plain text response with no other text.
+Remember: Output ONLY the detailed findings as plain text with no other text.
 """)
 
 USR_PROMPT = ("""
@@ -5441,40 +5404,54 @@ def process_ai_response(response_text, exam_uid):
         tuple: (short, report, confidence, severity, summary) or (None, None, None, None, None) if parsing failed
     """
     try:
-        # Initialize variables
-        short = None
-        report = None
-        confidence = 0
-        severity = -1
-        summary = ""
+        # The AI now returns only the findings as plain text
+        # We need to determine if there are pathological findings
+        report = response_text.strip()
         
-        # Parse the plain text response
-        lines = response_text.strip().split('\n')
+        if not report:
+            raise ValueError("Empty response from AI")
         
-        for line in lines:
-            line = line.strip()
-            if line.startswith('YES/NO:'):
-                short_value = line.split(':', 1)[1].strip().lower()
-                short = 'yes' if short_value == 'yes' else 'no'
-            elif line.startswith('REPORT:'):
-                report = line.split(':', 1)[1].strip()
-            elif line.startswith('CONFIDENCE:'):
-                try:
-                    confidence = int(line.split(':', 1)[1].strip())
-                except ValueError:
-                    confidence = 0
-            elif line.startswith('SEVERITY:'):
-                try:
-                    severity = int(line.split(':', 1)[1].strip())
-                except ValueError:
-                    severity = -1
-            elif line.startswith('SUMMARY:'):
-                summary = line.split(':', 1)[1].strip()
+        # Simple heuristic: if the report contains words indicating pathology, mark as positive
+        # This is a basic approach - in production you might want more sophisticated logic
+        pathological_keywords = [
+            'consolidation', 'fracture', 'pneumonia', 'opacity', 'infiltrate',
+            'effusion', 'pneumothorax', 'obstruction', 'lesion', 'abnormality',
+            'mass', 'nodule', 'thickening', 'dilation', 'fluid', 'blood',
+            'distension', 'enlargement', 'calcification', 'deformity'
+        ]
         
-        # Validate the parsed response
-        if short not in ("yes", "no") or not report:
-            raise ValueError("Invalid plain text format in AI response")
-            
+        # Check for negative findings that might indicate normal
+        negative_keywords = [
+            'clear', 'normal', 'no', 'free', 'unremarkable', 'intact',
+            'without', 'fără', 'liber'
+        ]
+        
+        # Convert to lowercase for matching
+        report_lower = report.lower()
+        
+        # Count matches
+        pathology_count = sum(1 for word in pathological_keywords if word in report_lower)
+        negative_count = sum(1 for word in negative_keywords if word in report_lower)
+        
+        # Determine if positive or negative
+        # If we find pathological keywords, it's positive
+        # If we only find negative keywords, it's negative
+        # Otherwise, we need to make a judgment call
+        if pathology_count > 0:
+            short = 'yes'
+        elif negative_count > 0 and pathology_count == 0:
+            short = 'no'
+        else:
+            # Default to yes if we can't determine, but log it
+            logging.warning(f"Could not determine positivity for exam {exam_uid}, defaulting to yes")
+            short = 'yes'
+        
+        # For now, set default values for the other fields
+        # These could be calculated from the report text in future iterations
+        confidence = 85  # Default confidence
+        severity = 5     # Default severity
+        summary = "findings"  # Default summary
+        
         return short, report, confidence, severity, summary
     except Exception as e:
         logging.error(f"Rejected malformed AI response: {e}")
