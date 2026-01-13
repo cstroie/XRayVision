@@ -4240,33 +4240,7 @@ async def translate_report(report_text):
                 logging.warning("Empty translation response received")
                 return None
 
-            # Check if translation is identical to source (no translation performed)
-            if response_text.strip() == report_text.strip():
-                logging.warning("Translation is identical to source text - no translation performed")
-                return None
-
-            # Check if translation is too short (less than 10 characters)
-            if len(response_text.strip()) < 10:
-                logging.warning(f"Translation is too short ({len(response_text)} characters)")
-                return None
-
-            # Check if translation contains only placeholder text or error messages
-            placeholder_patterns = [
-                r"\b(no translation available)\b",
-                r"\b(could not translate)\b",
-                r"\b(translation failed)\b",
-                r"\b(error)\b",
-                r"\b(sorry)\b",
-                r"\b(unable)\b",
-                r"\b(failed)\b"
-            ]
-
-            for pattern in placeholder_patterns:
-                if re.search(pattern, response_text, re.IGNORECASE):
-                    logging.warning(f"Translation contains placeholder/error text: {response_text}")
-                    return None
-
-            logging.info(f"Translation completed and validated: {response_text[:50]}...")
+            logging.info(f"Translation: {response_text[:60]}...")
             return response_text
     except Exception as e:
         logging.error(f"Error processing translation request: {e}")
@@ -4315,8 +4289,7 @@ def validate_translation(source_text, translated_text):
     2. Not identical to source text
     3. Minimum length requirement
     4. No placeholder/error text patterns
-    5. Contains some English words (basic check)
-    6. Medical acronyms are properly expanded
+    5. Medical acronyms are properly expanded
 
     Args:
         source_text: Original text in source language
@@ -4365,14 +4338,6 @@ def validate_translation(source_text, translated_text):
     if untranslated_acronyms:
         logging.warning(f"Found untranslated medical acronyms in translation: {untranslated_acronyms}")
         # This is not necessarily a failure, but we should log it for review
-
-    # Basic check for English words (simple heuristic)
-    english_words = ['the', 'and', 'of', 'to', 'in', 'is', 'it', 'that', 'for', 'you']
-    translated_lower = expanded_translation.lower()
-    english_word_count = sum(1 for word in english_words if word in translated_lower)
-
-    if english_word_count < 2:  # At least 2 common English words
-        return False, "Translation doesn't appear to contain English text"
 
     return True, "Translation is valid"
 
