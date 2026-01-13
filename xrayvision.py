@@ -214,7 +214,7 @@ OUTPUT FORMAT:
 You must respond with ONLY the detailed findings as plain text. Do not include any additional formatting, labels, or metadata.
 
 CRITICAL RULES:
-- Output ONLY the detailed radiological findings - no YES/NO, no confidence scores, no severity scores, no summaries
+- Output ONLY the detailed radiological findings in a concise form
 - Do not include any explanations, apologies, or additional text before or after the findings
 - Use professional radiological terminology
 - Be factual - if uncertain, describe what you observe without assuming
