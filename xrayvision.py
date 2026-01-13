@@ -5407,15 +5407,28 @@ async def handle_ai_success(exam, report, processing_time, response_model=None):
     """
     # Save to exams database with processing time
     db_add_exam(exam)
-    # If report is provided, add it to ai_reports table
+    
+    # If report is provided, add it to ai_reports table with initial values
     if report is not None:
+        # First add the report with default values
         db_add_ai_report(exam['uid'], report, -1, -1, response_model, int(processing_time), -1, '')
-    # Send notification for positive cases
-    if is_positive:
-        try:
-            await send_ntfy_notification(exam['uid'], report, exam)
-        except Exception as e:
-            logging.error(f"Failed to send ntfy notification: {e}")
+        
+        # Now use check_ai_report_and_update to analyze the report and get proper values
+        await check_ai_report_and_update(exam['uid'])
+        
+        # Get the updated report to check positivity for notifications
+        updated_report = db_get_ai_report(exam['uid'])
+        if updated_report and updated_report.get('positive') == 1:
+            try:
+                await send_ntfy_notification(exam['uid'], report, exam)
+            except Exception as e:
+                logging.error(f"Failed to send ntfy notification: {e}")
+        
+        # Determine positivity for dashboard update
+        is_positive = updated_report.get('positive', 0) == 1 if updated_report else False
+    else:
+        is_positive = False
+    
     # Notify the dashboard frontend to reload first page
     await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
     # Success
