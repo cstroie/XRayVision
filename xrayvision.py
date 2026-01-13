@@ -5552,17 +5552,13 @@ async def send_exam_to_openai(exam, max_retries = 3):
         
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-        if exam['report']['ai']['text']:
-            json_report = {'short': exam['report']['ai']['short'],
-                           'report': exam['report']['ai']['text']}
-            exam['report']['json'] = json.dumps(json_report)
-            logging.info(f"Previous report: {exam['report']['json']}")
             
         # Prepare request data
         headers, data = prepare_ai_request_data(prompt, image_bytes)
         
-        if 'json' in exam['report']:
-            data['messages'].append({'role': 'assistant', 'content': exam['report']['json']})
+        if exam['report']['ai']['text']:
+            logging.info(f"Previous report: {exam['report']['ai']['text']}")
+            data['messages'].append({'role': 'assistant', 'content': exam['report']['ai']['text']})
             data['messages'].append({'role': 'user', 'content': REV_PROMPT})
             
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
