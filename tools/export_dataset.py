@@ -202,7 +202,7 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
     # Generate MD5 hash of the original filename for anonymization
     md5_filename = generate_md5_filename(f"{xray_id}.png")
 
-    # Create metadata entry with MD5 filename and preserve original UID for file copying
+    # Create metadata entry with MD5 filename
     entry = {
         "file_name": f"{md5_filename}.png",
         "report": report,
@@ -210,14 +210,13 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
         "age_days": age_days,
         "age_group": age_group,
         "gender": gender,
-        "region": region,
-        "_original_uid": xray_id  # Preserve original UID for file operations
+        "region": region
     }
 
-    return entry, split_dirs, processed_count, skipped_count
+    return entry, xray_id, processed_count, skipped_count
 
 
-def write_metadata_and_copy_images(data, split_name, output_path, images_source_dir):
+def write_metadata_and_copy_images(data, split_name, output_path, images_source_dir, original_uids):
     """
     Write metadata.jsonl and copy images to the appropriate split directory.
 
@@ -226,6 +225,7 @@ def write_metadata_and_copy_images(data, split_name, output_path, images_source_
         split_name: Name of the split (train, val, test)
         output_path: Base output directory
         images_source_dir: Source directory containing PNG images
+        original_uids: List of original UIDs corresponding to the data entries
 
     Returns:
         bool: True if successful, False otherwise
@@ -245,13 +245,7 @@ def write_metadata_and_copy_images(data, split_name, output_path, images_source_
         return False
 
     # Copy images to split directory with MD5 filenames
-    for entry in data:
-        # Use the preserved original UID to find the source file
-        original_uid = entry.get('_original_uid', '')
-        if not original_uid:
-            logging.error(f"No original UID found for entry {entry['file_name']}")
-            return False
-
+    for entry, original_uid in zip(data, original_uids):
         source_path = os.path.join(images_source_dir, f"{original_uid}.png")
         target_path = split_dir / entry['file_name']
 
@@ -510,7 +504,7 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
 
         for idx, record in enumerate(records):
             try:
-                entry, split_dirs, processed_count, skipped_count = process_record(
+                entry, xray_id, processed_count, skipped_count = process_record(
                     record, images_source_dir, None, stats, processed_count, skipped_count
                 )
 
@@ -521,11 +515,11 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                 # Using hash of file_name ensures consistent splits across runs
                 split_val = hash(entry["file_name"]) % 10
                 if split_val < 8:
-                    train_data.append(entry)
+                    train_data.append((entry, xray_id))
                 elif split_val == 8:
-                    val_data.append(entry)
+                    val_data.append((entry, xray_id))
                 else:
-                    test_data.append(entry)
+                    test_data.append((entry, xray_id))
 
             except (ValueError, TypeError) as e:
                 logging.error(f"Error processing record {idx}: {e}")
@@ -533,15 +527,19 @@ def export_data(output_dir="./export/pediatric_xray_dataset", limit=None, db_pat
                 continue
 
         # Write metadata and copy images to split directories
-        train_success = write_metadata_and_copy_images(train_data, "train", output_path, images_source_dir)
-        val_success = write_metadata_and_copy_images(val_data, "val", output_path, images_source_dir)
-        test_success = write_metadata_and_copy_images(test_data, "test", output_path, images_source_dir)
+        train_success = write_metadata_and_copy_images([entry for entry, _ in train_data], "train", output_path, images_source_dir, [xray_id for _, xray_id in train_data])
+        val_success = write_metadata_and_copy_images([entry for entry, _ in val_data], "val", output_path, images_source_dir, [xray_id for _, xray_id in val_data])
+        test_success = write_metadata_and_copy_images([entry for entry, _ in test_data], "test", output_path, images_source_dir, [xray_id for _, xray_id in test_data])
 
         # Write dataset card
         write_dataset_card(output_path, region)
 
         # Print summary
-        print_summary(records, processed_count, skipped_count, train_data, val_data, test_data, stats, output_path)
+        print_summary(records, processed_count, skipped_count,
+                     [entry for entry, _ in train_data],
+                     [entry for entry, _ in val_data],
+                     [entry for entry, _ in test_data],
+                     stats, output_path)
 
         if not (train_success and val_success and test_success):
             logging.warning("Some files may not have been written successfully")
