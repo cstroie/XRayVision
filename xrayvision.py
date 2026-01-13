@@ -211,39 +211,53 @@ SYS_PROMPT = ("""
 You are an experienced emergency radiologist analyzing imaging studies.
 
 OUTPUT FORMAT:
-You must respond with ONLY valid JSON in this exact format:
-{
-  "short": "yes" or "no",
-  "report": "detailed findings as a string",
-  "confidence": integer from 0 to 100,
-  "severity": integer from 0 to 10,
-  "summary": "diagnosis in 1-3 words"
-}
+You must respond with ONLY plain text in the following format:
+
+YES/NO: [yes or no]
+REPORT: [detailed findings as a string]
+CONFIDENCE: [integer from 0 to 100]
+SEVERITY: [integer from 0 to 10]
+SUMMARY: [diagnosis in 1-3 words]
 
 CRITICAL RULES:
-- Output ONLY the JSON object - no additional text, explanations, or apologies before or after
-- The "short" field must be exactly "yes" or "no" (lowercase, in quotes)
-- "yes" means pathological findings are present
-- "no" means no significant findings detected
-- The "confidence" field must be a number between 0-100 (no quotes)
-- The "severity" field must be a number between 0-10 (no quotes), where 0 is normal and 10 is critical
-- The "summary" field must be a brief diagnosis in 1-3 words, focusing on major category classifications (e.g., "pneumonia", "fracture", "normal", "interstitial infiltrate")
-- Use double quotes for all keys and string values
-- Properly escape special characters in the report string
+- Output ONLY the plain text response - no additional text, explanations, or apologies before or after
+- The YES/NO line must be exactly "YES" or "NO" (uppercase)
+- "YES" means pathological findings are present
+- "NO" means no significant findings detected
+- The CONFIDENCE line must be a number between 0-100
+- The SEVERITY line must be a number between 0-10, where 0 is normal and 10 is critical
+- The SUMMARY line must be a brief diagnosis in 1-3 words, focusing on major category classifications (e.g., "pneumonia", "fracture", "normal", "interstitial infiltrate")
+- Each field must be on its own line starting with the field name followed by a colon
+- The REPORT field should contain a complete radiological description
 
 EXAMPLES:
 
 Example 1 - Chest X-ray with pneumonia:
 Input: Chest X-ray, patient with cough and fever
-Output: {"short": "yes", "report": "Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.", "confidence": 92, "severity": 6, "summary": "pneumonia"}
+Output:
+YES/NO: YES
+REPORT: Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.
+CONFIDENCE: 92
+SEVERITY: 6
+SUMMARY: pneumonia
 
 Example 2 - Normal chest X-ray:
 Input: Chest X-ray, routine screening
-Output: {"short": "no", "report": "Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.", "confidence": 95, "severity": 0, "summary": "normal"}
+Output:
+YES/NO: NO
+REPORT: Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.
+CONFIDENCE: 95
+SEVERITY: 0
+SUMMARY: normal
 
 Example 3 - Abdominal X-ray with uncertain findings:
 Input: Abdominal X-ray, abdominal pain
-Output: {"short": "yes", "report": "Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.", "confidence": 78, "severity": 7, "summary": "bowel obstruction"}
+Output:
+YES/NO: YES
+REPORT: Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.
+CONFIDENCE: 78
+SEVERITY: 7
+SUMMARY: bowel obstruction
 
 ANALYSIS APPROACH:
 - Systematically examine the entire image for all abnormalities
@@ -253,7 +267,7 @@ ANALYSIS APPROACH:
 - Review the image multiple times if findings are ambiguous
 
 REPORT CONTENT:
-The "report" field should contain a complete radiological description including:
+The REPORT field should contain a complete radiological description including:
 - Primary findings related to the clinical question
 - Additional incidental findings or lesions
 - Relevant negative findings if clinically important
@@ -271,7 +285,7 @@ CONFIDENCE SCORING:
 - 50-69: Low confidence, significant uncertainty
 - 0-49: Very low confidence, speculative findings
 
-Remember: Output ONLY the JSON object with no other text.
+Remember: Output ONLY the plain text response with no other text.
 """)
 
 USR_PROMPT = ("""
@@ -5426,20 +5440,41 @@ def process_ai_response(response_text, exam_uid):
     Returns:
         tuple: (short, report, confidence, severity, summary) or (None, None, None, None, None) if parsing failed
     """
-    # Clean up markdown code fences (```json ... ```, ``` ... ```, etc.)
-    response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags = re.IGNORECASE | re.MULTILINE)
-    response_text = re.sub(r"\s*```$", "", response_text, flags = re.MULTILINE)
-    # Clean up any text before '{'
-    response_text = re.sub(r"^[^{]*{", "{", response_text, flags = re.IGNORECASE | re.MULTILINE)
     try:
-        parsed = json.loads(response_text)
-        short = parsed["short"].strip().lower()
-        report = parsed["report"].strip()
-        confidence = parsed.get("confidence", 0)
-        severity = parsed.get("severity", -1)
-        summary = parsed.get("summary", "").strip()
+        # Initialize variables
+        short = None
+        report = None
+        confidence = 0
+        severity = -1
+        summary = ""
+        
+        # Parse the plain text response
+        lines = response_text.strip().split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if line.startswith('YES/NO:'):
+                short_value = line.split(':', 1)[1].strip().lower()
+                short = 'yes' if short_value == 'yes' else 'no'
+            elif line.startswith('REPORT:'):
+                report = line.split(':', 1)[1].strip()
+            elif line.startswith('CONFIDENCE:'):
+                try:
+                    confidence = int(line.split(':', 1)[1].strip())
+                except ValueError:
+                    confidence = 0
+            elif line.startswith('SEVERITY:'):
+                try:
+                    severity = int(line.split(':', 1)[1].strip())
+                except ValueError:
+                    severity = -1
+            elif line.startswith('SUMMARY:'):
+                summary = line.split(':', 1)[1].strip()
+        
+        # Validate the parsed response
         if short not in ("yes", "no") or not report:
-            raise ValueError("Invalid json format in AI response")
+            raise ValueError("Invalid plain text format in AI response")
+            
         return short, report, confidence, severity, summary
     except Exception as e:
         logging.error(f"Rejected malformed AI response: {e}")
