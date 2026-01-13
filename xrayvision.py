@@ -5392,32 +5392,24 @@ def prepare_ai_request_data(prompt, image_bytes):
     return headers, data
 
 
-
-
-async def handle_ai_success(exam, short, report, confidence, severity, summary, processing_time, response_model=None):
+async def handle_ai_success(exam, report, processing_time, response_model=None):
     """
     Handle successful AI processing by updating database and sending notifications.
     
     Args:
         exam: Dictionary containing exam information and metadata
-        short: AI response short field ("yes"/"no")
         report: AI generated report text
-        confidence: AI confidence score
-        severity: AI severity score
-        summary: AI summary text
         processing_time: Time taken to process the exam
         response_model: Actual model name from API response
         
     Returns:
         bool: True if successful
     """
-    # Save to exams database
-    is_positive = short == "yes"
     # Save to exams database with processing time
     db_add_exam(exam)
     # If report is provided, add it to ai_reports table
     if report is not None:
-        db_add_ai_report(exam['uid'], report, is_positive, confidence, response_model, int(processing_time), severity if severity is not None else -1, summary)
+        db_add_ai_report(exam['uid'], report, -1, -1, response_model, int(processing_time), -1, '')
     # Send notification for positive cases
     if is_positive:
         try:
@@ -5512,48 +5504,12 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     
                     # Process AI response - extract report text
                     report = response_text.strip()
-                    
                     if not report:
                         logging.error(f"Empty AI response for exam {exam['uid']}")
-                        break
+                        raise ValueError("Empty AI response")
                     
-                    # Simple heuristic: if the report contains words indicating pathology, mark as positive
-                    pathological_keywords = [
-                        'consolidation', 'fracture', 'pneumonia', 'opacity', 'infiltrate',
-                        'effusion', 'pneumothorax', 'obstruction', 'lesion', 'abnormality',
-                        'mass', 'nodule', 'thickening', 'dilation', 'fluid', 'blood',
-                        'distension', 'enlargement', 'calcification', 'deformity'
-                    ]
-                    
-                    # Check for negative findings that might indicate normal
-                    negative_keywords = [
-                        'clear', 'normal', 'no', 'free', 'unremarkable', 'intact',
-                        'without', 'fără', 'liber'
-                    ]
-                    
-                    # Convert to lowercase for matching
-                    report_lower = report.lower()
-                    
-                    # Count matches
-                    pathology_count = sum(1 for word in pathological_keywords if word in report_lower)
-                    negative_count = sum(1 for word in negative_keywords if word in report_lower)
-                    
-                    # Determine if positive or negative
-                    if pathology_count > 0:
-                        short = 'yes'
-                    elif negative_count > 0 and pathology_count == 0:
-                        short = 'no'
-                    else:
-                        # Default to yes if we can't determine, but log it
-                        logging.warning(f"Could not determine positivity for exam {exam['uid']}, defaulting to yes")
-                        short = 'yes'
-                    
-                    # Set default values for the other fields
-                    confidence = 85  # Default confidence
-                    severity = 5     # Default severity
-                    summary = "findings"  # Default summary
-                    
-                    logging.info(f"AI API response for {exam['uid']}: [{short.upper()}] {report} (confidence: {confidence}, severity: {severity}, summary: {summary})")
+                    # Parse the AI response
+                    logging.info(f"AI API response for {exam['uid']}: {report}")
                     
                     # Calculate timing statistics
                     global timings
@@ -5566,7 +5522,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         timings['average'] = timings['total']
                     
                     # Handle success
-                    success = await handle_ai_success(exam, short, report, confidence, severity, summary, processing_time, response_model)
+                    success = await handle_ai_success(exam, report, processing_time, response_model)
                     if success:
                         return True
                         
