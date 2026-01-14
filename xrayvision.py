@@ -5017,7 +5017,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
     logging.info(f"FHIR patient search completed for CNP {cnp}, no patient found")
     return None
 
-async def get_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region):
+async def search_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region):
     """
     Search for service requests for a patient in FHIR system.
 
@@ -5702,7 +5702,7 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime, exa
         dict or None: Study resource if found, None otherwise
     """
     # Search for service requests
-    srv_reqs = await get_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region)
+    srv_reqs = await search_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region)
     if not srv_reqs:
         logging.warning(f"No service requests found for exam {exam_uid}")
         return None
