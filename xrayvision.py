@@ -207,61 +207,64 @@ DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
 BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
 MODEL_NAME = config.get('openai', 'MODEL_NAME')
 
-SYS_PROMPT = ("""
-You are an experienced emergency radiologist analyzing imaging studies.
+# Prompt templates
+REP_PROMPT = ("""
+You are a board-certified radiologist interpreting plain X-ray images.
 
-OUTPUT FORMAT:
-You must respond with ONLY the detailed findings as plain text. Do not include any additional formatting, labels, or metadata.
+OUTPUT CONSTRAINTS
+- Output ONLY the radiological findings as plain text.
+- Do NOT include headers, labels, explanations, or metadata.
+- Do NOT add conclusions, impressions, or recommendations.
+- Use concise, professional radiological terminology.
+- State uncertainty explicitly using observational language (e.g., “suggestive of”, “cannot exclude”).
 
-CRITICAL RULES:
-- Output ONLY the detailed radiological findings in a concise form
-- Do not include any explanations, apologies, or additional text before or after the findings
-- Use professional radiological terminology
-- Be factual - if uncertain, describe what you observe without assuming
-- Review the image multiple times if findings are ambiguous
+REPORTING RULES
+- Describe only what is visible on the image.
+- Do not assume clinical context unless directly supported by imaging.
+- Include relevant negative findings when clinically meaningful.
+- Mention incidental findings if present.
+- If the study appears normal, explicitly state normal findings.
 
-ANALYSIS APPROACH:
-- Systematically examine the entire image for all abnormalities
-- Report all identified lesions and pathological findings
-- Include relevant negative findings if clinically important
-- Focus on the primary findings related to the clinical question
-- Note any incidental findings
+SYSTEMATIC REVIEW
+- Assess: lungs, pleura, mediastinum, heart size, bones, soft tissues (adapt to anatomy).
+- Report all abnormalities and their location, extent, and laterality.
+- If image quality limits assessment, state the limitation.
 
-EXAMPLES:
+EXAMPLES
 
-Example 1 - Chest X-ray with pneumonia:
-Input: Chest X-ray, patient with cough and fever
-Output: Consolidation in the right lower lobe consistent with pneumonia. No pleural effusion or pneumothorax. Heart size normal.
+**Pneumonia**
+Consolidation in the right lower lung zone. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits.
 
-Example 2 - Normal chest X-ray:
-Input: Chest X-ray, routine screening
-Output: Clear lung fields bilaterally. No consolidation, pleural effusion, or pneumothorax. Cardiac silhouette within normal limits. No acute bony abnormalities.
+**Normal chest X-ray**
+Clear lung fields bilaterally. No focal consolidation, pleural effusion, or pneumothorax. Cardiac silhouette normal in size. No acute osseous abnormality.
 
-Example 3 - Abdominal X-ray with uncertain findings:
-Input: Abdominal X-ray, abdominal pain
-Output: Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, concerning for possible small bowel obstruction. No free air under the diaphragm. Limited assessment of solid organs on plain film.
-
-Remember: Output ONLY the detailed findings as plain text with no other text.
+**Uncertain abdominal finding**
+Multiple dilated small bowel loops measuring up to approximately 3.5 cm with air–fluid levels, suggestive of bowel obstruction. No subdiaphragmatic free air. Evaluation limited on plain radiograph.
 """)
 
-USR_PROMPT = ("""{question} in this {anatomy} X-ray of a {subject}?""")
+#USR_PROMPT = ("""{question} in this {anatomy} X-ray of a {subject}?""")
+USR_PROMPT = ("""Describe the radiological findings in this {anatomy} X-ray of a {subject}.""")
 
 REV_PROMPT = ("""
-Your previous report was incorrect. Carefully re-examine the image.
+Re-examine the X-ray image and generate a corrected report.
 
-Review checklist:
-- Verify each finding you previously reported
-- Look for any missed abnormalities
-- Reassess systematically from top to bottom
+Rules:
+- Verify previously reported findings against the image.
+- Remove findings not supported by the image.
+- Add any newly identified abnormalities.
+- Perform a systematic, complete review.
+- Use concise, professional radiological terminology.
 
-Output ONLY the detailed findings as plain text. No apologies or explanations.
+Output ONLY the radiological findings as plain text.
+No explanations, apologies, or metadata.
 """)
 
-CHK_PROMPT = ("""
-You are a medical assistant analyzing radiology reports.
+CHK_PROMPT_OLD = ("""
+You are API analyzing radiology reports.
 
 TASK: Read the report and extract the main pathological information in JSON format.
 ANALYZE EACH SENTENCE SEPARATELY and identify any pathological findings, even if other aspects are described as normal.
+If ANY sentence describes a pathological finding, mark as pathologic.
 
 OUTPUT FORMAT (JSON):
 {
@@ -275,7 +278,6 @@ RULES:
 - "severity": 1=minimal, 5=moderate, 10=critical/urgent
 - "summary": diagnosis in 1-3 words, focusing on major category classifications (e.g., "fracture", "pneumonia", "interstitial infiltrate")
 - If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
-- CRITICAL: Analyze each sentence separately - if ANY sentence describes a pathological finding, mark as pathologic
 - Ignore spelling errors
 - Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
 - Note: In Romanian reports, "liber" means "clear" or "free"
@@ -288,7 +290,7 @@ SEVERITY SCORING:
 - 7-8: Significant abnormalities requiring prompt attention
 - 9-10: Critical findings requiring immediate intervention
 
-MEDICAL ACROYNMS TO CHECK:
+MEDICAL ACROYNMS TO UNDERSTAND:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
 EXAMPLES:
@@ -307,6 +309,55 @@ Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
 
 Report: "Proces de condensare paracardiac dreapta. SCD libere. Cord normal"
 Response: {"pathologic": "yes", "severity": 7, "summary": "pneumonia"}
+
+Report: "SAF normal pneumatizate."
+Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
+""")
+
+CHK_PROMPT = ("""
+You are an API that analyzes radiology reports.
+
+TASK
+              
+Read the report and extract the main pathological status in JSON format.
+- Analyze each sentence independently.
+- If any sentence contains a pathological finding, the report is pathologic.
+- Normal statements do not negate pathological ones elsewhere in the report.
+
+OUTPUT FORMAT (JSON ONLY)
+{
+  "pathologic": "yes/no",
+  "severity": 0-10,
+  "summary": "1-3 words"
+}
+
+RULES
+- "pathologic": "yes" if any abnormal finding is present, otherwise "no".
+- "severity": 0 = normal, 1-10 = increasing clinical severity
+- "summary": 1-3 words. Broad diagnostic category only (e.g., "pneumonia", "fracture", "effusion")
+- If the report is entirely normal: {"pathologic":"no","severity":0,"summary":"normal"}
+- If multiple abnormalities exist, choose the most severe one for severity and summary.
+- Ignore spelling errors.
+- Do not infer beyond what is written.
+- Respond with ONLY valid JSON. No extra text.
+
+LANGUAGE RULES (Romanian)
+- "fără" / "fara" = without / no
+- "liber(e)" = clear / free
+- Negations override findings within the same sentence only.
+
+SEVERITY GUIDELINES
+- 0: Normal
+- 1-3: Minimal / incidental abnormality
+- 4-6: Moderate abnormality, clinical correlation needed
+- 7-8: Significant abnormality, prompt attention
+- 9-10: Critical / life-threatening
+
+MEDICAL ACRONYMS
+
+(interpret before analysis)
+""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
+
 """)
 
 ANA_PROMPT = ("""
@@ -362,7 +413,7 @@ ROMANIAN MEDICAL ACROYNMS:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 """)
 
-TRN_PROMPT = ("""
+TRN_PROMPT_OLD = ("""
 You are a professional medical translator specializing in radiology reports.
 
 TASK: Translate the Romanian radiology report into English.
@@ -373,19 +424,17 @@ OUTPUT FORMAT:
 RULES:
 - Translate the entire report text from Romanian to English
 - Maintain all medical terminology and anatomical references
-- Preserve the original meaning and clinical context
+- Preserve the original meaning and clinical context while making the text sound natural in English
 - Use professional medical English terminology
 - Keep the same structure and formatting as the original
 - Do not add any explanations, comments, or additional text
 - Respond ONLY with the translation text, no JSON, no formatting, no additional content
 - Do not include any text before or after the translation
-- IMPORTANT: Translate ALL medical acronyms using the provided translation list below
-- If you encounter an acronym, ALWAYS use its English translation from the list
-- Never leave acronyms untranslated or in their original form
 - Create coherent, natural-sounding English translations
 - Rephrasing is allowed to improve readability and flow
 - Ensure the translation is grammatically correct and clinically accurate
-- Maintain the same clinical meaning while making the text sound natural in English
+              
+IMPORTANT: Translate ALL medical acronyms using the provided translation list below.
 
 MEDICAL ACROYNMS TO TRANSLATE:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
@@ -404,13 +453,80 @@ English: No signs of fracture or osteolytic lesions.
 Romanian: "Pneumotorax dreapta. IOT la T2. CVC în AD."
 English: Right pneumothorax. Tracheal tube at T2. Central venous catheter in right atrium.
 
-Romanian: "Pacientul prezintă opacitate în lobul inferior drept."
+Romanian: "Pacientul prezintă opacitate în LID."
 English: The patient shows opacity in the right lower lobe.
 
 Romanian: "Nu se observă modificări patologice semnificative."
 English: No significant pathological changes are observed.
+
+Romanian: "SAF normal pneumatizate."
+English: Normally aerated paranasal sinuses.
 """)
 
+TRN_PROMPT_NATURAL = ("""
+You are a medical translator specializing in radiology reports.
+
+TASK
+Translate the Romanian radiology report into professional medical English.
+
+RULES
+- Translate the entire text from Romanian to English.
+- Preserve medical terminology, anatomy, and clinical meaning.
+- Keep the same structure and sentence order as the original.
+- Use natural, professional radiology English.
+- Rephrase only when needed for clarity or grammatical correctness.
+- Translate all medical acronyms using the provided list.
+- Do not expand, interpret, summarize, or omit information.
+- Ignore spelling errors in the source text.
+
+OUTPUT
+- Output ONLY the English translation.
+- No JSON, no labels, no explanations.
+- No text before or after the translation.
+
+MEDICAL ACRONYMS
+
+(translate exactly as specified)
+""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
+
+""")
+
+TRN_PROMPT = ("""
+You are a medical translator performing token-aligned translation of radiology reports for evaluation purposes.
+
+TASK
+Translate the Romanian radiology report into English.
+
+TRANSLATION MODE
+Token-aligned, literal, evaluation-oriented.
+
+RULES
+- Translate all content from Romanian to English.
+- Preserve sentence boundaries exactly: Do NOT merge sentences. Do NOT split sentences.
+- Preserve sentence order, punctuation, and structure whenever possible.
+- Use canonical radiology phrasing.
+- Avoid synonyms, stylistic variation, or paraphrasing.
+- Prefer short, declarative sentences.
+- Translate acronyms only using the provided acronym list.
+- Do not expand, interpret, summarize, or omit information.
+- Ignore spelling errors in the source text.
+- Do not improve readability or style beyond literal correctness.
+
+OUTPUT
+- Output ONLY the English translation.
+- No JSON, no labels, no explanations.
+- No text before or after the translation.
+
+MEDICAL ACRONYMS
+Translate acronyms exactly as specified below before analysis:
+""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
+
+CONSTRAINTS
+- One Romanian sentence → one English sentence.
+- One medical concept → one canonical English term.
+- If a standard radiology phrase exists, use it consistently.
+- If the source states normality or absence, translate explicitly (e.g., “No pleural effusion”).
+""")
 
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
@@ -3951,7 +4067,7 @@ async def check_report(report_text):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": CHK_PROMPT}]
+                    "content": [{"type": "text", "text": CHK_PROMPT.strip()}]
                 },
                 {
                     "role": "user",
@@ -4116,7 +4232,7 @@ async def translate_report(report_text):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": TRN_PROMPT}]
+                    "content": [{"type": "text", "text": TRN_PROMPT.strip()}]
                 },
                 {
                     "role": "user",
@@ -4373,7 +4489,7 @@ async def detailed_analysis_report(report_text):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": ANA_PROMPT}]
+                    "content": [{"type": "text", "text": ANA_PROMPT.strip()}]
                 },
                 {
                     "role": "user",
@@ -5299,24 +5415,32 @@ def create_ai_prompt(exam, region, question, subject, anatomy):
         previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
 
     # Create the prompt
-    prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
+    prompt_lines = []
 
     # Add justification if available
     if exam['report']['rad'].get('justification'):
-        prompt += f"\n\nCLINICAL INFORMATION: {exam['report']['rad']['justification']}"
-
-    # Append previous reports if any exist (limit to 3 most recent)
+        prompt_lines.append("CLINICAL INFORMATION")
+        prompt_lines.append(f"{exam['report']['rad']['justification']}")
+        prompt_lines.append("")
+    
+    # Add previous reports if any exist (limit to 3 most recent)
     if previous_reports:
-        prompt += "\n\nPRIOR STUDIES:"
+        prompt_lines.append("PRIOR STUDIES")
         # Limit to at most 3 previous reports
         for i, (report, date) in enumerate(previous_reports[:3], 1):
-            prompt += f"\n\n[{date}] {report}"
-        prompt += "\n\nCompare to prior studies. Note any new, stable, resolved, or progressive findings with dates."
-    prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question."
+            prompt_lines.append(f"[{date}] {report}")
+        prompt_lines.append("")
+
+    # Add main prompt
+    prompt_lines.append("TASK")
+    prompt_lines.append(USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject).strip())
+
+    # Add comparison instruction if previous reports exist
+    if previous_reports:
+        prompt_lines.append("Compare to prior studies. Note any new, stable, resolved, or progressive findings with dates.")
     
     # Return the final prompt
-    return prompt
-
+    return "\n".join(prompt_lines)
 
 def prepare_ai_request_data(prompt, image_bytes):
     """
@@ -5351,7 +5475,7 @@ def prepare_ai_request_data(prompt, image_bytes):
         "messages": [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": SYS_PROMPT}]
+                "content": [{"type": "text", "text": REP_PROMPT.strip()}]
             },
             {
                 "role": "user",
@@ -5430,7 +5554,10 @@ async def send_exam_to_openai(exam, max_retries = 3):
         if exam['report']['ai']['text']:
             logging.info(f"Previous report: {exam['report']['ai']['text']}")
             data['messages'].append({'role': 'assistant', 'content': exam['report']['ai']['text']})
-            data['messages'].append({'role': 'user', 'content': REV_PROMPT})
+            data['messages'].append({'role': 'user', 'content': REV_PROMPT.strip()})
+    
+        # Debug log the request data
+        #logging.debug(f"Request data: {data}")
             
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
         attempt = 1
@@ -5886,7 +6013,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
             # Convert to int for comparison to avoid string vs int comparison errors
             service_id = int(rad_report['id'])
             if service_id > 0:
-                # We already have the service request ID, use it to call get_fhir_servicerequest
+                # We already have the service request ID, use it to get the service request
                 srv_req = await get_fhir_servicerequest(session, service_id)
                 if srv_req:
                     logging.info(f"Retrieved service request ID {srv_req['id']} for exam {exam_uid}")
