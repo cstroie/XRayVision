@@ -4096,7 +4096,7 @@ async def translate_report(report_text):
         str: English translation of the report, or None if translation failed or validation checks fail
     """
     try:
-        logging.debug(f"Translation request received with report length: {len(report_text)} characters")
+        logging.debug(f"Translation request received ({len(report_text.split())} words)")
 
         if not report_text:
             logging.warning("Translation request failed: no report text provided")
@@ -4350,7 +4350,7 @@ async def detailed_analysis_report(report_text):
         dict: Detailed analysis results with three-pass structure
     """
     try:
-        logging.debug(f"Detailed analysis request received with report length: {len(report_text)} characters")
+        logging.debug(f"Detailed analysis request received ({len(report_text.split())} words)")
         
         if not report_text:
             logging.warning("Detailed analysis request failed: no report text provided")
@@ -5254,8 +5254,11 @@ def create_ai_prompt(exam, region, question, subject, anatomy):
     Returns:
         str: Formatted prompt for AI
     """
-    # Get previous reports for the same patient and region
-    previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
+    # Get previous reports for the same patient and region if this is not a review
+    if 'ai' in exam['report'] and exam['report']['ai'].get('text'):
+        previous_reports = []
+    else:
+        previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
 
     # Create the prompt
     prompt = USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject)
@@ -5273,6 +5276,7 @@ def create_ai_prompt(exam, region, question, subject, anatomy):
         prompt += "\n\nCompare to prior studies. Note any new, stable, resolved, or progressive findings with dates."
     prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question."
     
+    # Return the final prompt
     return prompt
 
 
@@ -5898,7 +5902,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
 
         # If still no justification, log what we found in the service request
         if not justification:
-            logging.debug(f"No justification found in service request. Available fields: {list(srv_req.keys())}")
+            logging.debug(f"No justification found in service request {srv_req['id']}. Available fields: {list(srv_req.keys())}")
             if 'supportingInfo' in srv_req:
                 logging.debug(f"supportingInfo content: {srv_req['supportingInfo']}")
             if 'reason' in srv_req:

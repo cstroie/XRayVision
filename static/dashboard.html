@@ -513,7 +513,7 @@
             let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : exam.patient.name;
 
             // Update card classes
-            cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status || ''}`;
+            cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status ? 'status-' + exam.exam.status : ''}`;
 
             // Update image
             const imgElement = cardElement.querySelector('.xray img');
