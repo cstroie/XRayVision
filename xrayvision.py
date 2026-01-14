@@ -5399,50 +5399,71 @@ async def prepare_exam_data(exam):
 
 def create_ai_prompt(exam, region, question, subject, anatomy):
     """
-    Create the AI prompt for the exam.
-    
-    Args:
-        exam: Dictionary containing exam information and metadata
-        region: Anatomic region
-        question: Clinical question
-        subject: Patient description
-        anatomy: Anatomic region description
-        
-    Returns:
-        str: Formatted prompt for AI
-    """
-    # Get previous reports for the same patient and region if this is not a review
-    if 'ai' in exam['report'] and exam['report']['ai'].get('text'):
-        previous_reports = []
-    else:
-        previous_reports = db_get_previous_reports(exam['patient']['cnp'], region, months=3)
+    Create a deterministic user prompt for radiology AI inference.
 
-    # Create the prompt
+    Args:
+        exam: dict with exam metadata and reports
+        region: anatomic region key
+        question: clinical question
+        subject: patient description
+        anatomy: anatomy description
+
+    Returns:
+        str: formatted AI prompt
+    """
+
+    # Determine whether this is a review or a new AI report
+    has_ai_report = (
+        'ai' in exam.get('report', {})
+        and exam['report']['ai'].get('text')
+    )
+
+    # Fetch prior reports only for new AI reports
+    previous_reports = []
+    if not has_ai_report:
+        previous_reports = db_get_previous_reports(
+            exam['patient']['cnp'],
+            region,
+            months=3
+        ) or []
+
+    # Build the prompt sections
     prompt_lines = []
 
-    # Add justification if available
-    if exam['report']['rad'].get('justification'):
-        prompt_lines.append("CLINICAL INFORMATION")
-        prompt_lines.append(f"{exam['report']['rad']['justification']}")
-        prompt_lines.append("")
-    
-    # Add previous reports if any exist (limit to 3 most recent)
+    # Clinical information (if present)
+    justification = exam.get('report', {}).get('rad', {}).get('justification')
+    if justification:
+        prompt_lines.extend([
+            "CLINICAL INFORMATION:",
+            justification.strip(),
+            ""
+        ])
+
+    # Prior studies (limit to 3, clearly delimited)
     if previous_reports:
-        prompt_lines.append("PRIOR STUDIES")
-        # Limit to at most 3 previous reports
-        for i, (report, date) in enumerate(previous_reports[:3], 1):
-            prompt_lines.append(f"[{date}] {report}")
+        prompt_lines.append("PRIOR STUDIES:")
+        for report, date in previous_reports[:3]:
+            prompt_lines.append(f"- {date}: {report}")
         prompt_lines.append("")
 
-    # Add main prompt
-    prompt_lines.append("TASK")
-    prompt_lines.append(USR_PROMPT.format(question=question, anatomy=anatomy, subject=subject).strip())
+    # Core task (single, unambiguous instruction)
+    prompt_lines.extend([
+        "TASK:",
+        USR_PROMPT.format(
+            question=question,
+            anatomy=anatomy,
+            subject=subject
+        ).strip()
+    ])
 
-    # Add comparison instruction if previous reports exist
+    # Comparison instruction only if priors exist
     if previous_reports:
-        prompt_lines.append("Compare to prior studies. Note any new, stable, resolved, or progressive findings with dates.")
-    
-    # Return the final prompt
+        prompt_lines.append(
+            "When relevant, describe interval change compared to prior studies "
+            "(new, stable, improved, or resolved findings)."
+        )
+
+    # Create final prompt
     return "\n".join(prompt_lines)
 
 def prepare_ai_request_data(prompt, image_bytes):
