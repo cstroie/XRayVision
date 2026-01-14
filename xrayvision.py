@@ -4218,6 +4218,9 @@ async def translate_report(report_text):
             logging.warning("Translation request failed: no report text provided")
             return None
 
+        # Add space after each dot to clearly demarcate sentences
+        report_text = re.sub(r'([.])(?=\S)', r'\1 ', report_text)
+
         # Prepare the request headers
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
