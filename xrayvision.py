@@ -244,9 +244,7 @@ Output: Dilated small bowel loops measuring up to 3.5 cm with air-fluid levels, 
 Remember: Output ONLY the detailed findings as plain text with no other text.
 """)
 
-USR_PROMPT = ("""
-{question} in this {anatomy} X-ray of a {subject}?
-""")
+USR_PROMPT = ("""{question} in this {anatomy} X-ray of a {subject}?""")
 
 REV_PROMPT = ("""
 Your previous report was incorrect. Carefully re-examine the image.
@@ -4150,7 +4148,7 @@ async def translate_report(report_text):
                 logging.warning("Empty translation response received")
                 return None
 
-            logging.info(f"Translation: {response_text[:60]}...")
+            logging.info(f"Translation: {' '.join(response_text.split()[:10])}...")
             return response_text
     except Exception as e:
         logging.error(f"Error processing translation request: {e}")
@@ -4285,7 +4283,7 @@ async def check_rad_report_and_update(uid):
                 logging.warning(f"Translation validation failed for exam {uid}: {message}")
                 translation = None
             else:
-                logging.info(f"Translation successful for exam {uid}: {message:50}...")
+                logging.info(f"Translation successful for exam {uid}: {' '.join(message.split()[:10])}...")
                 translation = message  # Use the expanded translation
         else:
             logging.warning(f"Translation failed for exam {uid}")
@@ -5273,7 +5271,7 @@ def create_ai_prompt(exam, region, question, subject, anatomy):
         for i, (report, date) in enumerate(previous_reports[:3], 1):
             prompt += f"\n\n[{date}] {report}"
         prompt += "\n\nCompare to prior studies. Note any new, stable, resolved, or progressive findings with dates."
-    prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question. Output JSON only."
+    prompt += "\n\nIMPORTANT: Also identify any other lesions or abnormalities beyond the primary clinical question."
     
     return prompt
 
@@ -5425,7 +5423,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         raise ValueError("Empty AI response")
                     
                     # Parse the AI response
-                    logging.info(f"AI report for {exam['uid']}: {report:50}...")
+                    logging.info(f"AI report for {exam['uid']}: {' '.join(report.split()[:10])}...")
 
                     # First add the report with minimal values
                     db_insert('ai_reports',
@@ -6063,7 +6061,7 @@ async def translate_existing_reports():
                     if is_valid:
                         # Update the database with the validated translation
                         db_update('rad_reports', 'uid = ?', (uid,), text_en=message)
-                        logging.info(f"Successfully translated and updated exam {uid}: {message:50}...")
+                        logging.info(f"Successfully translated and updated exam {uid}: {' '.join(message.split()[:10])}...")
                     else:
                         logging.warning(f"Translation validation failed for exam {uid}: {message}")
                 else:
