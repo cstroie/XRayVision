@@ -5080,6 +5080,44 @@ async def search_fhir_servicerequests(session, patient_id, exam_datetime, exam_t
         logging.error(f"FHIR service requests search error: {e}")
     return []
 
+async def get_fhir_servicerequest(session, request_id):
+    """
+    Get a service request from FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        request_id: Service request ID
+
+    Returns:
+        dict or None: Service request from FHIR if successful, None otherwise
+    """
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+
+        url = f"{FHIR_URL}/fhir/ServiceRequest/{request_id}"
+
+        async with session.get(url, auth=auth, timeout=30) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                # Check if response is an OperationOutcome (error)
+                if data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.warning(f"FHIR service request returned OperationOutcome: {error_details}")
+                    return None
+                # Ensure the resource type is ServiceRequest
+                elif data.get('resourceType') == 'ServiceRequest':
+                    return data
+                else:
+                    logging.warning(f"FHIR service request has incorrect resource type: {data.get('resourceType')}")
+            else:
+                logging.warning(f"FHIR service request failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR service request error: {e}")
+    return None
+
 async def get_fhir_diagnosticreport(session, report_id):
     """
     Get a diagnostic report from FHIR system.
@@ -5094,9 +5132,9 @@ async def get_fhir_diagnosticreport(session, report_id):
     try:
         # Use basic authentication
         auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
-        
+
         url = f"{FHIR_URL}/fhir/DiagnosticReport/{report_id}"
-        
+
         async with session.get(url, auth=auth, timeout=30) as resp:
             if resp.status == 200:
                 data = await resp.json()
