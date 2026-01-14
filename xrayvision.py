@@ -5886,9 +5886,12 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
             # Convert to int for comparison to avoid string vs int comparison errors
             service_id = int(rad_report['id'])
             if service_id > 0:
-                # We already have the service request ID, use it directly
-                srv_req = {'id': service_id}
-                logging.info(f"Using existing service request ID {srv_req['id']} for exam {exam_uid}")
+                # We already have the service request ID, use it to call get_fhir_servicerequest
+                srv_req = await get_fhir_servicerequest(session, service_id)
+                if srv_req:
+                    logging.info(f"Retrieved service request ID {srv_req['id']} for exam {exam_uid}")
+                else:
+                    logging.warning(f"Failed to retrieve service request ID {service_id} for exam {exam_uid}")
         except (ValueError, TypeError):
             # If conversion fails, treat as if no valid ID exists
             pass
