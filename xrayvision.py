@@ -4163,15 +4163,16 @@ def expand_medical_acronyms(text):
     # Create a sorted list of acronyms by length (longest first) to avoid partial matches
     sorted_acronyms = sorted(MEDICAL_ACRONYMS.keys(), key=len, reverse=True)
 
+    # Search and replace acronyms in the text
     for acronym in sorted_acronyms:
         # Use word boundaries to avoid partial matches
         pattern = r'\b' + re.escape(acronym) + r'\b'
         translation = MEDICAL_ACRONYMS[acronym]
-        # Check if acronym exists in text (case insensitive)
-        if re.search(pattern, expanded_text, flags=re.IGNORECASE):
+        # Check if acronym exists in text (case sensitive)
+        if re.search(pattern, expanded_text):
             found_acronyms.append(acronym)
-            expanded_text = re.sub(pattern, translation, expanded_text, flags=re.IGNORECASE)
-
+            expanded_text = re.sub(pattern, translation, expanded_text)
+    # Return the expanded text and list of found acronyms
     return expanded_text, found_acronyms
 
 def validate_translation(source_text, translated_text):
@@ -4216,7 +4217,7 @@ def validate_translation(source_text, translated_text):
 
     for pattern in placeholder_patterns:
         if re.search(pattern, translated_text, re.IGNORECASE):
-            return False, f"Translation contains placeholder/error text: {translated_text}"
+            return False, f"Translation contains error text: {translated_text}"
 
     # Expand medical acronyms in the translated text for better validation
     expanded_translation, found_acronyms = expand_medical_acronyms(translated_text)
@@ -4281,16 +4282,15 @@ async def check_rad_report_and_update(uid):
 
         # Check if analysis was successful
         if 'error' in analysis_result:
-            logging.error(f"AI check failed for exam {uid}: {analysis_result['error']}")
+            logging.error(f"Check failed for exam {uid}: {analysis_result['error']}")
             return False
 
         # Extract values from analysis result
         try:
             # Validate that all required fields are present
             if 'pathologic' not in analysis_result or 'severity' not in analysis_result or 'summary' not in analysis_result:
-                logging.error(f"AI check response missing required fields for exam {uid}: {list(analysis_result.keys())}")
+                logging.error(f"Check response missing required fields for exam {uid}: {list(analysis_result.keys())}")
                 return False
-
             positive = 1 if analysis_result['pathologic'] == 'yes' else 0
             severity = analysis_result['severity']
             summary = analysis_result['summary'].lower()
@@ -4311,8 +4311,8 @@ async def check_rad_report_and_update(uid):
         if translation:
             update_fields['text_en'] = translation
 
+        # Update the database
         db_update('rad_reports', 'uid = ?', (uid,), **update_fields)
-
         logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {int(processing_time)}s")
         if translation:
             logging.info(f"Added English translation for exam {uid}")
@@ -5408,7 +5408,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         raise ValueError("Empty AI response")
                     
                     # Parse the AI response
-                    logging.info(f"AI API response for {exam['uid']}: {report}")
+                    logging.info(f"AI report for {exam['uid']}: {report:50}...")
 
                     # First add the report with minimal values
                     db_insert('ai_reports',
@@ -5863,6 +5863,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
 
         # Return if no service request found
         return
+    
     # Extract justification from supportingInfo if available
     justification = ''
     try:
@@ -5887,7 +5888,6 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
                 logging.debug(f"supportingInfo content: {srv_req['supportingInfo']}")
             if 'reason' in srv_req:
                 logging.debug(f"reason content: {srv_req['reason']}")
-
     except Exception as e:
         logging.warning(f"Error extracting justification from service request: {e}")
         logging.debug(f"Service request structure: {srv_req}")
@@ -5907,18 +5907,26 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
     
     # Insert or update the radiologist report in our database with all fields
-    db_insert('rad_reports',
+    if rad_report:
+        # Update existing record
+        db_update('rad_reports', 'uid = ?', (exam_uid,),
+            id=srv_req['id'],
+            text=report_text,
+            radiologist=radiologist,
+            justification=justification,
+            type=exam_type,
+            model=MODEL_NAME)
+    else:
+        # Insert new record
+        db_insert('rad_reports',
             uid=exam_uid,
             id=srv_req['id'],
             text=report_text,
             radiologist=radiologist,
-            positive=-1,
-            severity=-1,
-            summary='',
+            summary=None,
             type=exam_type,
             justification=justification,
-            model=MODEL_NAME,
-            latency=-1)
+            model=MODEL_NAME)
     logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid} with justification: {justification}")
 
     # Set the exam status to 'check' for LLM processing in queue
