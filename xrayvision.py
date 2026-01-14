@@ -4010,7 +4010,7 @@ async def check_report(report_text):
                 else:
                     parsed_response["summary"] = parsed_response["summary"].strip().lower()
 
-                logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
+                logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {'pathologic' if parsed_response['pathologic'] == 'yes' else 'non-pathologic'}: {parsed_response['summary']}")
                 return parsed_response
             except json.JSONDecodeError as e:
                 # If JSON parsing fails, try to extract JSON from the response text
