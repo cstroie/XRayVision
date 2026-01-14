@@ -3969,8 +3969,8 @@ async def check_report(report_text):
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             if not result:
-                logging.error("Failed to get response from AI service")
-                return {'error': 'Failed to get response from AI service'}
+                logging.error("Failed to get response from AI")
+                return {'error': 'Failed to get response from AI'}
             
             response_text = result["choices"][0]["message"]["content"].strip()
             logging.debug(f"Raw AI response: {response_text}")
@@ -4191,7 +4191,7 @@ def validate_translation(source_text, translated_text):
         translated_text: Translated text to validate
 
     Returns:
-        tuple: (bool, str) where bool indicates validity and str contains error message if invalid
+        tuple: (bool, str) where bool indicates validity and str contains error message if invalid or expanded translation if valid
     """
     if not translated_text or not translated_text.strip():
         return False, "Translation is empty or None"
@@ -4225,22 +4225,16 @@ def validate_translation(source_text, translated_text):
     # Check if any medical acronyms were found but not properly translated
     # Look for common Romanian acronym patterns that should have been translated
     romanian_acronym_pattern = r'\b[A-Z]{2,}\b'  # 2+ uppercase letters
-    untranslated_acronyms = re.findall(romanian_acronym_pattern, translated_text)
+    untranslated_acronyms = re.findall(romanian_acronym_pattern, expanded_translation)
 
     # Filter out acronyms that were properly translated (found in our list)
     untranslated_acronyms = [acro for acro in untranslated_acronyms if acro not in MEDICAL_ACRONYMS]
 
     if untranslated_acronyms:
-        logging.warning(f"Found untranslated medical acronyms in translation: {untranslated_acronyms}")
-        # This is not necessarily a failure, but we should log it for review
+        logging.debug(f"Found medical acronyms in translation: {', '.join(untranslated_acronyms)}")
 
-    # Check if the translation actually expanded the acronyms by comparing
-    # the original text with the expanded version
-    if found_acronyms and expanded_translation == translated_text:
-        logging.warning(f"Translation did not expand medical acronyms: {found_acronyms}")
-        # This is not necessarily a failure, but we should log it for review
-
-    return True, "Translation is valid"
+    # Return valid and expanded translation
+    return True, expanded_translation
 
 async def check_rad_report_and_update(uid):
     """Send radiologist report text to CHECK prompt and update database with severity/summary.
@@ -4270,12 +4264,13 @@ async def check_rad_report_and_update(uid):
         translation = await translate_report(report_text)
         if translation:
             # Validate the translation before using it
-            is_valid, validation_msg = validate_translation(report_text, translation)
+            is_valid, message = validate_translation(report_text, translation)
             if not is_valid:
-                logging.warning(f"Translation validation failed for exam {uid}: {validation_msg}")
+                logging.warning(f"Translation validation failed for exam {uid}: {message}")
                 translation = None
             else:
-                logging.info(f"Translation successful and validated for exam {uid}")
+                logging.info(f"Translation successful for exam {uid}: {message:50}...")
+                translation = message  # Use the expanded translation
         else:
             logging.warning(f"Translation failed for exam {uid}")
 
@@ -6048,13 +6043,13 @@ async def translate_existing_reports():
 
                 if translation:
                     # Validate the translation before saving
-                    is_valid, validation_msg = validate_translation(report_text, translation)
+                    is_valid, message = validate_translation(report_text, translation)
                     if is_valid:
                         # Update the database with the validated translation
-                        db_update('rad_reports', 'uid = ?', (uid,), text_en=translation)
-                        logging.info(f"Successfully translated and updated exam {uid}")
+                        db_update('rad_reports', 'uid = ?', (uid,), text_en=message)
+                        logging.info(f"Successfully translated and updated exam {uid}: {message:50}...")
                     else:
-                        logging.warning(f"Translation validation failed for exam {uid}: {validation_msg}")
+                        logging.warning(f"Translation validation failed for exam {uid}: {message}")
                 else:
                     logging.warning(f"Translation failed for exam {uid}")
 
