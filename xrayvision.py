@@ -4082,6 +4082,8 @@ async def check_report(report_text):
                 # Validate summary field
                 if not isinstance(parsed_response["summary"], str):
                     raise ValueError("Invalid summary value in AI response")
+                else:
+                    parsed_response["summary"] = parsed_response["summary"].strip().lower()
                     
                 logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
                 return parsed_response
@@ -4127,23 +4129,14 @@ async def check_ai_report_and_update(uid):
         if 'error' in analysis_result:
             logging.error(f"AI check failed for exam {uid}: {analysis_result['error']}")
             return False
-            
-        # Extract values from analysis result
-        try:
-            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
-            severity = analysis_result['severity']
-            summary = analysis_result['summary'].lower()
-        except Exception as e:
-            logging.error(f"Could not extract analysis results for exam {uid}: {e}")
-            return False
         
         # Update the AI report in database with severity and summary
         db_update('ai_reports', 'uid = ?', (uid,),
-                  positive=positive,
-                  severity=severity,
-                  summary=summary)
-        
-        logging.info(f"Updated AI report for exam {uid} with severity {severity} and summary '{summary}'")
+                    positive=1 if analysis_result['pathologic'] == 'yes' else 0,
+                    severity=analysis_result['severity'],
+                    summary=analysis_result['summary'])
+
+        logging.info(f"Updated AI report for exam {uid} with severity {analysis_result['severity']} and summary '{analysis_result['summary']}'")
         return True
         
     except Exception as e:
@@ -5392,49 +5385,6 @@ def prepare_ai_request_data(prompt, image_bytes):
     return headers, data
 
 
-async def handle_ai_success(exam, report, processing_time, response_model=None):
-    """
-    Handle successful AI processing by updating database and sending notifications.
-    
-    Args:
-        exam: Dictionary containing exam information and metadata
-        report: AI generated report text
-        processing_time: Time taken to process the exam
-        response_model: Actual model name from API response
-        
-    Returns:
-        bool: True if successful
-    """
-    # Save to exams database with processing time
-    db_add_exam(exam)
-    
-    # If report is provided, add it to ai_reports table with initial values
-    if report is not None:
-        # First add the report with default values
-        db_add_ai_report(exam['uid'], report, -1, -1, response_model, int(processing_time), -1, '')
-        
-        # Now use check_ai_report_and_update to analyze the report and get proper values
-        await check_ai_report_and_update(exam['uid'])
-        
-        # Get the updated report to check positivity for notifications
-        updated_report = db_get_ai_report(exam['uid'])
-        if updated_report and updated_report.get('positive') == 1:
-            try:
-                await send_ntfy_notification(exam['uid'], report, exam)
-            except Exception as e:
-                logging.error(f"Failed to send ntfy notification: {e}")
-        
-        # Determine positivity for dashboard update
-        is_positive = updated_report.get('positive', 0) == 1 if updated_report else False
-    else:
-        is_positive = False
-    
-    # Notify the dashboard frontend to reload first page
-    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
-    # Success
-    return True
-
-
 async def send_exam_to_openai(exam, max_retries = 3):
     """
     Send an exam's PNG image to the AI API for analysis.
@@ -5509,9 +5459,21 @@ async def send_exam_to_openai(exam, max_retries = 3):
                 start_time = asyncio.get_event_loop().time()
                 async with aiohttp.ClientSession() as session:
                     result = await send_to_openai(session, headers, data)
+
+                    # Calculate timing statistics
+                    global timings
+                    end_time = asyncio.get_event_loop().time()
+                    processing_time = end_time - start_time  # In seconds
+                    timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
+                    if timings['average'] > 0:
+                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                    else:
+                        timings['average'] = timings['total']
+
+                    # Check for valid response
                     if not result:
                         break
-                    response_text = result["choices"][0]["message"]["content"].strip()
+                    response_text = result["choices"][0]["message"]["content"]
                     # Extract the actual model name from the API response
                     response_model = result.get("model", MODEL_NAME)
                     
@@ -5523,22 +5485,28 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     
                     # Parse the AI response
                     logging.info(f"AI API response for {exam['uid']}: {report}")
+
+                    # First add the report with minimal values
+                    db_add_ai_report(exam['uid'], report, -1, None, response_model, int(processing_time), None)
                     
-                    # Calculate timing statistics
-                    global timings
-                    end_time = asyncio.get_event_loop().time()
-                    processing_time = end_time - start_time  # In seconds
-                    timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
-                    if timings['average'] > 0:
-                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
-                    else:
-                        timings['average'] = timings['total']
+                    # Now analyze the report and get proper values
+                    await check_ai_report_and_update(exam['uid'])
                     
-                    # Handle success
-                    success = await handle_ai_success(exam, report, processing_time, response_model)
-                    if success:
-                        return True
-                        
+                    # Get the updated report to check positivity for notifications
+                    updated_report = db_get_ai_report(exam['uid'])
+                    # Determine positivity for dashboard update
+                    is_positive = updated_report.get('positive', 0) == 1 if updated_report else False
+                    if is_positive:
+                        # Notify the dashboard frontend to reload first page
+                        await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
+                        # Send notification for positive finding
+                        try:
+                            await send_ntfy_notification(exam['uid'], report, exam)
+                        except Exception as e:
+                            logging.error(f"Failed to send ntfy notification: {e}")
+                    # Success
+                    return True
+
             except Exception as e:
                 logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
                 # Exponential backoff
@@ -5552,7 +5520,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         await broadcast_dashboard_update()
         return False
     except Exception as e:
-        logging.error(f"Critical error in send_exam_to_openai for {exam['uid']}: {e}")
+        logging.error(f"Critical error for {exam['uid']}: {e}")
         db_set_status(exam['uid'], 'error')
         await broadcast_dashboard_update()
         return False
@@ -5674,7 +5642,7 @@ async def relay_to_openai_loop():
                     else:
                         logging.debug(f"Keeping DICOM file: {dicom_file}")
                 else:
-                    # Error already set in send_exam_to_openai
+                    # Error status already set
                     pass
             elif exam_status == 'check':
                 # Check if AI report already has a summary
