@@ -4234,6 +4234,12 @@ def validate_translation(source_text, translated_text):
         logging.warning(f"Found untranslated medical acronyms in translation: {untranslated_acronyms}")
         # This is not necessarily a failure, but we should log it for review
 
+    # Check if the translation actually expanded the acronyms by comparing
+    # the original text with the expanded version
+    if found_acronyms and expanded_translation == translated_text:
+        logging.warning(f"Translation did not expand medical acronyms: {found_acronyms}")
+        # This is not necessarily a failure, but we should log it for review
+
     return True, "Translation is valid"
 
 async def check_rad_report_and_update(uid):
