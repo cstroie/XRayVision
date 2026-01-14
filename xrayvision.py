@@ -998,82 +998,6 @@ def db_add_patient(cnp, id, name, birthdate, sex):
     return db_execute_query_retry(query, params)
 
 
-def db_add_ai_report(uid, report_text, positive, confidence, model, latency, severity=None, summary=None):
-    """
-    Add or update an AI report entry in the database.
-
-    Args:
-        uid: Exam unique identifier
-        report_text: AI-generated report content
-        positive: AI prediction result (True/False)
-        confidence: AI confidence score (0-100)
-        model: Name of the model used
-        latency: Processing time in seconds
-        severity: Severity score (0-10, -1 if not assessed)
-        summary: Brief summary of findings
-    """
-    db_insert('ai_reports',
-              uid=uid,
-              text=report_text,
-              positive=int(positive),
-              confidence=confidence if confidence is not None else -1,
-              severity=severity if severity is not None else -1,
-              summary=summary,
-              model=model,
-              latency=latency)
-
-
-def db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency, text_en=None):
-    """
-    Add or update a radiologist report entry in the database.
-
-    Args:
-        uid: Exam unique identifier
-        report_id: HIS report ID
-        report_text: Radiologist report content
-        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
-        severity: Severity score (0-10, -1 if not assessed)
-        summary: Brief summary of findings
-        report_type: Exam type
-        radiologist: Identifier for the radiologist
-        justification: Clinical diagnostic text
-        model: Name of the model used
-        latency: Processing time in seconds
-        text_en: English translation of the report (optional)
-    """
-    db_insert('rad_reports',
-              uid=uid,
-              id=report_id,
-              text=report_text,
-              text_en=text_en,
-              positive=positive,
-              severity=severity,
-              summary=summary,
-              type=report_type,
-              radiologist=radiologist,
-              justification=justification,
-              model=model,
-              latency=latency)
-
-def db_update_rad_report(uid, positive, severity, summary, model, latency):
-    """
-    Update a radiologist report with LLM analysis results.
-
-    Args:
-        uid: Exam unique identifier
-        positive: Report positivity (-1=not assessed, 0=no findings, 1=findings)
-        severity: Severity score (0-10, -1 if not assessed)
-        summary: Brief summary of findings
-        model: Name of the model used
-        latency: Processing time in seconds
-    """
-    db_update('rad_reports', 'uid = ?', (uid,), 
-              positive=positive, 
-              severity=severity, 
-              summary=summary, 
-              model=model, 
-              latency=latency)
-
 def db_get_exams_without_rad_report():
     """
     Get all exams for a patient that don't have radiologist reports yet.
@@ -5487,8 +5411,13 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     logging.info(f"AI API response for {exam['uid']}: {report}")
 
                     # First add the report with minimal values
-                    db_add_ai_report(exam['uid'], report, -1, None, response_model, int(processing_time), None)
-                    
+                    db_insert('ai_reports',
+                        uid=exam['uid'],
+                        text=report,
+                        summary=None,
+                        model=response_model,
+                        latency=int(processing_time))
+
                     # Now analyze the report and get proper values
                     await check_ai_report_and_update(exam['uid'])
                     
