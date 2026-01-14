@@ -3980,9 +3980,10 @@ async def check_report(report_text):
             response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
             
             try:
+                # Try to parse the response as JSON
                 parsed_response = json.loads(response_text)
                 logging.debug(f"AI responded: {parsed_response}")
-                    
+
                 # Handle case where AI returns an array instead of single object
                 if isinstance(parsed_response, list):
                     if len(parsed_response) == 0:
@@ -3990,30 +3991,45 @@ async def check_report(report_text):
                     # Take the first valid entry from the array
                     parsed_response = parsed_response[0]
                     logging.debug(f"Extracted first entry from array: {parsed_response}")
-                    
+
                 # Validate required fields
                 if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
                     raise ValueError("Missing required fields in AI response")
-                    
+
                 # Validate pathologic field
                 if parsed_response["pathologic"] not in ["yes", "no"]:
                     raise ValueError("Invalid pathologic value in AI response")
-                    
+
                 # Validate severity field
                 if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
                     raise ValueError("Invalid severity value in AI response")
-                    
+
                 # Validate summary field
                 if not isinstance(parsed_response["summary"], str):
                     raise ValueError("Invalid summary value in AI response")
                 else:
                     parsed_response["summary"] = parsed_response["summary"].strip().lower()
-                    
+
                 logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {parsed_response['pathologic'] and 'pathologic' or 'non-pathologic'}: {parsed_response['summary']}")
                 return parsed_response
             except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse AI response as JSON: {response_text}")
-                return {'error': 'Failed to parse AI response', 'response': response_text}
+                # If JSON parsing fails, try to extract JSON from the response text
+                # This handles cases where the AI returns both text and JSON
+                logging.debug(f"Initial JSON parsing failed, trying to extract JSON from response: {response_text}")
+
+                # Try to find JSON in the response text
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    try:
+                        parsed_response = json.loads(json_match.group(0))
+                        logging.debug(f"Successfully extracted JSON from response: {parsed_response}")
+                        return parsed_response
+                    except json.JSONDecodeError as json_e:
+                        logging.error(f"Failed to parse extracted JSON: {json_e}")
+                        return {'error': 'Failed to parse AI response', 'response': response_text}
+                else:
+                    logging.error(f"Failed to parse AI response as JSON: {response_text}")
+                    return {'error': 'Failed to parse AI response', 'response': response_text}
             except ValueError as e:
                 logging.error(f"Invalid AI response format: {e} ({response_text})")
                 return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
