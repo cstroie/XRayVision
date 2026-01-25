@@ -1130,8 +1130,7 @@ def db_get_exams_without_rad_report():
     # Try three - first with random weeks, then double if no results
     for attempt in range(4):
         # Calculate cutoff date
-        # TODO Temporary fix for selecting older exams 
-        cutoff_date = datetime.now() - timedelta(weeks=52-weeks)
+        cutoff_date = datetime.now() - timedelta(weeks=weeks)
         cutoff_date_str = cutoff_date.strftime('%Y-%m-%d %H:%M:%S')
         
         # First, find a patient with at least one exam without a radiologist report
