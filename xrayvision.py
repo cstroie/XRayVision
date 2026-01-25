@@ -5632,9 +5632,9 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     updated_report = db_get_ai_report(exam['uid'])
                     # Determine positivity for dashboard update by comparing severity with threshold
                     is_positive = (updated_report.get('severity', -1) >= SEVERITY_THRESHOLD) if updated_report else False
+                    # Notify the dashboard frontend to reload first page
+                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
                     if is_positive:
-                        # Notify the dashboard frontend to reload first page
-                        await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False)})
                         # Send notification for positive finding
                         try:
                             await send_ntfy_notification(exam['uid'], report, exam)
