@@ -583,7 +583,11 @@
             const radReportElement = cardElement.querySelector('.rad-report');
             if (exam.report.rad.text) {
                 radReportElement.className = `report rad-report severity-${exam.report.rad.severity}`;
-                radReportElement.querySelector('summary').innerHTML = `${exam.report.rad.radiologist}: ${exam.report.rad.summary}${exam.report.rad.severity !== null && exam.report.rad.severity > -1 ? ` (Severity: ${exam.report.rad.severity}/10)` : ''}`;
+                // Only show summary if it's not null and not empty
+                let summaryText = exam.report.rad.summary ? exam.report.rad.summary : '';
+                // Only show severity if it's not null and greater than -1
+                let severityText = exam.report.rad.severity !== null && exam.report.rad.severity > -1 ? ` (Severity: ${exam.report.rad.severity}/10)` : '';
+                radReportElement.querySelector('summary').innerHTML = `${exam.report.rad.radiologist}: ${summaryText}${severityText}`;
                 radReportElement.querySelector('summary').nextSibling.textContent = exam.report.rad.text;
                 radReportElement.style.display = 'block';
             } else {
