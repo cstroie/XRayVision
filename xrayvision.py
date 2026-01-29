@@ -259,61 +259,6 @@ Output ONLY the radiological findings as plain text.
 No explanations, apologies, or metadata.
 """)
 
-CHK_PROMPT_OLD = ("""
-You are API analyzing radiology reports.
-
-TASK: Read the report and extract the main pathological information in JSON format.
-ANALYZE EACH SENTENCE SEPARATELY and identify any pathological findings, even if other aspects are described as normal.
-If ANY sentence describes a pathological finding, mark as pathologic.
-
-OUTPUT FORMAT (JSON):
-{
-  "pathologic": "yes/no",
-  "severity": 1-10,
-  "summary": "1-3 words"
-}
-
-RULES:
-- "pathologic": "yes" if ANY pathological finding exists, otherwise "no"
-- "severity": 1=minimal, 5=moderate, 10=critical/urgent
-- "summary": diagnosis in 1-3 words, focusing on major category classifications (e.g., "fracture", "pneumonia", "interstitial infiltrate")
-- If everything is normal: {"pathologic": "no", "severity": 0, "summary": "normal"}
-- Ignore spelling errors
-- Note: In Romanian reports, "fără" and "fara" mean "no" or "without"
-- Note: In Romanian reports, "liber" means "clear" or "free"
-- Respond ONLY with the JSON, without additional text
-
-SEVERITY SCORING:
-- 0: Normal findings
-- 1-3: Minimal abnormalities, no immediate clinical concern
-- 4-6: Moderate findings requiring clinical correlation
-- 7-8: Significant abnormalities requiring prompt attention
-- 9-10: Critical findings requiring immediate intervention
-
-MEDICAL ACROYNMS TO UNDERSTAND:
-""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
-
-EXAMPLES:
-
-Report: "Hazy opacity in the left mid lung field, possibly representing consolidation or infiltrate."
-Response: {"pathologic": "yes", "severity": 6, "summary": "pneumonia"}
-
-Report: "No pathological changes. Heart of normal size."
-Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
-
-Report: "Fără semne de fractură sau leziuni osteolitice."
-Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
-
-Report: "SCD libere, fără lichid pleural."
-Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
-
-Report: "Proces de condensare paracardiac dreapta. SCD libere. Cord normal"
-Response: {"pathologic": "yes", "severity": 7, "summary": "pneumonia"}
-
-Report: "SAF normal pneumatizate."
-Response: {"pathologic": "no", "severity": 0, "summary": "normal"}
-""")
-
 CHK_PROMPT = ("""
 You are an API that analyzes radiology reports.
 
@@ -411,56 +356,6 @@ RULES:
 
 ROMANIAN MEDICAL ACROYNMS:
 """ + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
-""")
-
-TRN_PROMPT_OLD = ("""
-You are a professional medical translator specializing in radiology reports.
-
-TASK: Translate the Romanian radiology report into English.
-
-OUTPUT FORMAT:
-[English translation of the report]
-
-RULES:
-- Translate the entire report text from Romanian to English
-- Maintain all medical terminology and anatomical references
-- Preserve the original meaning and clinical context while making the text sound natural in English
-- Use professional medical English terminology
-- Keep the same structure and formatting as the original
-- Do not add any explanations, comments, or additional text
-- Respond ONLY with the translation text, no JSON, no formatting, no additional content
-- Do not include any text before or after the translation
-- Create coherent, natural-sounding English translations
-- Rephrasing is allowed to improve readability and flow
-- Ensure the translation is grammatically correct and clinically accurate
-              
-IMPORTANT: Translate ALL medical acronyms using the provided translation list below.
-
-MEDICAL ACROYNMS TO TRANSLATE:
-""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
-
-EXAMPLES:
-
-Romanian: "SCD libere, fără lichid pleural."
-English: Clear costo-diaphragmatic sinuses, no pleural effusion.
-
-Romanian: "Proces de condensare paracardiac dreapta."
-English: Right paracardiac consolidation process.
-
-Romanian: "Fără semne de fractură sau leziuni osteolitice."
-English: No signs of fracture or osteolytic lesions.
-
-Romanian: "Pneumotorax dreapta. IOT la T2. CVC în AD."
-English: Right pneumothorax. Tracheal tube at T2. Central venous catheter in right atrium.
-
-Romanian: "Pacientul prezintă opacitate în LID."
-English: The patient shows opacity in the right lower lobe.
-
-Romanian: "Nu se observă modificări patologice semnificative."
-English: No significant pathological changes are observed.
-
-Romanian: "SAF normal pneumatizate."
-English: Normally aerated paranasal sinuses.
 """)
 
 TRN_PROMPT_NATURAL = ("""
@@ -5626,6 +5521,9 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     # Use case-insensitive regex to find the sections
                     findings_match = re.search(r'findings:(.*?)(impression:|$)', report, re.IGNORECASE | re.DOTALL)
                     impression_match = re.search(r'impression:(.*)', report, re.IGNORECASE | re.DOTALL)
+
+                    logging.info(f"Findings match: {findings_match}")
+                    logging.info(f"Impression match: {impression_match}")
                     
                     if findings_match and impression_match:
                         findings = findings_match.group(1).strip()
