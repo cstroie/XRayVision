@@ -233,13 +233,13 @@ SYSTEMATIC REVIEW
 EXAMPLES
 
 **Pneumonia**
-Consolidation in the right lower lung zone. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits.
+FINDINGS: Consolidation in the right lower lung zone. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits. IMPRESSION: pneumonia.
 
 **Normal chest X-ray**
-Clear lung fields bilaterally. No focal consolidation, pleural effusion, or pneumothorax. Cardiac silhouette normal in size. No acute osseous abnormality.
+FINDINGS: Clear lung fields bilaterally. No focal consolidation, pleural effusion, or pneumothorax. Cardiac silhouette normal in size. No acute osseous abnormality. IMPRESSION: normal.
 
 **Uncertain abdominal finding**
-Multiple dilated small bowel loops measuring up to approximately 3.5 cm with air–fluid levels, suggestive of bowel obstruction. No subdiaphragmatic free air. Evaluation limited on plain radiograph.
+FINDINGS: Multiple dilated small bowel loops measuring up to approximately 3.5 cm with air–fluid levels, suggestive of bowel obstruction. No subdiaphragmatic free air. Evaluation limited on plain radiograph. IMPRESSION: bowel obstruction.
 """)
 
 #USR_PROMPT = ("""{question} in this {anatomy} X-ray of a {subject}?""")
@@ -4172,7 +4172,12 @@ async def check_ai_report_and_update(uid):
             return False
             
         # Extract the report text
-        report_text = ai_report['text']
+        findings = ai_report['text']
+        impression = ai_report.get('summary', None)
+        if impression:
+            report_text = f"FINDINGS: {findings}\n\nIMPRESSION: {impression}"
+        else:
+            report_text = findings
         
         # Summarize the AI report
         logging.info(f"Summarizing AI report for exam {uid}")
@@ -5616,7 +5621,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     
                     # Handle reports with FINDINGS/IMPRESSION structure
                     findings = None
-                    summary = None
+                    impression = None
                     
                     # Use case-insensitive regex to find the sections
                     findings_match = re.search(r'findings:(.*?)(impression:|$)', report, re.IGNORECASE | re.DOTALL)
@@ -5624,21 +5629,21 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     
                     if findings_match and impression_match:
                         findings = findings_match.group(1).strip()
-                        summary = impression_match.group(1).strip()
-                        logging.debug(f"Split report into findings ({len(findings)} chars) and summary ({len(summary)} chars)")
+                        impression = impression_match.group(1).strip()
+                        logging.debug(f"Split report into findings ({len(findings)} chars) and impression ({len(summary)} chars)")
                     else:
-                        findings = report  # Fallback to full report for findings
-                        summary = None     # Will be set later by check_ai_report_and_update
+                        findings = report     # Fallback to full report for findings
+                        impression = None     # Will be set later by check_ai_report_and_update
                         logging.debug("Using full report as findings")
 
-                    # Parse the AI response
+                    # Log a snippet of the report
                     logging.info(f"AI report for {exam['uid']}: {' '.join(findings.split()[:10])}...")
 
                     # First add the report with minimal values
                     db_insert('ai_reports',
                         uid=exam['uid'],
                         text=findings,
-                        summary=summary,
+                        summary=impression,
                         model=response_model,
                         latency=int(processing_time))
 
