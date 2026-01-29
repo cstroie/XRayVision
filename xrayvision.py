@@ -5526,8 +5526,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     findings_match = re.search(r'FINDINGS:(.*?)(IMPRESSION:|$)', report, re.DOTALL)
                     impression_match = re.search(r'IMPRESSION:(.*)', report, re.DOTALL)
 
-                    logging.info(f"Findings match: {findings_match.group(1) if findings_match else 'None'}")
-                    logging.info(f"Impression match: {impression_match.group(1) if impression_match else 'None'}")
+                    #logging.debug(f"Findings match: {findings_match.group(1) if findings_match else 'None'}")
+                    #logging.debug(f"Impression match: {impression_match.group(1) if impression_match else 'None'}")
                     
                     if findings_match and impression_match:
                         findings = findings_match.group(1).strip()
