@@ -4034,6 +4034,7 @@ async def check_report(report_text):
                         return parsed_response
                     except json.JSONDecodeError as json_e:
                         logging.error(f"Failed to parse extracted JSON: {json_e}")
+                        logging.error(f"Extracted JSON: {json_match.group(0)}")
                         return {'error': 'Failed to parse AI response', 'response': response_text}
                 else:
                     logging.error(f"Failed to parse AI response as JSON: {response_text}")
@@ -5513,29 +5514,33 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     if not report:
                         logging.error(f"Empty AI response for exam {exam['uid']}")
                         raise ValueError("Empty AI response")
+
+                    # Log a snippet of the report
+                    logging.info(f"AI report for {exam['uid']}: {' '.join(report.split()[:10])}...")
                     
                     # Handle reports with FINDINGS/IMPRESSION structure
                     findings = None
                     impression = None
                     
                     # Use case-insensitive regex to find the sections
-                    findings_match = re.search(r'findings:(.*?)(impression:|$)', report, re.IGNORECASE | re.DOTALL)
-                    impression_match = re.search(r'impression:(.*)', report, re.IGNORECASE | re.DOTALL)
+                    findings_match = re.search(r'FINDINGS:(.*?)(IMPRESSION:|$)', report, re.DOTALL)
+                    impression_match = re.search(r'IMPRESSION:(.*)', report, re.DOTALL)
 
-                    logging.info(f"Findings match: {findings_match}")
-                    logging.info(f"Impression match: {impression_match}")
+                    logging.info(f"Findings match: {findings_match.group(1) if findings_match else 'None'}")
+                    logging.info(f"Impression match: {impression_match.group(1) if impression_match else 'None'}")
                     
                     if findings_match and impression_match:
                         findings = findings_match.group(1).strip()
                         impression = impression_match.group(1).strip()
-                        logging.debug(f"Split report into findings ({len(findings)} chars) and impression ({len(summary)} chars)")
+                        logging.debug(f"Split report into findings ({len(findings.split())} words) and impression ({len(impression.split())} words)")
+                    elif findings_match:
+                        findings = findings_match.group(1).strip()
+                        impression = None     # Will be set later by check_ai_report_and_update
+                        logging.debug("Extracted findings, no impression found")
                     else:
                         findings = report     # Fallback to full report for findings
                         impression = None     # Will be set later by check_ai_report_and_update
                         logging.debug("Using full report as findings")
-
-                    # Log a snippet of the report
-                    logging.info(f"AI report for {exam['uid']}: {' '.join(findings.split()[:10])}...")
 
                     # First add the report with minimal values
                     db_insert('ai_reports',
