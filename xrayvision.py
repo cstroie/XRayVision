@@ -5614,14 +5614,31 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         logging.error(f"Empty AI response for exam {exam['uid']}")
                         raise ValueError("Empty AI response")
                     
+                    # Handle reports with FINDINGS/IMPRESSION structure
+                    findings = None
+                    summary = None
+                    
+                    # Use case-insensitive regex to find the sections
+                    findings_match = re.search(r'findings:(.*?)(impression:|$)', report, re.IGNORECASE | re.DOTALL)
+                    impression_match = re.search(r'impression:(.*)', report, re.IGNORECASE | re.DOTALL)
+                    
+                    if findings_match and impression_match:
+                        findings = findings_match.group(1).strip()
+                        summary = impression_match.group(1).strip()
+                        logging.debug(f"Split report into findings ({len(findings)} chars) and summary ({len(summary)} chars)")
+                    else:
+                        findings = report  # Fallback to full report for findings
+                        summary = None     # Will be set later by check_ai_report_and_update
+                        logging.debug("Using full report as findings")
+
                     # Parse the AI response
-                    logging.info(f"AI report for {exam['uid']}: {' '.join(report.split()[:10])}...")
+                    logging.info(f"AI report for {exam['uid']}: {' '.join(findings.split()[:10])}...")
 
                     # First add the report with minimal values
                     db_insert('ai_reports',
                         uid=exam['uid'],
-                        text=report,
-                        summary=None,
+                        text=findings,
+                        summary=summary,
                         model=response_model,
                         latency=int(processing_time))
 
