@@ -5533,6 +5533,10 @@ async def send_exam_to_openai(exam, max_retries = 3):
                         findings = findings_match.group(1).strip()
                         impression = impression_match.group(1).strip()
                         logging.debug(f"Split report into findings ({len(findings.split())} words) and impression ({len(impression.split())} words)")
+                        # If impression is longer than 3 words, set to None for check_ai_report_and_update to handle
+                        if impression and len(impression.split()) > 3:
+                            logging.debug("Impression is too long, will be set by check_ai_report_and_update")
+                            impression = None
                     elif findings_match:
                         findings = findings_match.group(1).strip()
                         impression = None     # Will be set later by check_ai_report_and_update
