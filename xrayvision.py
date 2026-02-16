@@ -260,21 +260,32 @@ No explanations, apologies, or metadata.
 """)
 
 CHK_PROMPT = ("""
+ROLE
 You are an API that analyzes radiology reports.
 
 TASK
-              
 Read the report and extract the main pathological status in JSON format.
 - Analyze each sentence independently.
 - If any sentence contains a pathological finding, the report is pathologic.
 - Normal statements do not negate pathological ones elsewhere in the report.
 
-OUTPUT FORMAT (JSON ONLY)
+OUTPUT FORMAT (CRITICAL: JSON ONLY)
+Respond with ONLY a JSON object. No markdown, no backticks, no extra text.
+Start with { and end with }
+
 {
   "pathologic": "yes/no",
   "severity": 0-10,
   "summary": "1-3 words"
 }
+
+DO NOT USE:
+- ``` or ```json 
+- Any text before or after the JSON
+- Any markdown formatting
+- Any explanation or commentary
+
+ONLY respond with the JSON object itself.
 
 RULES
 - "pathologic": "yes" if any abnormal finding is present, otherwise "no".
@@ -4026,7 +4037,7 @@ async def check_report(report_text):
                 logging.debug(f"Initial JSON parsing failed, trying to extract JSON from response: {response_text}")
 
                 # Try to find JSON in the response text
-                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
                 if json_match:
                     try:
                         parsed_response = json.loads(json_match.group(0))
