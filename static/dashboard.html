@@ -196,15 +196,9 @@
                 <strong>OpenAI backend</strong> <span id="openai-backend"><i aria-busy="true"></i></span>
             </div>
             <div>
-                <strong>Average timing</strong> <span id="openai-timings"><i aria-busy="true"></i></span>
-            </div>
-            <div>
+                <strong>Examination timing</strong> <span id="examination-timings"><i aria-busy="true"></i></span>
                 <strong>Translation timing</strong> <span id="translation-timings"><i aria-busy="true"></i></span>
-            </div>
-            <div>
                 <strong>Checking timing</strong> <span id="checking-timings"><i aria-busy="true"></i></span>
-            </div>
-            <div>
                 <strong>Analysis timing</strong> <span id="analysis-timings"><i aria-busy="true"></i></span>
             </div>
             <div>
@@ -322,10 +316,10 @@
                     document.getElementById("openai-backend").innerHTML = `${oaiPri}&nbsp;${oaiSec}`;
                 }
                 if (data.timings !== undefined) {
-                    document.getElementById("openai-timings").innerHTML = `${data.timings.average/1000} s`;
-                    document.getElementById("translation-timings").innerHTML = `${data.translation_timings.average/1000} s`;
-                    document.getElementById("checking-timings").innerHTML = `${data.checking_timings.average/1000} s`;
-                    document.getElementById("analysis-timings").innerHTML = `${data.analysis_timings.average/1000} s`;
+                    document.getElementById("examination-timings").innerHTML = `${data.timings.examination/1000} s`;
+                    document.getElementById("translation-timings").innerHTML = `${data.timings.translation/1000} s`;
+                    document.getElementById("checking-timings").innerHTML = `${data.timings.checking/1000} s`;
+                    document.getElementById("analysis-timings").innerHTML = `${data.timings.analysis/1000} s`;
                 }
                 if (data.next_query !== undefined) {
                     updateQueryCountdown(data.next_query);

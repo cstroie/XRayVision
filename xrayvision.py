@@ -461,8 +461,10 @@ health_status = {
 }
 # AI timings
 timings = {
-    'total': 0,       # Total processing time (milliseconds)
-    'average': 0      # Average processing time (milliseconds)
+    'examination': 0,      # Average processing time (milliseconds)
+    'translation': 0,      # Average translation time (milliseconds)
+    'checking': 0,         # Average checking time (milliseconds)
+    'analysis': 0          # Average analysis time (milliseconds)
 }
 
 # Global parameters
@@ -3987,14 +3989,13 @@ async def check_report(report_text):
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             # Calculate timing statistics
-            global checking_timings
+            global timings
             end_time = asyncio.get_event_loop().time()
-            processing_time = end_time - start_time  # In seconds
-            checking_timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
-            if checking_timings['average'] > 0:
-                checking_timings['average'] = int((3 * checking_timings['average'] + checking_timings['total']) / 4)
+            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+            if timings['checking'] > 0:
+                timings['checking'] = int((3 * timings['checking'] + processing_time) / 4)
             else:
-                checking_timings['average'] = checking_timings['total']
+                timings['checking'] = processing_time
 
             if not result:
                 logging.error("Failed to get response from AI")
@@ -4046,127 +4047,7 @@ async def check_report(report_text):
                 logging.debug(f"Initial JSON parsing failed, trying to extract JSON from response: {response_text}")
 
                 # Try to find JSON in the response text
-                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
-                if json_match:
-                    try:
-                        parsed_response = json.loads(json_match.group(0))
-                        logging.debug(f"Successfully extracted JSON from response: {parsed_response}")
-                        return parsed_response
-                    except json.JSONDecodeError as json_e:
-                        logging.error(f"Failed to parse extracted JSON: {json_e}")
-                        logging.error(f"Extracted JSON: {json_match.group(0)}")
-                        return {'error': 'Failed to parse AI response', 'response': response_text}
-                else:
-                    logging.error(f"Failed to parse AI response as JSON: {response_text}")
-                    return {'error': 'Failed to parse AI response', 'response': response_text}
-            except ValueError as e:
-                logging.error(f"Invalid AI response format: {e} ({response_text})")
-                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
-    except Exception as e:
-        logging.error(f"Error processing report check request: {e}")
-        return {'error': 'Internal server error'}
-
-    Takes a radiology report text and sends it to the LLM for analysis
-    using a specialized prompt to extract key information.
-
-    Args:
-        report_text: Radiology report text to analyze
-
-    Returns:
-        dict: Analysis results with pathologic, severity, and summary
-    """
-    try:
-        logging.debug(f"Report check request received with report length: {len(report_text)} characters")
-        
-        if not report_text:
-            logging.warning("Report check request failed: no report text provided")
-            return {'error': 'No report text provided'}
-        
-        # Add space after punctuation marks to properly separate phrases
-        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
-        
-        # Prepare the request headers
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
-        
-        # Prepare the JSON data
-        payload = {
-            "model": MODEL_NAME,
-            "timings_per_token": True,
-            "cache_prompt": True,
-            "stream": False,
-            "keep_alive": 1800,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": CHK_PROMPT.strip()}]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": processed_report_text}
-                    ]
-                }
-            ]
-        }
-        
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME}")
-        
-        async with aiohttp.ClientSession() as session:
-            result = await send_to_openai(session, headers, payload)
-            if not result:
-                logging.error("Failed to get response from AI")
-                return {'error': 'Failed to get response from AI'}
-            
-            response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI response: {response_text}")
-            
-            # Clean up markdown code fences if present
-            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
-            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
-            
-            try:
-                # Try to parse the response as JSON
-                parsed_response = json.loads(response_text)
-                logging.debug(f"AI responded: {parsed_response}")
-
-                # Handle case where AI returns an array instead of single object
-                if isinstance(parsed_response, list):
-                    if len(parsed_response) == 0:
-                        raise ValueError("Empty array response from AI")
-                    # Take the first valid entry from the array
-                    parsed_response = parsed_response[0]
-                    logging.debug(f"Extracted first entry from array: {parsed_response}")
-
-                # Validate required fields
-                if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
-                    raise ValueError("Missing required fields in AI response")
-
-                # Validate pathologic field
-                if parsed_response["pathologic"] not in ["yes", "no"]:
-                    raise ValueError("Invalid pathologic value in AI response")
-
-                # Validate severity field
-                if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
-                    raise ValueError("Invalid severity value in AI response")
-
-                # Validate summary field
-                if not isinstance(parsed_response["summary"], str):
-                    raise ValueError("Invalid summary value in AI response")
-                else:
-                    parsed_response["summary"] = parsed_response["summary"].strip().lower()
-
-                logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {'pathologic' if parsed_response['pathologic'] == 'yes' else 'non-pathologic'}: {parsed_response['summary']}")
-                return parsed_response
-            except json.JSONDecodeError as e:
-                # If JSON parsing fails, try to extract JSON from the response text
-                # This handles cases where the AI returns both text and JSON
-                logging.debug(f"Initial JSON parsing failed, trying to extract JSON from response: {response_text}")
-
-                # Try to find JSON in the response text
-                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
                 if json_match:
                     try:
                         parsed_response = json.loads(json_match.group(0))
@@ -4286,14 +4167,13 @@ async def translate_report(report_text):
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             # Calculate timing statistics
-            global translation_timings
+            global timings
             end_time = asyncio.get_event_loop().time()
-            processing_time = end_time - start_time  # In seconds
-            translation_timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
-            if translation_timings['average'] > 0:
-                translation_timings['average'] = int((3 * translation_timings['average'] + translation_timings['total']) / 4)
+            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+            if timings['translation'] > 0:
+                timings['translation'] = int((3 * timings['translation'] + processing_time) / 4)
             else:
-                translation_timings['average'] = translation_timings['total']
+                timings['translation'] = processing_time
 
             if not result:
                 logging.error("Failed to get response from AI service for translation")
@@ -4318,79 +4198,6 @@ async def translate_report(report_text):
         logging.error(f"Error processing translation request: {e}")
         return None
 
-    Takes a radiology report text and sends it to the LLM for translation
-    using a specialized prompt. Performs validation checks on the translation
-    before returning it.
-
-    Args:
-        report_text: Romanian radiology report text to translate
-
-    Returns:
-        str: English translation of the report, or None if translation failed or validation checks fail
-    """
-    try:
-        logging.debug(f"Translation request received ({len(report_text.split())} words)")
-
-        if not report_text:
-            logging.warning("Translation request failed: no report text provided")
-            return None
-
-        # Add space after each dot to clearly demarcate sentences
-        report_text = re.sub(r'([.])(?=\S)', r'\1 ', report_text)
-
-        # Prepare the request headers
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
-
-        # Prepare the JSON data
-        payload = {
-            "model": MODEL_NAME,
-            "timings_per_token": True,
-            "cache_prompt": True,
-            "stream": False,
-            "keep_alive": 1800,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": TRN_PROMPT.strip()}]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": report_text}
-                    ]
-                }
-            ]
-        }
-
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
-
-        async with aiohttp.ClientSession() as session:
-            result = await send_to_openai(session, headers, payload)
-            if not result:
-                logging.error("Failed to get response from AI service for translation")
-                return None
-
-            response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI translation response: {response_text}")
-
-            # Clean up markdown code fences if present
-            response_text = response_text.replace('\n', ' ')
-            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
-            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
-
-            # Validate the translation before returning
-            if not response_text:
-                logging.warning("Empty translation response received")
-                return None
-
-            logging.info(f"Translation: {' '.join(response_text.split()[:10])}...")
-            return response_text
-    except Exception as e:
-        logging.error(f"Error processing translation request: {e}")
-        return None
 
 def expand_medical_acronyms(text):
     """
@@ -4623,14 +4430,13 @@ async def detailed_analysis_report(report_text):
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             # Calculate timing statistics
-            global analysis_timings
+            global timings
             end_time = asyncio.get_event_loop().time()
-            processing_time = end_time - start_time  # In seconds
-            analysis_timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
-            if analysis_timings['average'] > 0:
-                analysis_timings['average'] = int((3 * analysis_timings['average'] + analysis_timings['total']) / 4)
+            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+            if timings['analysis'] > 0:
+                timings['analysis'] = int((3 * timings['analysis'] + processing_time) / 4)
             else:
-                analysis_timings['average'] = analysis_timings['total']
+                timings['analysis'] = processing_time
 
             if not result:
                 logging.error("Failed to get response from AI service")
@@ -4663,101 +4469,6 @@ async def detailed_analysis_report(report_text):
                     logging.debug(f"Extracted first entry from array: {parsed_response}")
                     logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
 
-                return parsed_response
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse AI response as JSON: {response_text}")
-                logging.error(f"JSON decode error: {str(e)}")
-                logging.error(f"Response length: {len(response_text)}")
-                return {'error': 'Failed to parse AI response', 'response': response_text}
-            except ValueError as e:
-                logging.error(f"Invalid AI response format: {e} ({response_text})")
-                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
-    except Exception as e:
-        logging.error(f"Error processing detailed analysis request: {e}")
-        logging.exception("Full traceback:")
-        return {'error': 'Internal server error'}
-
-    Takes a radiology report text and sends it to the LLM for detailed analysis
-    using the ANA_PROMPT to extract comprehensive insights.
-
-    Args:
-        report_text: Radiology report text to analyze
-
-    Returns:
-        dict: Detailed analysis results with three-pass structure
-    """
-    try:
-        logging.debug(f"Detailed analysis request received ({len(report_text.split())} words)")
-        
-        if not report_text:
-            logging.warning("Detailed analysis request failed: no report text provided")
-            return {'error': 'No report text provided'}
-        
-        # Add space after punctuation marks to properly separate phrases
-        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
-        
-        # Prepare the request headers
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
-        
-        # Prepare the JSON data
-        payload = {
-            "model": MODEL_NAME,
-            "timings_per_token": True,
-            "cache_prompt": True,
-            "stream": False,
-            "keep_alive": 1800,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": ANA_PROMPT.strip()}]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": processed_report_text}
-                    ]
-                }
-            ]
-        }
-        
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for detailed analysis")
-        
-        async with aiohttp.ClientSession() as session:
-            result = await send_to_openai(session, headers, payload)
-            if not result:
-                logging.error("Failed to get response from AI service")
-                return {'error': 'Failed to get response from AI service'}
-            
-            response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI response: {response_text}")
-            
-            # Log the response text for debugging before cleaning
-            logging.debug(f"AI response before cleaning: {repr(response_text)}")
-            
-            # Clean up markdown code fences if present
-            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
-            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
-            
-            # Log the response text after cleaning
-            logging.debug(f"AI response after cleaning: {repr(response_text)}")
-            
-            try:
-                parsed_response = json.loads(response_text)
-                logging.debug(f"AI detailed analysis completed")
-                logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
-                    
-                # Handle case where AI returns an array instead of single object
-                if isinstance(parsed_response, list):
-                    if len(parsed_response) == 0:
-                        raise ValueError("Empty array response from AI")
-                    # Take the first valid entry from the array
-                    parsed_response = parsed_response[0]
-                    logging.debug(f"Extracted first entry from array: {parsed_response}")
-                    logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
-                    
                 return parsed_response
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse AI response as JSON: {response_text}")
@@ -4937,9 +4648,6 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
                        }
                      }
     data['timings'] = timings
-    data['translation_timings'] = translation_timings
-    data['checking_timings'] = checking_timings
-    data['analysis_timings'] = analysis_timings
     if NO_QUERY:
         data['next_query'] = 'Disabled'
     elif next_query:
@@ -5818,12 +5526,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     # Calculate timing statistics
                     global timings
                     end_time = asyncio.get_event_loop().time()
-                    processing_time = end_time - start_time  # In seconds
-                    timings['total'] = int(processing_time * 1000)  # Convert to milliseconds
-                    if timings['average'] > 0:
-                        timings['average'] = int((3 * timings['average'] + timings['total']) / 4)
+                    processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+                    if timings['examination'] > 0:
+                        timings['examination'] = int((3 * timings['examination'] + processing_time) / 4)
                     else:
-                        timings['average'] = timings['total']
+                        timings['examination'] = processing_time
 
                     # Check for valid response
                     if not result:
