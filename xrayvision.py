@@ -209,7 +209,11 @@ MODEL_NAME = config.get('openai', 'MODEL_NAME')
 
 # Prompt templates
 REP_PROMPT = ("""
+ROLE
 You are a board-certified radiologist interpreting plain X-ray images.
+
+TASK
+Analyze the provided image and write a short radiology report.
 
 OUTPUT CONSTRAINTS
 - Output ONLY the radiological findings as plain text.
@@ -248,7 +252,7 @@ USR_PROMPT = ("""Describe the radiological findings in this {anatomy} X-ray of a
 REV_PROMPT = ("""
 Re-examine the X-ray image and generate a corrected report.
 
-Rules:
+RULES:
 - Verify previously reported findings against the image.
 - Remove findings not supported by the image.
 - Add any newly identified abnormalities.
@@ -317,7 +321,7 @@ MEDICAL ACRONYMS
 """)
 
 ANA_PROMPT = ("""
-You are a senior radiologist providing detailed analysis of radiology reports.
+ROLE: You are a senior radiologist providing detailed analysis of radiology reports.
 
 TASK: Perform a three-pass critical analysis of the radiology report:
 
@@ -366,10 +370,11 @@ RULES:
 - Do not include any text before or after the JSON object
 
 ROMANIAN MEDICAL ACROYNMS:
-""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
+""" + "\n".join([f"- {acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 """)
 
 TRN_PROMPT_NATURAL = ("""
+ROLE
 You are a medical translator specializing in radiology reports.
 
 TASK
@@ -391,13 +396,12 @@ OUTPUT
 - No text before or after the translation.
 
 MEDICAL ACRONYMS
-
-(translate exactly as specified)
-""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
+""" + "\n".join([f"- {acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
 """)
 
 TRN_PROMPT = ("""
+ROLE
 You are a medical translator performing token-aligned translation of radiology reports for evaluation purposes.
 
 TASK
@@ -424,8 +428,7 @@ OUTPUT
 - No text before or after the translation.
 
 MEDICAL ACRONYMS
-Translate acronyms exactly as specified below before analysis:
-""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
+""" + "\n".join([f"- {acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
 CONSTRAINTS
 - One Romanian sentence → one English sentence.
@@ -3967,6 +3970,8 @@ async def check_report(report_text):
         # Prepare the JSON data
         payload = {
             "model": MODEL_NAME,
+            "timings_per_token": True,
+            "cache_prompt": True,
             "stream": False,
             "keep_alive": 1800,
             "messages": [
@@ -4141,6 +4146,8 @@ async def translate_report(report_text):
         # Prepare the JSON data
         payload = {
             "model": MODEL_NAME,
+            "timings_per_token": True,
+            "cache_prompt": True,
             "stream": False,
             "keep_alive": 1800,
             "messages": [
@@ -4398,6 +4405,8 @@ async def detailed_analysis_report(report_text):
         # Prepare the JSON data
         payload = {
             "model": MODEL_NAME,
+            "timings_per_token": True,
+            "cache_prompt": True,
             "stream": False,
             "keep_alive": 1800,
             "messages": [
