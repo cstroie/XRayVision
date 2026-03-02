@@ -246,13 +246,13 @@ FINDINGS: Clear lung fields bilaterally. No focal consolidation, pleural effusio
 FINDINGS: Multiple dilated small bowel loops measuring up to approximately 3.5 cm with air–fluid levels, suggestive of bowel obstruction. No subdiaphragmatic free air. Evaluation limited on plain radiograph. IMPRESSION: bowel obstruction.
 """)
 
-#USR_PROMPT = ("""{question} in this {anatomy} X-ray of a {subject}?""")
 USR_PROMPT = ("""Describe the radiological findings in this {anatomy} X-ray of a {subject}.""")
 
 REV_PROMPT = ("""
+TASK
 Re-examine the X-ray image and generate a corrected report.
 
-RULES:
+RULES
 - Verify previously reported findings against the image.
 - Remove findings not supported by the image.
 - Add any newly identified abnormalities.
@@ -273,23 +273,13 @@ Read the report and extract the main pathological status in JSON format.
 - If any sentence contains a pathological finding, the report is pathologic.
 - Normal statements do not negate pathological ones elsewhere in the report.
 
-OUTPUT FORMAT (CRITICAL: JSON ONLY)
-Respond with ONLY a JSON object. No markdown, no backticks, no extra text.
-Start with { and end with }
+SYSTEM INSTRUCTION
+- Think silently if needed.
 
-{
-  "pathologic": "yes/no",
-  "severity": 0-10,
-  "summary": "1-3 words"
-}
-
-DO NOT USE:
-- ``` or ```json 
-- Any text before or after the JSON
-- Any markdown formatting
-- Any explanation or commentary
-
-ONLY respond with the JSON object itself.
+OUTPUT FORMAT (JSON)
+```json
+{"pathologic": "yes/no", "severity": 0-10, "summary": "1-3 words"}
+```
 
 RULES
 - "pathologic": "yes" if any abnormal finding is present, otherwise "no".
@@ -300,6 +290,7 @@ RULES
 - Ignore spelling errors.
 - Do not infer beyond what is written.
 - Respond with ONLY valid JSON. No extra text.
+- Do not include any explanation or commentary.
 
 LANGUAGE RULES (Romanian)
 - "fără" / "fara" = without / no
@@ -312,18 +303,16 @@ SEVERITY GUIDELINES
 - 4-6: Moderate abnormality, clinical correlation needed
 - 7-8: Significant abnormality, prompt attention
 - 9-10: Critical / life-threatening
-
-MEDICAL ACRONYMS
-
-(interpret before analysis)
-""" + "\n".join([f"{acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
-
 """)
+
 
 ANA_PROMPT = ("""
 ROLE: You are a senior radiologist providing detailed analysis of radiology reports.
 
 TASK: Perform a three-pass critical analysis of the radiology report:
+
+SYSTEM INSTRUCTION
+- Think silently if needed.
 
 FIRST PASS - Overview and Context:
 - Identify the main clinical topic and purpose of the report
@@ -340,6 +329,7 @@ THIRD PASS - Critical Evaluation:
 - Evaluate potential issues with interpretations or missing citations to standard practices
 
 OUTPUT FORMAT (JSON):
+```json
 {
   "first_pass": {
     "topic": "main clinical topic",
@@ -358,6 +348,7 @@ OUTPUT FORMAT (JSON):
   },
   "overall_assessment": "overall quality and completeness assessment"
 }
+```
 
 RULES:
 - Provide detailed, professional radiological analysis
@@ -380,6 +371,9 @@ You are a medical translator specializing in radiology reports.
 TASK
 Translate the Romanian radiology report into professional medical English.
 
+SYSTEM INSTRUCTION
+- Think silently if needed.
+
 RULES
 - Translate the entire text from Romanian to English.
 - Preserve medical terminology, anatomy, and clinical meaning.
@@ -398,6 +392,14 @@ OUTPUT
 MEDICAL ACRONYMS
 """ + "\n".join([f"- {acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
+EXAMPLE
+- Original: "Fara procese de condensare vizibile radiologic. SCD libere bilateral. Cord, mediastin normale radiologic."
+- Response:
+```text
+No visible consolidations.
+Free bilateral costophrenic angles.
+Normal heart, mediastinum.
+```
 """)
 
 TRN_PROMPT = ("""
@@ -435,6 +437,16 @@ CONSTRAINTS
 - One medical concept → one canonical English term.
 - If a standard radiology phrase exists, use it consistently.
 - If the source states normality or absence, translate explicitly (e.g., “No pleural effusion”).
+
+EXAMPLE
+- Original: "Fara procese de condensare vizibile radiologic. SCD libere bilateral. Cord, mediastin normale radiologic."
+- Response:
+```text
+No visible consolidations.
+Free bilateral costophrenic angles.
+Normal heart, mediastinum.
+```
+
 """)
 
 # Images directory
@@ -4005,12 +4017,11 @@ async def check_report(report_text):
             logging.debug(f"Raw AI response: {response_text}")
 
             # Clean up markdown code fences if present
-            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
-            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
+            response_text = re.search(r'```json\s*({.*?})\s*```', response_text, re.DOTALL)
 
             try:
                 # Try to parse the response as JSON
-                parsed_response = json.loads(response_text)
+                parsed_response = json.loads(response_text.group(1)) if response_text else None
                 logging.debug(f"AI responded: {parsed_response}")
 
                 # Handle case where AI returns an array instead of single object
@@ -4124,7 +4135,7 @@ async def translate_report(report_text):
     Tracks translation timing statistics.
     """
     try:
-        logging.debug(f"Translation request received ({len(report_text.split())} words)")
+        logging.debug(f"Translation request received: {' '.join(report_text.split()[:10])}...")
 
         if not report_text:
             logging.warning("Translation request failed: no report text provided")
@@ -4183,9 +4194,9 @@ async def translate_report(report_text):
             logging.debug(f"Raw AI translation response: {response_text}")
 
             # Clean up markdown code fences if present
-            response_text = response_text.replace('\n', ' ')
-            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
-            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
+            response_text = re.search(r'```text\s*([^`]*?)\s*```', response_text, re.DOTALL)
+            if response_text:
+                response_text = response_text.group(1)
 
             # Validate the translation before returning
             if not response_text:
@@ -5325,10 +5336,10 @@ async def prepare_exam_data(exam):
     else:
         anatomy = ""
         
-    return region, question, subject, anatomy, image_bytes
+    return region, question, subject, anatomy.strip(), image_bytes
 
 
-def create_ai_prompt(exam, region, question, subject, anatomy):
+def create_exam_prompt(exam, region, question, subject, anatomy):
     """
     Create a deterministic user prompt for radiology AI inference.
 
@@ -5365,21 +5376,21 @@ def create_ai_prompt(exam, region, question, subject, anatomy):
     justification = exam.get('report', {}).get('rad', {}).get('justification')
     if justification:
         prompt_lines.extend([
-            "CLINICAL INFORMATION:",
+            "CLINICAL INFORMATION",
             justification.strip(),
             ""
         ])
 
     # Prior studies (limit to 3, clearly delimited)
     if previous_reports:
-        prompt_lines.append("PRIOR STUDIES:")
+        prompt_lines.append("PRIOR STUDIES")
         for report, date in previous_reports[:3]:
             prompt_lines.append(f"- {date}: {report}")
         prompt_lines.append("")
 
     # Core task (single, unambiguous instruction)
     prompt_lines.extend([
-        "TASK:",
+        "TASK",
         USR_PROMPT.format(
             question=question,
             anatomy=anatomy,
@@ -5498,7 +5509,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
             return False
             
         # Create the prompt
-        prompt = create_ai_prompt(exam, region, question, subject, anatomy)
+        prompt = create_exam_prompt(exam, region, question, subject, anatomy)
         
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
