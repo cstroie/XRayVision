@@ -4144,6 +4144,14 @@ async def translate_report(report_text):
         # Add space after each dot to clearly demarcate sentences
         report_text = re.sub(r'([.])(?=\S)', r'\1 ', report_text)
 
+        # Find acronyms in the report text
+        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
+        found_acronyms = acronym_pattern.findall(report_text)
+        # Filter to only acronyms that are in MEDICAL_ACRONYMS
+        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
+        # Create acronym list for the prompt
+        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
+
         # Prepare the request headers
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
@@ -4170,6 +4178,10 @@ async def translate_report(report_text):
                 }
             ]
         }
+
+        # Add acronym list to the prompt if any acronyms were found
+        if used_acronyms:
+            payload['messages'][0]['content'][0]['text'] += f"\n\nMEDICAL ACRONYMS FOUND IN THIS REPORT:\n{acronym_list}"
 
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
 
