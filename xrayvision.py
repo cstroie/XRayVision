@@ -251,7 +251,7 @@ ANA_PROMPT = _loaded_prompts.get('ANA_PROMPT', '')
 TRN_PROMPT = _loaded_prompts.get('TRN_PROMPT', '')
 
 
-
+# Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
 # Static directory
 os.makedirs(STATIC_DIR, exist_ok=True)
