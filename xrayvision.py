@@ -806,35 +806,15 @@ async def cleanup_dead_websocket_clients():
     global websocket_clients
     dead_clients = []
     
-    for client in websocket_clients:
-        # Check if WebSocket is closed
-        if client.is_closed():
-            dead_clients.append(client)
-    
-    # Remove dead clients
-    for client in dead_clients:
+    # Try to identify dead clients by attempting basic operations
+    for client in list(websocket_clients):
         try:
-            websocket_clients.discard(client)
-        except Exception as e:
-            logging.debug(f"Error removing dead WebSocket client: {e}")
-    
-    if dead_clients:
-        logging.debug(f"Cleaned up {len(dead_clients)} dead WebSocket clients")
-
-
-async def cleanup_dead_websocket_clients():
-    """
-    Remove dead or closed WebSocket clients from the clients set.
-    
-    This function checks each WebSocket connection and removes those that are
-    closed or in an invalid state to prevent unbounded memory growth.
-    """
-    global websocket_clients
-    dead_clients = []
-    
-    for client in websocket_clients:
-        # Check if WebSocket is closed
-        if client.is_closed():
+            # Check if client is in a valid state by checking the protocol
+            # If protocol is None, the connection is closed
+            if client._protocol is None:
+                dead_clients.append(client)
+        except (AttributeError, RuntimeError):
+            # If we can't check status, consider it potentially dead
             dead_clients.append(client)
     
     # Remove dead clients
@@ -4787,14 +4767,9 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     for client in clients:
         # Send the update to the client
         try:
-            # Check if the WebSocket is closed before attempting to send
-            if not client.is_closed():
-                await client.send_json(data)
-            else:
-                # Remove closed clients
-                websocket_clients.discard(client)
+            await client.send_json(data)
         except Exception as e:
-            logging.error(f"Error sending update to WebSocket client: {e}")
+            logging.debug(f"Error sending update to WebSocket client: {e}")
             # Remove client that failed to receive message
             websocket_clients.discard(client)
 
