@@ -149,7 +149,7 @@ MEDICAL_ACRONYMS = {
     "RS": "left kidney",
     "RVU": "vesico-uretheral reflux",
     "SAF": "paranasal sinuses",
-    "SCD": "costo-diaphramatic sinuses",
+    "SCD": "costo-diaphramatic angles",
     "SF": "frontal sinus",
     "SM": "maxilar sinus",
     "SNG": "naso-gastric catheter",
@@ -359,12 +359,9 @@ RULES:
 - IMPORTANT: Properly escape all special characters in JSON strings, especially double quotes (") should be escaped as (\")
 - Ensure all JSON keys and string values are properly quoted with double quotes
 - Do not include any text before or after the JSON object
-
-ROMANIAN MEDICAL ACROYNMS:
-""" + "\n".join([f"- {acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 """)
 
-TRN_PROMPT_NATURAL = ("""
+TRN_PROMPT = ("""
 ROLE
 You are a medical translator specializing in radiology reports.
 
@@ -380,34 +377,26 @@ RULES
 - Keep the same structure and sentence order as the original.
 - Use natural, professional radiology English.
 - Rephrase only when needed for clarity or grammatical correctness.
-- Translate all medical acronyms using the provided list.
-- Do not expand, interpret, summarize, or omit information.
+- If a standard radiology phrase exists, use it consistently.
+- Expand and translate all medical acronyms using the provided list.
+- Do not interpret, summarize, or omit information.
 - Ignore spelling errors in the source text.
 
 OUTPUT
-- Output ONLY the English translation.
+- Output ONLY the English translation as plain text: ```text ... ```
 - No JSON, no labels, no explanations.
 - No text before or after the translation.
-
-MEDICAL ACRONYMS
-""" + "\n".join([f"- {acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
-
-EXAMPLE
-- Original: "Fara procese de condensare vizibile radiologic. SCD libere bilateral. Cord, mediastin normale radiologic."
-- Response:
-```text
-No visible consolidations.
-Free bilateral costophrenic angles.
-Normal heart, mediastinum.
-```
 """)
 
-TRN_PROMPT = ("""
+TRN_PROMPT_ALIGNED = ("""
 ROLE
 You are a medical translator performing token-aligned translation of radiology reports for evaluation purposes.
 
 TASK
 Translate the Romanian radiology report into English.
+
+SYSTEM INSTRUCTION
+- Think silently if needed.
 
 TRANSLATION MODE
 Token-aligned, literal, evaluation-oriented.
@@ -425,12 +414,9 @@ RULES
 - Do not improve readability or style beyond literal correctness.
 
 OUTPUT
-- Output ONLY the English translation.
+- Output ONLY the English translation as plain text: ```text ... ```
 - No JSON, no labels, no explanations.
 - No text before or after the translation.
-
-MEDICAL ACRONYMS
-""" + "\n".join([f"- {acronym}: {translation}" for acronym, translation in MEDICAL_ACRONYMS.items()]) + """
 
 CONSTRAINTS
 - One Romanian sentence → one English sentence.
@@ -439,14 +425,13 @@ CONSTRAINTS
 - If the source states normality or absence, translate explicitly (e.g., “No pleural effusion”).
 
 EXAMPLE
-- Original: "Fara procese de condensare vizibile radiologic. SCD libere bilateral. Cord, mediastin normale radiologic."
-- Response:
+- Romanian: "Fara procese de condensare vizibile radiologic. SCD libere bilateral. Cord, mediastin normale radiologic."
+- English:
 ```text
 No visible consolidations.
 Free bilateral costophrenic angles.
 Normal heart, mediastinum.
 ```
-
 """)
 
 # Images directory
@@ -3958,7 +3943,7 @@ async def check_report(report_text):
     Tracks checking timing statistics.
     """
     try:
-        logging.debug(f"Report check request received with report length: {len(report_text)} characters")
+        logging.debug(f"Report check request received with report length: {len(report_text.split())} words")
 
         if not report_text:
             logging.warning("Report check request failed: no report text provided")
@@ -3966,6 +3951,20 @@ async def check_report(report_text):
 
         # Add space after punctuation marks to properly separate phrases
         processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
+
+        # Find acronyms in the report text
+        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
+        found_acronyms = acronym_pattern.findall(processed_report_text)
+        # Filter to only acronyms that are in MEDICAL_ACRONYMS
+        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
+        # Create acronym list for the prompt
+        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
+
+        # Add acronym list to the prompt if any acronyms were found
+        SYSTEM_PROMPT = CHK_PROMPT.strip()
+        if used_acronyms:
+            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
+            logging.debug(f"Added acronym list to check prompt:\n{acronym_list}")
 
         # Prepare the request headers
         headers = {
@@ -3983,7 +3982,7 @@ async def check_report(report_text):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": CHK_PROMPT.strip()}]
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
                 },
                 {
                     "role": "user",
@@ -4014,14 +4013,16 @@ async def check_report(report_text):
                 return {'error': 'Failed to get response from AI'}
 
             response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI response: {response_text}")
+            logging.debug(f"Raw AI check response: {response_text}")
 
             # Clean up markdown code fences if present
-            response_text = re.search(r'```json\s*({.*?})\s*```', response_text, re.DOTALL)
+            response_text = re.findall(r'```json\s*({.*?})\s*```', response_text, re.DOTALL)
+            if response_text:
+                response_text = response_text[-1]  # Use the last matched JSON block
 
             try:
                 # Try to parse the response as JSON
-                parsed_response = json.loads(response_text.group(1)) if response_text else None
+                parsed_response = json.loads(response_text) if response_text else None
                 logging.debug(f"AI responded: {parsed_response}")
 
                 # Handle case where AI returns an array instead of single object
@@ -4152,6 +4153,12 @@ async def translate_report(report_text):
         # Create acronym list for the prompt
         acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
 
+        # Add acronym list to the prompt if any acronyms were found
+        SYSTEM_PROMPT = TRN_PROMPT.strip()
+        if used_acronyms:
+            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
+            logging.debug(f"Added acronym list to translation prompt:\n{acronym_list}")
+
         # Prepare the request headers
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
@@ -4168,7 +4175,7 @@ async def translate_report(report_text):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": TRN_PROMPT.strip()}]
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
                 },
                 {
                     "role": "user",
@@ -4178,10 +4185,6 @@ async def translate_report(report_text):
                 }
             ]
         }
-
-        # Add acronym list to the prompt if any acronyms were found
-        if used_acronyms:
-            payload['messages'][0]['content'][0]['text'] += f"\n\nMEDICAL ACRONYMS FOUND IN THIS REPORT:\n{acronym_list}"
 
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
 
@@ -4206,9 +4209,9 @@ async def translate_report(report_text):
             logging.debug(f"Raw AI translation response: {response_text}")
 
             # Clean up markdown code fences if present
-            response_text = re.search(r'```text\s*([^`]*?)\s*```', response_text, re.DOTALL)
+            response_text = re.findall(r'```text\s*([^`]*?)\s*```', response_text, re.DOTALL)
             if response_text:
-                response_text = response_text.group(1)
+                response_text = response_text[-1]  # Use the last matched TEXT block
 
             # Validate the translation before returning
             if not response_text:
@@ -4419,6 +4422,20 @@ async def detailed_analysis_report(report_text):
         # Add space after punctuation marks to properly separate phrases
         processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
 
+        # Find acronyms in the report text
+        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
+        found_acronyms = acronym_pattern.findall(report_text)
+        # Filter to only acronyms that are in MEDICAL_ACRONYMS
+        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
+        # Create acronym list for the prompt
+        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
+
+        # Add acronym list to the prompt if any acronyms were found
+        SYSTEM_PROMPT = ANA_PROMPT.strip()
+        if used_acronyms:
+            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
+            logging.debug(f"Added acronym list to detailed analysis prompt:\n{acronym_list}")
+
         # Prepare the request headers
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
@@ -4435,7 +4452,7 @@ async def detailed_analysis_report(report_text):
             "messages": [
                 {
                     "role": "system",
-                    "content": [{"type": "text", "text": ANA_PROMPT.strip()}]
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
                 },
                 {
                     "role": "user",
@@ -4466,7 +4483,7 @@ async def detailed_analysis_report(report_text):
                 return {'error': 'Failed to get response from AI service'}
 
             response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI response: {response_text}")
+            logging.debug(f"Raw AI detailed analysis response: {response_text}")
 
             # Log the response text for debugging before cleaning
             logging.debug(f"AI response before cleaning: {repr(response_text)}")
