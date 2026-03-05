@@ -368,24 +368,20 @@ You are a medical translator specializing in radiology reports.
 TASK
 Translate the Romanian radiology report into professional medical English.
 
-SYSTEM INSTRUCTION
-- Think silently if needed.
-
 RULES
 - Translate the entire text from Romanian to English.
-- Preserve medical terminology, anatomy, and clinical meaning.
-- Keep the same structure and sentence order as the original.
-- Use natural, professional radiology English.
-- Rephrase only when needed for clarity or grammatical correctness.
-- If a standard radiology phrase exists, use it consistently.
-- Expand and translate all medical acronyms using the provided list.
+- Preserve medical terminology and clinical meaning.
+- Use professional radiology English.
+- Rephrase only when needed for clarity.
+- If a standard radiology phrase exists, use it.
+- Expand all medical acronyms using the provided list.
 - Do not interpret, summarize, or omit information.
 - Ignore spelling errors in the source text.
 
 OUTPUT
 - Output ONLY the English translation as plain text: ```text ... ```
-- No JSON, no labels, no explanations.
-- No text before or after the translation.
+- No JSON, no labels, no explanations
+- No text before or after the translation
 """)
 
 TRN_PROMPT_ALIGNED = ("""
@@ -765,6 +761,9 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 5)
 # Cache for db_analyze results
 _db_analyze_cache = {}
 
+# Cache for translation results
+_translation_cache = {}  # Maps report text hash to translated text
+
 # WebSocket client management
 websocket_clients = set()  # Set of connected WebSocket clients for dashboard updates
 
@@ -781,6 +780,20 @@ def clear_db_analyze_cache():
     _db_analyze_cache.clear()
     if cache_size > 0:
         logging.debug(f"Cleared db_analyze_cache ({cache_size} entries)")
+
+
+def clear_translation_cache():
+    """
+    Clear the translation result cache.
+    
+    This function should be called periodically to prevent unbounded memory growth
+    from the cache storing translated reports.
+    """
+    global _translation_cache
+    cache_size = len(_translation_cache)
+    _translation_cache.clear()
+    if cache_size > 0:
+        logging.debug(f"Cleared translation_cache ({cache_size} entries)")
 
 
 async def cleanup_dead_websocket_clients():
@@ -4196,6 +4209,7 @@ async def check_ai_report_and_update(uid):
 async def translate_report(report_text):
     """Translate a Romanian radiology report to English using the LLM.
     Tracks translation timing statistics.
+    Uses caching to avoid re-translating identical reports.
     """
     try:
         logging.debug(f"Translation request received: {' '.join(report_text.split()[:10])}...")
@@ -4203,6 +4217,12 @@ async def translate_report(report_text):
         if not report_text:
             logging.warning("Translation request failed: no report text provided")
             return None
+
+        # Check cache first
+        report_hash = hash(report_text)
+        if report_hash in _translation_cache:
+            logging.debug(f"Translation cache hit for report (hash: {report_hash})")
+            return _translation_cache[report_hash]
 
         # Add space after each dot to clearly demarcate sentences
         report_text = re.sub(r'([.])(?=\S)', r'\1 ', report_text)
@@ -4279,6 +4299,15 @@ async def translate_report(report_text):
             if not response_text:
                 logging.warning("Empty translation response received")
                 return None
+
+            # Cache the result before returning
+            _translation_cache[report_hash] = response_text
+            # Limit cache size to 500 entries to prevent unbounded growth
+            if len(_translation_cache) > 500:
+                # Remove oldest entry (FIFO)
+                oldest_key = next(iter(_translation_cache))
+                del _translation_cache[oldest_key]
+                logging.debug(f"Translation cache size limit reached, removed oldest entry")
 
             logging.info(f"Translation: {' '.join(response_text.split()[:10])}...")
             return response_text
@@ -6353,8 +6382,9 @@ async def maintenance_loop():
     Waits 24 hours between runs.
     """
     while True:
-        # Clear db_analyze cache to prevent unbounded memory growth
+        # Clear caches to prevent unbounded memory growth
         clear_db_analyze_cache()
+        clear_translation_cache()
 
         # Clean up dead WebSocket clients to prevent unbounded memory growth
         await cleanup_dead_websocket_clients()
