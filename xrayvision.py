@@ -242,14 +242,7 @@ def load_prompts():
     return prompts
 
 # Prompt templates - loaded from files at runtime
-_loaded_prompts = load_prompts()
-REP_PROMPT = _loaded_prompts.get('REP_PROMPT', '')
-USR_PROMPT = _loaded_prompts.get('USR_PROMPT', '')
-REV_PROMPT = _loaded_prompts.get('REV_PROMPT', '')
-CHK_PROMPT = _loaded_prompts.get('CHK_PROMPT', '')
-ANA_PROMPT = _loaded_prompts.get('ANA_PROMPT', '')
-TRN_PROMPT = _loaded_prompts.get('TRN_PROMPT', '')
-
+PROMPTS = load_prompts()
 
 # Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
@@ -3837,7 +3830,7 @@ async def check_report(report_text):
         acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
 
         # Add acronym list to the prompt if any acronyms were found
-        SYSTEM_PROMPT = CHK_PROMPT.strip()
+        SYSTEM_PROMPT = PROMPTS['CHK_PROMPT'].strip()
         if used_acronyms:
             SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
             logging.debug(f"Added acronym list to check prompt:\n{acronym_list}")
@@ -4037,7 +4030,7 @@ async def translate_report(report_text):
         acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
 
         # Add acronym list to the prompt if any acronyms were found
-        SYSTEM_PROMPT = TRN_PROMPT.strip()
+        SYSTEM_PROMPT = PROMPTS['TRN_PROMPT'].strip()
         if used_acronyms:
             SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
             logging.debug(f"Added acronym list to translation prompt:\n{acronym_list}")
@@ -4323,7 +4316,7 @@ async def detailed_analysis_report(report_text):
         acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
 
         # Add acronym list to the prompt if any acronyms were found
-        SYSTEM_PROMPT = ANA_PROMPT.strip()
+        SYSTEM_PROMPT = PROMPTS['ANA_PROMPT'].strip()
         if used_acronyms:
             SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
             logging.debug(f"Added acronym list to detailed analysis prompt:\n{acronym_list}")
@@ -5313,7 +5306,7 @@ def create_exam_prompt(exam, region, question, subject, anatomy):
     # Core task (single, unambiguous instruction)
     prompt_lines.extend([
         "TASK",
-        USR_PROMPT.format(
+        PROMPTS['USR_PROMPT'].format(
             question=question,
             anatomy=anatomy,
             subject=subject
@@ -5363,7 +5356,7 @@ def prepare_ai_request_data(prompt, image_bytes):
         "messages": [
             {
                 "role": "system",
-                "content": [{"type": "text", "text": REP_PROMPT.strip()}]
+                "content": [{"type": "text", "text": PROMPTS['REP_PROMPT'].strip()}]
             },
             {
                 "role": "user",
@@ -5442,7 +5435,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         if exam['report']['ai']['text']:
             logging.info(f"Previous report: {exam['report']['ai']['text']}")
             data['messages'].append({'role': 'assistant', 'content': exam['report']['ai']['text']})
-            data['messages'].append({'role': 'user', 'content': REV_PROMPT.strip()})
+            data['messages'].append({'role': 'user', 'content': PROMPTS['REV_PROMPT'].strip()})
     
         # Debug log the request data
         #logging.debug(f"Request data: {data}")
