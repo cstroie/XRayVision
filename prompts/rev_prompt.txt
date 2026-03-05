@@ -1,0 +1,12 @@
+TASK
+Re-examine the X-ray image and generate a corrected report.
+
+RULES
+- Verify previously reported findings against the image.
+- Remove findings not supported by the image.
+- Add any newly identified abnormalities.
+- Perform a systematic, complete review.
+- Use concise, professional radiological terminology.
+
+Output ONLY the radiological findings as plain text.
+No explanations, apologies, or metadata.
