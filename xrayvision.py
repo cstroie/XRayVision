@@ -441,7 +441,6 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 
 # Global variables
 MAIN_LOOP = None  # Main asyncio event loop reference
-websocket_clients = set()  # Set of connected WebSocket clients for dashboard updates
 QUEUE_EVENT = asyncio.Event()  # Event to signal when items are added to the processing queue
 next_query = None  # Timestamp for the next scheduled DICOM query operation
 
@@ -765,6 +764,75 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 5)
 
 # Cache for db_analyze results
 _db_analyze_cache = {}
+
+# WebSocket client management
+websocket_clients = set()  # Set of connected WebSocket clients for dashboard updates
+
+
+def clear_db_analyze_cache():
+    """
+    Clear the database table analysis cache.
+    
+    This function should be called periodically to prevent unbounded memory growth
+    from the cache storing table metadata.
+    """
+    global _db_analyze_cache
+    cache_size = len(_db_analyze_cache)
+    _db_analyze_cache.clear()
+    if cache_size > 0:
+        logging.debug(f"Cleared db_analyze_cache ({cache_size} entries)")
+
+
+async def cleanup_dead_websocket_clients():
+    """
+    Remove dead or closed WebSocket clients from the clients set.
+    
+    This function checks each WebSocket connection and removes those that are
+    closed or in an invalid state to prevent unbounded memory growth.
+    """
+    global websocket_clients
+    dead_clients = []
+    
+    for client in websocket_clients:
+        # Check if WebSocket is closed
+        if client.is_closed():
+            dead_clients.append(client)
+    
+    # Remove dead clients
+    for client in dead_clients:
+        try:
+            websocket_clients.discard(client)
+        except Exception as e:
+            logging.debug(f"Error removing dead WebSocket client: {e}")
+    
+    if dead_clients:
+        logging.debug(f"Cleaned up {len(dead_clients)} dead WebSocket clients")
+
+
+async def cleanup_dead_websocket_clients():
+    """
+    Remove dead or closed WebSocket clients from the clients set.
+    
+    This function checks each WebSocket connection and removes those that are
+    closed or in an invalid state to prevent unbounded memory growth.
+    """
+    global websocket_clients
+    dead_clients = []
+    
+    for client in websocket_clients:
+        # Check if WebSocket is closed
+        if client.is_closed():
+            dead_clients.append(client)
+    
+    # Remove dead clients
+    for client in dead_clients:
+        try:
+            websocket_clients.discard(client)
+        except Exception as e:
+            logging.debug(f"Error removing dead WebSocket client: {e}")
+    
+    if dead_clients:
+        logging.debug(f"Cleaned up {len(dead_clients)} dead WebSocket clients")
 
 
 def db_analyze(table_name):
@@ -2814,20 +2882,14 @@ async def websocket_handler(request):
         logging.error(f"WebSocket error for {request.remote}: {e}")
     finally:
         # Ensure client is removed from the set, even if an exception occurs
+        websocket_clients.discard(ws)
+        # Close the WebSocket connection
         try:
-            if ws in websocket_clients:
-                websocket_clients.remove(ws)
-        except KeyError:
-            # Client was already removed, which is fine
-            pass
-        finally:
-            # Close the WebSocket connection
-            try:
-                await ws.close()
-            except Exception as e:
-                logging.debug(f"Error closing WebSocket for {request.remote}: {e}")
-            
-            logging.info(f"Dashboard WebSocket disconnected from {request.remote}")
+            await ws.close()
+        except Exception as e:
+            logging.debug(f"Error closing WebSocket for {request.remote}: {e}")
+        
+        logging.info(f"Dashboard WebSocket disconnected from {request.remote}")
     
     return ws
 
@@ -4696,10 +4758,16 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     for client in clients:
         # Send the update to the client
         try:
-            await client.send_json(data)
+            # Check if the WebSocket is closed before attempting to send
+            if not client.is_closed():
+                await client.send_json(data)
+            else:
+                # Remove closed clients
+                websocket_clients.discard(client)
         except Exception as e:
             logging.error(f"Error sending update to WebSocket client: {e}")
-            websocket_clients.remove(client)
+            # Remove client that failed to receive message
+            websocket_clients.discard(client)
 
 
 # Notification operations
@@ -6279,11 +6347,18 @@ async def maintenance_loop():
     Perform daily maintenance tasks including database cleanup and backup.
 
     Runs an infinite loop that performs daily maintenance operations:
-    1. Purges old ignored/error records and their associated files
-    2. Creates a timestamped backup of the database
+    1. Clears the database table analysis cache
+    2. Purges old ignored/error records and their associated files
+    3. Creates a timestamped backup of the database
     Waits 24 hours between runs.
     """
     while True:
+        # Clear db_analyze cache to prevent unbounded memory growth
+        clear_db_analyze_cache()
+
+        # Clean up dead WebSocket clients to prevent unbounded memory growth
+        await cleanup_dead_websocket_clients()
+
         # Purge old ignored/error records
         db_purge_ignored_errors()
 
@@ -6328,8 +6403,18 @@ async def stop_servers():
 
     Attempts to gracefully shutdown both the DICOM server and web server,
     handling any exceptions that may occur during the shutdown process.
+    Also cleans up caches and closes WebSocket connections to ensure proper resource cleanup.
     """
-    global dicom_server, web_server
+    global dicom_server, web_server, websocket_clients
+    # Clear caches
+    clear_db_analyze_cache()
+    # Close all WebSocket connections gracefully
+    for client in list(websocket_clients):
+        try:
+            await client.close()
+        except Exception as e:
+            logging.debug(f"Error closing WebSocket client: {e}")
+    websocket_clients.clear()
     # Stop DICOM server
     if dicom_server:
         try:
