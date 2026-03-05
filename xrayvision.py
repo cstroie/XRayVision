@@ -207,230 +207,51 @@ DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
 BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
 MODEL_NAME = config.get('openai', 'MODEL_NAME')
 
-# Prompt templates
-REP_PROMPT = ("""
-ROLE
-You are a board-certified radiologist interpreting plain X-ray images.
+# Prompt loading function
+def load_prompts():
+    """Load prompt templates from individual files in the prompts directory.
+    
+    Returns:
+        dict: Dictionary of prompt names to prompt text
+    """
+    prompts_dir = os.path.join(os.path.dirname(__file__), 'prompts')
+    prompts = {}
+    
+    prompt_files = {
+        'REP_PROMPT': 'rep_prompt.txt',
+        'USR_PROMPT': 'usr_prompt.txt',
+        'REV_PROMPT': 'rev_prompt.txt',
+        'CHK_PROMPT': 'chk_prompt.txt',
+        'ANA_PROMPT': 'ana_prompt.txt',
+        'TRN_PROMPT': 'trn_prompt.txt',
+    }
+    
+    for prompt_name, filename in prompt_files.items():
+        filepath = os.path.join(prompts_dir, filename)
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                prompts[prompt_name] = f.read()
+            logging.debug(f"Loaded prompt: {prompt_name}")
+        except FileNotFoundError:
+            logging.error(f"Prompt file not found: {filepath}")
+            prompts[prompt_name] = ""
+        except Exception as e:
+            logging.error(f"Error loading prompt {prompt_name}: {e}")
+            prompts[prompt_name] = ""
+    
+    return prompts
 
-TASK
-Analyze the provided image and write a short radiology report.
-
-OUTPUT CONSTRAINTS
-- Output ONLY the radiological findings as plain text.
-- Do NOT include headers, labels, explanations, or metadata.
-- Do NOT add conclusions, impressions, or recommendations.
-- Use concise, professional radiological terminology.
-- State uncertainty explicitly using observational language (e.g., “suggestive of”, “cannot exclude”).
-
-REPORTING RULES
-- Describe only what is visible on the image.
-- Do not assume clinical context unless directly supported by imaging.
-- Include relevant negative findings when clinically meaningful.
-- Mention incidental findings if present.
-- If the study appears normal, explicitly state normal findings.
-
-SYSTEMATIC REVIEW
-- Assess: lungs, pleura, mediastinum, heart size, bones, soft tissues (adapt to anatomy).
-- Report all abnormalities and their location, extent, and laterality.
-- If image quality limits assessment, state the limitation.
-
-EXAMPLES
-
-**Pneumonia**
-FINDINGS: Consolidation in the right lower lung zone. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits. IMPRESSION: pneumonia.
-
-**Normal chest X-ray**
-FINDINGS: Clear lung fields bilaterally. No focal consolidation, pleural effusion, or pneumothorax. Cardiac silhouette normal in size. No acute osseous abnormality. IMPRESSION: normal.
-
-**Uncertain abdominal finding**
-FINDINGS: Multiple dilated small bowel loops measuring up to approximately 3.5 cm with air–fluid levels, suggestive of bowel obstruction. No subdiaphragmatic free air. Evaluation limited on plain radiograph. IMPRESSION: bowel obstruction.
-""")
-
-USR_PROMPT = ("""Describe the radiological findings in this {anatomy} X-ray of a {subject}.""")
-
-REV_PROMPT = ("""
-TASK
-Re-examine the X-ray image and generate a corrected report.
-
-RULES
-- Verify previously reported findings against the image.
-- Remove findings not supported by the image.
-- Add any newly identified abnormalities.
-- Perform a systematic, complete review.
-- Use concise, professional radiological terminology.
-
-Output ONLY the radiological findings as plain text.
-No explanations, apologies, or metadata.
-""")
-
-CHK_PROMPT = ("""
-ROLE
-You are an API that analyzes radiology reports.
-
-TASK
-Read the report and extract the main pathological status in JSON format.
-- Analyze each sentence independently.
-- If any sentence contains a pathological finding, the report is pathologic.
-- Normal statements do not negate pathological ones elsewhere in the report.
-
-SYSTEM INSTRUCTION
-- Think silently if needed.
-
-OUTPUT FORMAT (JSON)
-```json
-{"pathologic": "yes/no", "severity": 0-10, "summary": "1-3 words"}
-```
-
-RULES
-- "pathologic": "yes" if any abnormal finding is present, otherwise "no".
-- "severity": 0 = normal, 1-10 = increasing clinical severity
-- "summary": 1-3 words. Broad diagnostic category only (e.g., "pneumonia", "fracture", "effusion")
-- If the report is entirely normal: {"pathologic":"no","severity":0,"summary":"normal"}
-- If multiple abnormalities exist, choose the most severe one for severity and summary.
-- Ignore spelling errors.
-- Do not infer beyond what is written.
-- Respond with ONLY valid JSON. No extra text.
-- Do not include any explanation or commentary.
-
-LANGUAGE RULES (Romanian)
-- "fără" / "fara" = without / no
-- "liber(e)" = clear / free
-- Negations override findings within the same sentence only.
-
-SEVERITY GUIDELINES
-- 0: Normal
-- 1-3: Minimal / incidental abnormality
-- 4-6: Moderate abnormality, clinical correlation needed
-- 7-8: Significant abnormality, prompt attention
-- 9-10: Critical / life-threatening
-""")
+# Prompt templates - loaded from files at runtime
+_loaded_prompts = load_prompts()
+REP_PROMPT = _loaded_prompts.get('REP_PROMPT', '')
+USR_PROMPT = _loaded_prompts.get('USR_PROMPT', '')
+REV_PROMPT = _loaded_prompts.get('REV_PROMPT', '')
+CHK_PROMPT = _loaded_prompts.get('CHK_PROMPT', '')
+ANA_PROMPT = _loaded_prompts.get('ANA_PROMPT', '')
+TRN_PROMPT = _loaded_prompts.get('TRN_PROMPT', '')
 
 
-ANA_PROMPT = ("""
-ROLE: You are a senior radiologist providing detailed analysis of radiology reports.
 
-TASK: Perform a three-pass critical analysis of the radiology report:
-
-SYSTEM INSTRUCTION
-- Think silently if needed.
-
-FIRST PASS - Overview and Context:
-- Identify the main clinical topic and purpose of the report
-- Determine the primary findings and overall conclusion
-
-SECOND PASS - Detailed Content Analysis:
-- Summarize the main points and key findings
-- Identify supporting evidence and clinical observations
-- Evaluate if the conclusions logically follow from the findings
-
-THIRD PASS - Critical Evaluation:
-- Identify and challenge every statement and assumption
-- Point out any implicit assumptions or missing information
-- Evaluate potential issues with interpretations or missing citations to standard practices
-
-OUTPUT FORMAT (JSON):
-```json
-{
-  "first_pass": {
-    "topic": "main clinical topic",
-    "purpose": "purpose of the examination",
-    "primary_findings": "overall primary findings"
-  },
-  "second_pass": {
-    "main_points": ["key finding 1", "key finding 2"],
-    "supporting_evidence": ["evidence 1", "evidence 2"],
-    "conclusions_valid": true/false
-  },
-  "third_pass": {
-    "assumptions": ["assumption 1", "assumption 2"],
-    "missing_info": ["missing information 1", "missing information 2"],
-    "critique": "detailed critique of the report"
-  },
-  "overall_assessment": "overall quality and completeness assessment"
-}
-```
-
-RULES:
-- Provide detailed, professional radiological analysis
-- Be factual and constructive in your critique
-- Focus on clinical relevance and report quality
-- Use clear, concise language
-- Respond ONLY with the JSON, without additional text
-- IMPORTANT: Properly escape all special characters in JSON strings, especially double quotes (") should be escaped as (\")
-- Ensure all JSON keys and string values are properly quoted with double quotes
-- Do not include any text before or after the JSON object
-""")
-
-TRN_PROMPT = ("""
-ROLE
-You are a medical translator specializing in radiology reports.
-
-TASK
-Translate the Romanian radiology report into professional medical English.
-
-RULES
-- Translate the entire text from Romanian to English.
-- Preserve medical terminology and clinical meaning.
-- Use professional radiology English.
-- Rephrase only when needed for clarity.
-- If a standard radiology phrase exists, use it.
-- Expand all medical acronyms using the provided list.
-- Do not interpret, summarize, or omit information.
-- Ignore spelling errors in the source text.
-
-OUTPUT
-- Output ONLY the English translation as plain text: ```text ... ```
-- No JSON, no labels, no explanations
-- No text before or after the translation
-""")
-
-TRN_PROMPT_ALIGNED = ("""
-ROLE
-You are a medical translator performing token-aligned translation of radiology reports for evaluation purposes.
-
-TASK
-Translate the Romanian radiology report into English.
-
-SYSTEM INSTRUCTION
-- Think silently if needed.
-
-TRANSLATION MODE
-Token-aligned, literal, evaluation-oriented.
-
-RULES
-- Translate all content from Romanian to English.
-- Preserve sentence boundaries exactly: Do NOT merge sentences. Do NOT split sentences.
-- Preserve sentence order, punctuation, and structure whenever possible.
-- Use canonical radiology phrasing.
-- Avoid synonyms, stylistic variation, or paraphrasing.
-- Prefer short, declarative sentences.
-- Translate acronyms only using the provided acronym list.
-- Do not expand, interpret, summarize, or omit information.
-- Ignore spelling errors in the source text.
-- Do not improve readability or style beyond literal correctness.
-
-OUTPUT
-- Output ONLY the English translation as plain text: ```text ... ```
-- No JSON, no labels, no explanations.
-- No text before or after the translation.
-
-CONSTRAINTS
-- One Romanian sentence → one English sentence.
-- One medical concept → one canonical English term.
-- If a standard radiology phrase exists, use it consistently.
-- If the source states normality or absence, translate explicitly (e.g., “No pleural effusion”).
-
-EXAMPLE
-- Romanian: "Fara procese de condensare vizibile radiologic. SCD libere bilateral. Cord, mediastin normale radiologic."
-- English:
-```text
-No visible consolidations.
-Free bilateral costophrenic angles.
-Normal heart, mediastinum.
-```
-""")
-
-# Images directory
 os.makedirs(IMAGES_DIR, exist_ok=True)
 # Static directory
 os.makedirs(STATIC_DIR, exist_ok=True)
