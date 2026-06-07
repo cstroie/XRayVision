@@ -6418,8 +6418,16 @@ async def process_exams_without_rad_reports(session):
     patient_name = result['patient']['name']
     if not patient_id:
         patient_id = await get_patient_id_from_fhir(session, patient_cnp, patient_name)
-    # If still no patient ID, mark all their unresolved exams with id=-1 to stop retrying
+    # If still no patient ID, only mark unresolvable if the exams are old enough
     if not patient_id:
+        one_week_ago = datetime.now() - timedelta(weeks=1)
+        recent = any(
+            datetime.strptime(e['created'][:19], '%Y-%m-%d %H:%M:%S') > one_week_ago
+            for e in exams if e.get('created')
+        )
+        if recent:
+            logging.debug(f"Could not find FHIR patient for CNP {patient_cnp}, exam is recent — will retry later")
+            return
         logging.warning(f"Could not find FHIR patient for CNP {patient_cnp} or name '{patient_name}', marking exams as unresolvable")
         for exam in exams:
             exam_uid = exam['uid']
