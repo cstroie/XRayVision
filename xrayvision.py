@@ -2184,8 +2184,12 @@ def dicom_store(event):
     if 'SOPInstanceUID' not in ds or not ds.SOPInstanceUID or ds.SOPInstanceUID == 'NO_UID':
         logging.error("Invalid or missing SOP Instance UID in received DICOM file")
         return 0x0110  # Processing failure
-    
+
     uid = f"{ds.SOPInstanceUID}"
+    # DICOM UIDs contain only digits and dots; reject anything else to prevent path traversal
+    if not re.fullmatch(r'[\d.]+', uid):
+        logging.error(f"Rejected DICOM file with non-standard SOP Instance UID: {uid!r}")
+        return 0x0110  # Processing failure
     # Check if already processed
     if db_check_already_processed(uid):
         # Check if the existing exam record is missing study or series information
