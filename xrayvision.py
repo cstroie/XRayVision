@@ -2352,7 +2352,8 @@ def extract_dicom_metadata(ds):
     # Get the reported timestamp (now)
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     # Get the exam timestamp
-    if str(ds.SeriesDate) and str(ds.SeriesTime) and \
+    if 'SeriesDate' in ds and 'SeriesTime' in ds and \
+        str(ds.SeriesDate) and str(ds.SeriesTime) and \
         len(str(ds.SeriesDate)) == 8 and len(str(ds.SeriesTime)) >= 6:
         try:
             dt = datetime.strptime(f'{str(ds.SeriesDate)} {str(ds.SeriesTime)[:6]}', "%Y%m%d %H%M%S")
