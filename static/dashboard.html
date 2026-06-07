@@ -240,12 +240,13 @@
         }
 
         function sanitize(text) {
-            return text;
-            return text.replace(/&/g, "\&amp;")
-                       .replace(/</g, "\&lt;")
-                       .replace(/>/g, "\&gt;")
-                       .replace(/"/g, "\&quot;")
-                       .replace(/'/g, "\&#039;");
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
 
         let isPlayingChime = false;
@@ -459,7 +460,7 @@
         function openLightbox(imageSrc, patientName, report, isCorrect, isPositive) {
             const lightbox = document.getElementById('lightbox');
             const lightboxImg = document.getElementById('lightbox-img');
-            document.getElementById('lightbox-text').innerHTML = `<p>${report}</p>`;
+            document.getElementById('lightbox-text').textContent = report;
             lightboxImg.src = imageSrc;
 
             lightbox.classList.remove('incorrect', 'positive');
@@ -527,19 +528,19 @@
             imgElement.alt = 'Processed Image';
 
             // Update patient details
-            cardElement.querySelector('.details summary strong').innerHTML = `${formattedPatientName}, ${exam.patient.sex}, ${exam.patient.age} years, ${exam.exam.region}`;
-            cardElement.querySelector('.details .patient-cnp').innerHTML = `<small><strong>CNP:</strong> ${exam.patient.cnp}</small>`;
+            cardElement.querySelector('.details summary strong').textContent = `${formattedPatientName}, ${exam.patient.sex}, ${exam.patient.age} years, ${exam.exam.region}`;
+            cardElement.querySelector('.details .patient-cnp').innerHTML = `<small><strong>CNP:</strong> ${sanitize(exam.patient.cnp)}</small>`;
             
             const hisId = exam.patient.id;
             const examId = exam.report.rad.id;
             let hisContent = '';
             
             if (hisId) {
-                hisContent += `<strong>HIS:</strong> ${hisId}`;
+                hisContent += `<strong>HIS:</strong> ${sanitize(hisId)}`;
             }
-            
+
             if (examId) {
-                hisContent += hisContent ? ` ${examId}` : `<strong>HIS:</strong> ${examId}`;
+                hisContent += hisContent ? ` ${sanitize(examId)}` : `<strong>HIS:</strong> ${sanitize(examId)}`;
             }
             
             if (hisContent) {
@@ -556,7 +557,7 @@
             
             const justificationElement = cardElement.querySelector('.details .exam-justification');
             if (exam.report.rad.justification) {
-                justificationElement.innerHTML = `<small><strong>Justification:</strong> ${exam.report.rad.justification}</small>`;
+                justificationElement.innerHTML = `<small><strong>Justification:</strong> ${sanitize(exam.report.rad.justification)}</small>`;
                 justificationElement.style.display = 'block';
             } else {
                 justificationElement.style.display = 'none';
@@ -577,7 +578,7 @@
                     aiInfo += ` (${details})`;
                 }
                 
-                aiReportElement.querySelector('summary').innerHTML = aiInfo;
+                aiReportElement.querySelector('summary').textContent = aiInfo;
                 aiReportElement.querySelector('summary').nextSibling.textContent = text;
                 aiReportElement.style.display = 'block';
             } else {
@@ -593,7 +594,7 @@
                 let summaryText = exam.report.rad.summary ? exam.report.rad.summary : '';
                 // Only show severity if it's not null and greater than -1
                 let severityText = exam.report.rad.severity !== null && exam.report.rad.severity > -1 ? ` (Severity: ${exam.report.rad.severity}/10)` : '';
-                radReportElement.querySelector('summary').innerHTML = `${exam.report.rad.radiologist}: ${summaryText}${severityText}`;
+                radReportElement.querySelector('summary').textContent = `${exam.report.rad.radiologist}: ${summaryText}${severityText}`;
                 radReportElement.querySelector('summary').nextSibling.textContent = exam.report.rad.text;
                 radReportElement.style.display = 'block';
             } else {
