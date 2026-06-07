@@ -313,22 +313,31 @@ except ValueError as e:
 
 # Load region identification rules from config
 REGION_RULES = {}
-region_config = config['regions']
-for key in region_config:
-    REGION_RULES[key] = [word.strip() for word in region_config[key].split(',')]
+if 'regions' in config:
+    for key in config['regions']:
+        REGION_RULES[key] = [word.strip() for word in config['regions'][key].split(',')]
+else:
+    logging.warning("No [regions] section in configuration; region detection disabled")
 
 # Load region-specific questions from config
 REGION_QUESTIONS = {}
-question_config = config['questions']
-for key in question_config:
-    REGION_QUESTIONS[key] = question_config[key]
+if 'questions' in config:
+    for key in config['questions']:
+        REGION_QUESTIONS[key] = config['questions'][key]
+else:
+    logging.warning("No [questions] section in configuration; region questions disabled")
 
 # Load supported regions from config
 REGIONS = []
-region_config = config['supported_regions']
-for key in region_config:
-    if config.getboolean('supported_regions', key):
-        REGIONS.append(key)
+if 'supported_regions' in config:
+    for key in config['supported_regions']:
+        try:
+            if config.getboolean('supported_regions', key):
+                REGIONS.append(key)
+        except ValueError:
+            logging.error(f"Invalid boolean for supported_regions.{key}; skipping")
+else:
+    logging.warning("No [supported_regions] section in configuration; all regions will be ignored")
 
 # Dashboard state
 dashboard = {
