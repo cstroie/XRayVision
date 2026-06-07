@@ -646,8 +646,7 @@
                     const totalCount = data.total || 0;
                     totalPages = data.pages || 1;
 
-                    document.getElementById('pageNumber').innerText = `Page ${page} of ${totalPages}`;
-                    document.getElementById('pageSelect').innerHTML = '';
+                    document.getElementById('pageNumber').textContent = `Page ${page} of ${totalPages}`;
 
                     const select = document.getElementById("pageSelect");
                     select.innerHTML = "";
@@ -681,7 +680,7 @@
 
         function showToast(msg) {
             const toast = document.getElementById("toast");
-            toast.innerText = msg;
+            toast.textContent = msg;
             toast.style.display = "block";
             setTimeout(() => { toast.style.display = "none"; }, 3000);
         }
@@ -702,11 +701,11 @@
             const nextQuery = document.getElementById("next-query");
             if (nextQuery) {
                 if (targetTime === 'Disabled') {
-                    nextQuery.innerText = 'Disabled';
+                    nextQuery.textContent = 'Disabled';
                 } else {
-                    nextQuery.innerText = formatCountdown(targetTime);
+                    nextQuery.textContent = formatCountdown(targetTime);
                     queryTimerInterval = setInterval(() => {
-                        nextQuery.innerText = formatCountdown(targetTime);
+                        nextQuery.textContent = formatCountdown(targetTime);
                     }, 1000);
                 }
             };
