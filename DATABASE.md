@@ -17,7 +17,7 @@ Stores patient demographic information.
 | cnp | TEXT (PRIMARY KEY) | Romanian personal identification number |
 | id | TEXT | Patient ID from hospital system |
 | name | TEXT | Patient full name |
-| age | INTEGER | Patient age in years |
+| birthdate | TEXT | Patient birth date (YYYY-MM-DD format) |
 | sex | TEXT | Patient sex ('M', 'F', or 'O') |
 
 ### exams
@@ -33,7 +33,7 @@ Stores exam metadata and processing status.
 | protocol | TEXT | Imaging protocol name from DICOM |
 | region | TEXT | Anatomic region identified from protocol |
 | type | TEXT | Exam type/modality |
-| status | TEXT | Processing status ('none', 'queued', 'processing', 'done', 'error', 'ignore') |
+| status | TEXT | Processing status ('none', 'queued', 'processing', 'done', 'error', 'ignore', 'requeue') |
 | study | TEXT | Study Instance UID |
 | series | TEXT | Series Instance UID |
 
@@ -46,11 +46,13 @@ Stores AI-generated reports and analysis results.
 | uid | TEXT (PRIMARY KEY, FOREIGN KEY) | References exams.uid |
 | created | TIMESTAMP | Report creation timestamp (default: CURRENT_TIMESTAMP) |
 | updated | TIMESTAMP | Report last update timestamp (default: CURRENT_TIMESTAMP) |
-| text | TEXT | AI-generated report content |
-| positive | INTEGER | Binary indicator (-1=not assessed, 0=no findings, 1=findings) |
+| text | TEXT | AI-generated report findings |
+| positive | INTEGER | Findings indicator (-1=not assessed, 0=no findings, 1=findings present) |
 | confidence | INTEGER | AI self-confidence score (0-100, -1 if not assessed) |
+| severity | INTEGER | Severity score (0-10, -1 if not assessed) |
+| summary | TEXT | AI-generated impression/summary |
 | model | TEXT | Name of the model used to analyze the image |
-| latency | INTEGER | Time in seconds needed to analyze the image by the AI (-1 if not assessed) |
+| latency | INTEGER | Processing time in seconds (-1 if not assessed) |
 
 ### rad_reports
 
@@ -62,10 +64,11 @@ Stores radiologist reports and clinical information.
 | id | TEXT | Diagnostic report ID from HIS |
 | created | TIMESTAMP | Report creation timestamp (default: CURRENT_TIMESTAMP) |
 | updated | TIMESTAMP | Report last update timestamp (default: CURRENT_TIMESTAMP) |
-| text | TEXT | Radiologist report content |
-| positive | INTEGER | Binary indicator (-1=not assessed, 0=no findings, 1=findings) |
+| text | TEXT | Radiologist report content (original language) |
+| text_en | TEXT | Radiologist report translated to English (NULL if not translated) |
+| positive | INTEGER | Findings indicator (-1=not assessed, 0=no findings, 1=findings present) |
 | severity | INTEGER | Severity score (0-10, -1 if not assessed) |
-| summary | TEXT | Brief summary of findings |
+| summary | TEXT | Brief diagnostic summary |
 | type | TEXT | Exam type |
 | radiologist | TEXT | Identifier for the radiologist |
 | justification | TEXT | Clinical diagnostic text |
@@ -97,5 +100,6 @@ To optimize query performance, the following indexes are created:
 - The `sex` column in the `patients` table is constrained to values 'M', 'F', or 'O'
 - The `positive` column in `ai_reports` is constrained to values -1, 0, or 1
 - The `confidence` column in `ai_reports` is constrained to values between -1 and 100
+- The `severity` column in `ai_reports` is constrained to values between -1 and 10
 - The `positive` column in `rad_reports` is constrained to values -1, 0, or 1
 - The `severity` column in `rad_reports` is constrained to values between -1 and 10
