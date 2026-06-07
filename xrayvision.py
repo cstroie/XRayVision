@@ -2237,6 +2237,8 @@ def dicom_store(event):
         process_dicom_file(dicom_file, uid)
         # Notify the queue
         asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), MAIN_LOOP)
+    else:
+        logging.debug(f"Received {ds.Modality} study {uid} — modality not supported, discarding")
     # Return success
     return 0x0000
 
