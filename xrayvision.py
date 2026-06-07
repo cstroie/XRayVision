@@ -297,15 +297,19 @@ timings = {
 }
 
 # Global parameters
-PAGE_SIZE = config.getint('processing', 'PAGE_SIZE')      # Number of exams to display per page in the dashboard
-KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')  # Whether to keep DICOM files after processing
-LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')  # Whether to load existing DICOM files at startup
-NO_QUERY = config.getboolean('processing', 'NO_QUERY')    # Whether to disable automatic DICOM query/retrieve
-ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY') # Whether to enable ntfy.sh notifications for positive findings
 TRANSLATE_EXISTING = False  # Whether to translate existing reports at startup (overridden by --translate-existing)
-ENABLE_HIS = config.getboolean('processing', 'ENABLE_HIS')   # Whether to enable HIS/FHIR integration
-QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')  # Base interval for query/retrieve in seconds
-SEVERITY_THRESHOLD = config.getint('processing', 'SEVERITY_THRESHOLD')  # Severity threshold for correctness calculation
+try:
+    PAGE_SIZE = config.getint('processing', 'PAGE_SIZE')
+    KEEP_DICOM = config.getboolean('processing', 'KEEP_DICOM')
+    LOAD_DICOM = config.getboolean('processing', 'LOAD_DICOM')
+    NO_QUERY = config.getboolean('processing', 'NO_QUERY')
+    ENABLE_NTFY = config.getboolean('processing', 'ENABLE_NTFY')
+    ENABLE_HIS = config.getboolean('processing', 'ENABLE_HIS')
+    QUERY_INTERVAL = config.getint('processing', 'QUERY_INTERVAL')
+    SEVERITY_THRESHOLD = config.getint('processing', 'SEVERITY_THRESHOLD')
+except ValueError as e:
+    logging.error(f"Invalid value in [processing] configuration: {e}")
+    raise SystemExit(1)
 
 # Load region identification rules from config
 REGION_RULES = {}
