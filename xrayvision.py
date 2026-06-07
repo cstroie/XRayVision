@@ -5528,11 +5528,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
             
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
         attempt = 1
-        while attempt <= max_retries:
-            try:
-                # Start timing
-                start_time = asyncio.get_running_loop().time()
-                async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession() as session:
+            while attempt <= max_retries:
+                try:
+                    # Start timing
+                    start_time = asyncio.get_running_loop().time()
                     result = await send_to_openai(session, headers, data)
 
                     # Calculate timing statistics
@@ -5616,11 +5616,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     # Success
                     return True
 
-            except Exception as e:
-                logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
-                # Exponential backoff
-                await asyncio.sleep(2 ** attempt)
-                attempt += 1
+                except Exception as e:
+                    logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
+                    # Exponential backoff
+                    await asyncio.sleep(2 ** attempt)
+                    attempt += 1
                 
         # Failure after max_retries
         db_set_status(exam['uid'], 'error')
