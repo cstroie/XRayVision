@@ -2814,12 +2814,14 @@ async def config_handler(request):
         config = {
             "OPENAI_URL_PRIMARY": OPENAI_URL_PRIMARY,
             "OPENAI_URL_SECONDARY": OPENAI_URL_SECONDARY,
+            "MODEL_NAME": MODEL_NAME,
             "NTFY_URL": NTFY_URL,
             "AE_TITLE": AE_TITLE,
             "AE_PORT": AE_PORT,
             "REMOTE_AE_TITLE": REMOTE_AE_TITLE,
             "REMOTE_AE_IP": REMOTE_AE_IP,
-            "REMOTE_AE_PORT": REMOTE_AE_PORT
+            "REMOTE_AE_PORT": REMOTE_AE_PORT,
+            "DASHBOARD_PORT": DASHBOARD_PORT
         }
         return web.json_response(config)
     except Exception as e:
