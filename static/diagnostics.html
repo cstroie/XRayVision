@@ -308,7 +308,7 @@
                             intersect: false,
                             callbacks: {
                                 label: function(context) {
-                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                    return context.dataset.label + ': ' + context.parsed.x + '%';
                                 }
                             }
                         }
@@ -334,7 +334,7 @@
             // Chart: Monthly trends for top diagnostics
             // Fetch the monthly trends data
             fetch('/api/diagnostics/monthly_trends')
-            .then(res => res.json())
+            .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
             .then(trendsData => {
                 // Generate last 12 months labels
                 const months = [];

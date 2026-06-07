@@ -142,7 +142,7 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             fetch('/api/config')
-                .then(r => r.json())
+                .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
                 .then(cfg => { isAdmin = cfg.USER_ROLE === 'admin'; })
                 .catch(() => {})
                 .finally(() => loadRadiologistStats());
@@ -360,7 +360,7 @@
             // Chart: Monthly trends for top radiologists
             // Fetch the monthly trends data
             fetch('/api/stats/radiologists/monthly_trends')
-            .then(res => res.json())
+            .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
             .then(trendsData => {
                 // Generate last 12 months labels
                 const months = [];
