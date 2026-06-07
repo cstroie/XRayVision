@@ -335,6 +335,13 @@ if 'questions' in config:
 else:
     logging.warning("No [questions] section in configuration; region questions disabled")
 
+# Map internal region names to HIS/FHIR region names for service request lookup
+# Allows sub-regions (e.g. 'occipital') to be searched under their parent HIS region ('skull')
+REGION_FHIR_MAP = {}
+if 'region_fhir_map' in config:
+    for key in config['region_fhir_map']:
+        REGION_FHIR_MAP[key] = config['region_fhir_map'][key]
+
 # Load region-specific reporting templates from config
 REGION_TEMPLATES = {}
 if 'templates' in config:
@@ -6266,7 +6273,9 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     exam_datetime = exam['created']
     exam_type = translate_exam_type_to_fhir(exam.get('type') or 'radio')
     exam_region = exam.get('region', '')
-    
+    # Translate internal region to HIS/FHIR region name if a mapping exists
+    fhir_region = REGION_FHIR_MAP.get(exam_region, exam_region)
+
     # If the exam region is not in our supported regions, try to identify it again from the report text
     if exam_region not in REGIONS:
         # Try to identify the region from the report text
@@ -6298,9 +6307,9 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
             # If conversion fails, treat as if no valid ID exists
             pass
 
-    # Find service request in FHIR if not already found
+    # Find service request in FHIR if not already found (use HIS region name)
     if not srv_req:
-        srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, exam_region)
+        srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, fhir_region)
 
     # If no service request found, log and return
     if not srv_req or 'id' not in srv_req:
@@ -6365,7 +6374,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         return
 
     # Extract report data
-    report_text, radiologist = await extract_report_data(report, exam_uid, exam_type=exam_type, exam_region=exam_region)
+    report_text, radiologist = await extract_report_data(report, exam_uid, exam_type=exam_type, exam_region=fhir_region)
     if not report_text:
         return
 
