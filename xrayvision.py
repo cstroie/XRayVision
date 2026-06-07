@@ -5761,7 +5761,12 @@ async def relay_to_openai_loop():
     """
     while True:
         # Get one file from queue
-        exams, total = db_get_exams(limit = 1, status = ['queued', 'requeue', 'check'])
+        try:
+            exams, total = db_get_exams(limit=1, status=['queued', 'requeue', 'check'])
+        except Exception as e:
+            logging.error(f"relay_to_openai_loop: failed to query queue: {e}")
+            await asyncio.sleep(5)
+            continue
         # Wait here if there are no items in queue or there is no AI server
         if not exams or active_openai_url is None:
             QUEUE_EVENT.clear()
@@ -5836,9 +5841,12 @@ async def openai_health_check():
     global active_openai_url
     while True:
         for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
+            # Derive the /models endpoint from the configured URL regardless of suffix
+            base_url = url.split('/v1/')[0] if '/v1/' in url else url.rstrip('/')
+            models_url = f"{base_url}/v1/models"
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(url.replace("/chat/completions", "/models"), timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                         health_status[url] = (resp.status == 200)
                         logging.debug(f"Health check {url} → {resp.status}")
             except Exception as e:
@@ -6239,7 +6247,10 @@ async def query_retrieve_loop():
     if NO_QUERY:
         logging.warning(f"Automatic Query/Retrieve disabled.")
     while not NO_QUERY:
-        await query_and_retrieve()
+        try:
+            await query_and_retrieve()
+        except Exception as e:
+            logging.error(f"Unhandled error in query_retrieve_loop: {e}")
         # Calculate delay with +/- 30% variation
         variation = QUERY_INTERVAL * 0.3
         min_delay = max(1, int(QUERY_INTERVAL - variation))
@@ -6266,6 +6277,7 @@ async def translate_existing_reports():
             FROM rad_reports
             WHERE text IS NOT NULL
             AND (text_en IS NULL OR text_en = '')
+            LIMIT 100
         """
         rows = db_execute_query(query, fetch_mode='all')
 
@@ -6535,6 +6547,8 @@ async def main():
                 task.cancel()
         # Wait for tasks to finish cancellation
         await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        await stop_servers()
 
 
 # Command run
@@ -6566,9 +6580,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
     finally:
-        # Stop all servers
-        try:
-            asyncio.run(stop_servers())
-        except Exception as e:
-            logging.error(f"Error during shutdown: {e}")
         logging.shutdown()
