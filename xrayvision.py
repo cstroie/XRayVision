@@ -5494,9 +5494,11 @@ async def send_exam_to_openai(exam, max_retries = 3):
         # Prepare request data
         headers, data = prepare_ai_request_data(prompt, image_bytes)
         
-        if exam['report']['ai']['text']:
-            logging.info(f"Previous report: {exam['report']['ai']['text']}")
-            data['messages'].append({'role': 'assistant', 'content': exam['report']['ai']['text']})
+        prior_ai_text = (exam.get('report') or {}).get('ai') or {}
+        prior_ai_text = prior_ai_text.get('text') if isinstance(prior_ai_text, dict) else None
+        if prior_ai_text:
+            logging.info(f"Previous report: {prior_ai_text}")
+            data['messages'].append({'role': 'assistant', 'content': prior_ai_text})
             data['messages'].append({'role': 'user', 'content': PROMPTS['REV_PROMPT'].strip()})
     
         # Debug log the request data
@@ -5582,7 +5584,9 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     # Determine positivity for dashboard update by comparing severity with threshold
                     is_positive = severity >= SEVERITY_THRESHOLD
                     # Notify the dashboard frontend to reload first page
-                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': exam['report']['ai'].get('reviewed', False), 'severity': severity})
+                    ai_report = (exam.get('report') or {}).get('ai') or {}
+                    reviewed = ai_report.get('reviewed', False) if isinstance(ai_report, dict) else False
+                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': reviewed, 'severity': severity})
                     if is_positive:
                         # Send notification for positive finding
                         try:
