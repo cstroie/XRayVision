@@ -1,39 +1,52 @@
 # XRayVision
 
-A real-time DICOM relay and analysis system with AI integration, persistent history, and a live web dashboard for reviewing and flagging X-ray images.
+**AI-assisted radiology analysis for clinical X-ray workflows**
+
+XRayVision bridges your PACS and a local AI vision model. It receives X-ray studies via DICOM, runs them through an OpenAI-compatible vision model (tested with [MedGemma 4B-IT](https://huggingface.co/google/medgemma-4b-it)), and presents findings alongside radiologist reports in a live web dashboard — helping radiologists prioritise worklists and track AI performance over time.
+
+> Designed for Romanian hospital workflows (Hipocrate HIS / FHIR), but adaptable to any DICOM-compliant PACS.
+
+---
+
+## How it works
+
+```
+PACS ──C-STORE/C-MOVE──► XRayVision ──► AI Vision Model
+                               │              │
+                          SQLite DB  ◄─────────┘
+                               │
+                          FHIR / HIS ──► Radiologist reports
+                               │
+                          Web Dashboard (live, WebSocket)
+```
+
+1. Studies arrive via **C-STORE** (push) or are pulled via periodic **C-FIND/C-MOVE**
+2. DICOM files are converted to PNG and sent to the configured vision model
+3. AI findings are stored alongside radiologist reports fetched from **FHIR**
+4. The **live dashboard** lets radiologists review, flag, and re-queue exams
+
+---
 
 ## Features
 
-* Asynchronous TCP DICOM server (storescp-compatible)
-* Real-time queue processing with AI API integration
-* Automatic DICOM-to-PNG conversion (OpenCV)
-* Persistent processing history with SQLite storage
-* WebSocket-powered live dashboard updates
-* Manual review of processed items (normal/abnormal)
-* Manual DICOM QueryRetrieve trigger with configurable time span
-* Automatic QueryRetrieve of CR modality studies at configurable intervals
-* Fully responsive PicoCSS dashboard with lightbox image previews
-* Comprehensive statistics and performance metrics
-* Configuration file support
-* Patient age calculation from Romanian ID numbers
-* Anatomic region identification and region-specific analysis
-* Previous report comparison for longitudinal studies
-* Notification system for positive findings via ntfy.sh
-* Database backup and maintenance routines
-* Logging with timestamps to both console and file
-* FHIR integration for patient data and radiologist reports
-* AI-powered analysis of radiologist reports for quality metrics
-* Report checking functionality for free-text radiology reports
+| | |
+|---|---|
+| **DICOM** | C-STORE receiver + periodic C-FIND/C-MOVE/C-GET from PACS |
+| **AI analysis** | OpenAI-compatible API, primary + secondary endpoint failover |
+| **Radiologist reports** | FHIR integration, auto-translation (Romanian → English) |
+| **Dashboard** | Live WebSocket updates, lightbox previews, search & filter |
+| **Statistics** | Per-region, per-radiologist, per-diagnostic accuracy metrics |
+| **Notifications** | ntfy.sh push alerts for high-severity positive findings |
+| **Security** | HTTP Basic Auth, role-based access (admin / user), audit log |
+| **Storage** | SQLite with WAL, automatic backups |
 
 ---
 
 ## Requirements
 
-* Python 3.8+
-* DICOM peer system for QueryRetrieve (pynetdicom-compatible)
-* OpenAI API endpoint (can be local or remote)
-
-### Python Packages
+- Python 3.8+
+- An OpenAI-compatible vision API endpoint (local or remote)
+- A DICOM-compliant PACS (for QueryRetrieve)
 
 ```bash
 pip install aiohttp pydicom pynetdicom opencv-python numpy
@@ -43,165 +56,136 @@ pip install aiohttp pydicom pynetdicom opencv-python numpy
 
 ## Quick Start
 
-1. Clone the repository:
+### 1. Clone
 
 ```bash
 git clone https://github.com/cstroie/XRayVision.git
 cd XRayVision
 ```
 
-2. Update the configuration in `xrayvision.cfg`:
+### 2. Configure
+
+Copy or edit `xrayvision.cfg`. The most important sections:
 
 ```ini
 [openai]
-OPENAI_URL_PRIMARY = http://127.0.0.1:8080/v1/chat/completions
+OPENAI_URL_PRIMARY   = http://127.0.0.1:8080/v1/chat/completions
 OPENAI_URL_SECONDARY = http://127.0.0.1:11434/v1/chat/completions
-OPENAI_API_KEY = sk-your-api-key
-MODEL_NAME = medgemma-4b-it
+OPENAI_API_KEY       = sk-your-api-key
+MODEL_NAME           = medgemma-4b-it
 
 [dicom]
-AE_TITLE = XRAYVISION
-AE_PORT = 4010
-REMOTE_AE_TITLE = DICOM_SERVER
-REMOTE_AE_IP = 192.168.1.1
-REMOTE_AE_PORT = 104
+AE_TITLE        = XRAYVISION
+AE_PORT         = 4010
+REMOTE_AE_TITLE = YOUR_PACS
+REMOTE_AE_IP    = 192.168.1.1
+REMOTE_AE_PORT  = 104
+
+[users]
+admin = yourpassword,admin
 ```
 
-3. Run the server:
+For local overrides (passwords, paths), create a `local.cfg` — it is gitignored and takes precedence.
+
+### 3. Run
 
 ```bash
-export OPENAI_API_KEY="sk-your-api-key"
-python xrayvision.py
+python3 xrayvision.py
 ```
 
-Optional arguments:
-* `--keep-dicom` - Do not delete .dcm files after conversion
-* `--load-dicom` - Load existing .dcm files in queue
-* `--no-query` - Do not query the DICOM server automatically
-* `--enable-ntfy` - Enable ntfy.sh notifications
-* `--model` - Model name to use for analysis
-* `--retrieval-method` - DICOM retrieval method (C-MOVE or C-GET)
-* `--log-level` - Set logging level (DEBUG, INFO, WARNING, ERROR)
-* `--translate-existing` - Translate existing radiologist reports that lack an English translation
-
-4. Open the dashboard:
+### 4. Open the dashboard
 
 ```
 http://localhost:8000
 ```
 
----
-
-## Dashboard Features
-
-* Live processing statistics (queue, current file, success, failure)
-* Paginated processed files with thumbnails
-* Real-time review functionality (normal/abnormal)
-* Manual QueryRetrieve trigger (select time span: 1, 3, 6, 12, 24 hours)
-* Lightbox image preview with reviewed and positive highlighting
-* Comprehensive statistics page with charts and metrics
-* Configuration display
-* Search and filtering capabilities
-* Patient details view
-* Radiologist report integration and analysis
-* Report checking page for free-text analysis
+Log in with the credentials from `[users]` in your config.
 
 ---
 
-## Configuration
+## Command-line options
 
-XRayVision uses a configuration file (`xrayvision.cfg`) for all settings. A default configuration is provided in the file, and you can override settings by creating a `local.cfg` file with your custom values.
+| Option | Description |
+|---|---|
+| `--keep-dicom` | Keep `.dcm` files after PNG conversion |
+| `--load-dicom` | Load any existing `.dcm` files into the queue on startup |
+| `--no-query` | Disable automatic DICOM QueryRetrieve |
+| `--enable-ntfy` | Enable ntfy.sh push notifications |
+| `--model NAME` | Override the AI model name |
+| `--retrieval-method` | `C-MOVE` (default) or `C-GET` |
+| `--log-level` | `DEBUG`, `INFO` (default), `WARNING`, or `ERROR` |
+| `--translate-existing` | Translate any existing radiologist reports that lack an English translation |
 
-Key configuration sections include:
-* `general` - Database path, backup directory
-* `users` - User credentials with roles (admin, user)
-* `dicom` - DICOM server settings (AE title, port, remote server details)
-* `openai` - OpenAI API endpoints and credentials
-* `dashboard` - Dashboard port
-* `notifications` - ntfy.sh notification URL
-* `processing` - Processing options (page size, DICOM file handling, query settings)
-* `regions` - Anatomic region identification rules (keywords for region detection)
-* `questions` - Region-specific questions for AI analysis
-* `supported_regions` - List of regions to process (enable/disable regions)
+---
+
+## Dashboard pages
+
+| Page | URL | Description |
+|---|---|---|
+| Dashboard | `/` | Live exam queue, thumbnails, review controls |
+| Statistics | `/stats` | Overall accuracy, region breakdown, monthly trends |
+| Radiologists | `/stats/radiologists` | Per-radiologist workload and accuracy |
+| Diagnostics | `/stats/diagnostics` | Per-diagnostic category performance |
+| Insights | `/stats/insights` | Age distribution, processing times, workload metrics |
+| Check | `/check` | Free-text report analysis (paste any report) |
+| About | `/about` | System status, model health, configuration |
+
+---
+
+## Configuration reference
+
+All options live in `xrayvision.cfg`. The full file is commented. Key sections:
+
+| Section | Purpose |
+|---|---|
+| `[general]` | Database path, backup directory |
+| `[users]` | Credentials — `username = password,role` (`admin` or `user`) |
+| `[dicom]` | AE title/port, remote PACS address, retrieval method |
+| `[openai]` | AI API URLs, key, model name |
+| `[fhir]` | FHIR server URL and credentials (Hipocrate HIS) |
+| `[dashboard]` | Web server port |
+| `[notifications]` | ntfy.sh URL, optional image base URL for attachments |
+| `[processing]` | Page size, DICOM file handling, query interval, severity threshold |
+| `[regions]` | Keyword rules for anatomic region detection |
+| `[questions]` | Region-specific clinical questions sent to the AI |
+| `[supported_regions]` | Which regions to process (`true`) or skip (`false`) |
+
+---
+
+## Roles and access
+
+Two roles are supported:
+
+- **admin** — full access; sees real radiologist names everywhere
+- **user** — radiologist names are anonymised to initials in the dashboard and API
 
 ---
 
 ## Logging
 
-All events are logged to:
+Application events are written to `xrayvision.log` and the console.
 
-* `xrayvision.log` file
-* Console output
+Security and clinical actions are written separately to `xrayvision_audit.log`:
 
-Timestamps, info, warnings, and errors are all captured.
-
-### Audit log
-
-Security and clinical actions are recorded separately in `xrayvision_audit.log`.
-The audit log is write-only from the application and never appears in the main log or console.
-
-Each entry follows the same format as the main log:
-```
-2026-06-07 10:15:42,301 |     INFO | AUTH_OK user=admin role=admin ip=192.168.1.5 path=/api/exams
-```
-
-Recorded events:
-
-| Event | Level | Trigger |
-|---|---|---|
-| `AUTH_OK` | INFO | Successful login — user, role, IP, requested path |
-| `AUTH_FAIL` | WARNING | Failed login attempt — username, IP, requested path |
-| `RAD_REVIEW` | INFO | Radiologist marks exam normal/abnormal — exam UID, verdict, radiologist, IP |
-| `REQUEUE` | INFO | Exam re-queued for AI reprocessing — exam UID, user, IP |
-| `DICOM_QUERY` | INFO | Manual DICOM QueryRetrieve triggered — time span (hours), user, IP |
+| Event | Trigger |
+|---|---|
+| `AUTH_OK` | Successful login |
+| `AUTH_FAIL` | Failed login attempt |
+| `RAD_REVIEW` | Radiologist marks exam normal / abnormal |
+| `REQUEUE` | Exam re-queued for AI reprocessing |
+| `DICOM_QUERY` | Manual DICOM QueryRetrieve triggered |
 
 ---
 
-## API Endpoints
+## Documentation
 
-Pages:
-* `/` - Main dashboard
-* `/stats` - Statistics page
-* `/stats/radiologists` - Radiologist statistics page
-* `/stats/diagnostics` - Diagnostics statistics page
-* `/stats/insights` - Insights page
-* `/about` - About page
-* `/check` - Report check page
-* `/ws` - WebSocket for real-time updates
-
-Data API:
-* `/api/exams` - Get exams with pagination and filtering
-* `/api/exams/{uid}` - Get exam by UID
-* `/api/patients` - Get patients with pagination and filtering
-* `/api/patients/{cnp}` - Get patient by CNP
-* `/api/stats` - Get overall statistics
-* `/api/stats/radiologists` - Get per-radiologist statistics
-* `/api/stats/radiologists/monthly_trends` - Get radiologist monthly trends
-* `/api/stats/diagnostics` - Get per-diagnostic statistics
-* `/api/stats/insights` - Get analytical insights
-* `/api/regions` - Get supported anatomic regions
-* `/api/diagnostics` - Get distinct diagnostics and counts
-* `/api/diagnostics/monthly_trends` - Get diagnostics monthly trends
-* `/api/radiologists` - Get radiologist names
-* `/api/severity` - Get severity distribution
-* `/api/config` - Get configuration parameters
-* `/api/spec` - Get OpenAPI specification
-
-Actions:
-* `/api/radreview` - Record radiologist review of an exam
-* `/api/requeue` - Re-queue an exam for AI processing
-* `/api/dicomquery` - Manually trigger DICOM QueryRetrieve
-* `/api/getrad` - Retrieve radiologist report from FHIR
-
-AI endpoints (rate-limited):
-* `/api/check` - Analyze a free-text radiology report
-* `/api/analyse` - Perform detailed three-pass analysis of a report
-* `/api/translate` - Translate a Romanian radiology report to English
+- [`API.md`](API.md) — REST API reference
+- [`DATABASE.md`](DATABASE.md) — Database schema
+- [`static/spec.json`](static/spec.json) — OpenAPI 3.0 specification (also served at `/api/spec`)
+- [`CLAUDE.md`](CLAUDE.md) — Developer guide
 
 ---
 
-## Future Improvements
+## License
 
-* Export functionality for reports and datasets
-* Integration with more DICOM modalities
-* Enhanced statistics and reporting capabilities
+Copyright © 2026 Costin Stroie. See repository for licence details.
