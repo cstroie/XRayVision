@@ -2666,8 +2666,6 @@ async def serve_api_spec(request):
     Returns:
         web.Response: OpenAPI spec as JSON with updated server URL
     """
-    import json
-    
     # Read the static spec file
     spec_path = os.path.join(STATIC_DIR, "spec.json")
     with open(spec_path, 'r') as f:
@@ -5519,7 +5517,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
             data['messages'].append({'role': 'user', 'content': PROMPTS['REV_PROMPT'].strip()})
     
         # Debug log the request data
-        #logging.debug(f"Request data: {data}")
             
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
         attempt = 1
@@ -5563,8 +5560,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     findings_match = re.search(r'FINDINGS:(.*?)(IMPRESSION:|$)', report, re.DOTALL)
                     impression_match = re.search(r'IMPRESSION:(.*)', report, re.DOTALL)
 
-                    #logging.debug(f"Findings match: {findings_match.group(1) if findings_match else 'None'}")
-                    #logging.debug(f"Impression match: {impression_match.group(1) if impression_match else 'None'}")
                     
                     if findings_match and impression_match:
                         findings = findings_match.group(1).strip()
