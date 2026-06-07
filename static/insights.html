@@ -353,22 +353,22 @@
                 { label: 'AI higher\n(+1 or +2)',   min: 1,         max:  2, color: '#60a5fa', border: '#1d4ed8' },
                 { label: 'AI much higher\n(≥ +3)', min: 3,         max: Infinity, color: '#818cf8', border: '#4338ca' },
             ];
-            let totalExams = 0;
+            let diffTotal = 0;
             const bandCounts = bands.map(b => {
                 const n = Object.entries(rawDiffs).reduce((sum, [k, v]) => {
                     const d = Number(k);
                     return (d >= b.min && d <= b.max) ? sum + v : sum;
                 }, 0);
-                totalExams += n;
+                diffTotal += n;
                 return n;
             });
 
             // Summary line: % within ±1 of radiologist
             const within1 = (bandCounts[1] + bandCounts[2] + bandCounts[3]);
-            const pct = totalExams > 0 ? Math.round(within1 / totalExams * 100) : 0;
+            const diffPct = diffTotal > 0 ? Math.round(within1 / diffTotal * 100) : 0;
             document.getElementById('severityDiffSummary').textContent =
-                totalExams > 0
-                    ? `${pct}% of exams where AI severity is within ±1 of radiologist (${within1} of ${totalExams})`
+                diffTotal > 0
+                    ? `${diffPct}% of exams where AI severity is within ±1 of radiologist (${within1} of ${diffTotal})`
                     : 'No comparable exams yet.';
 
             if (severityDiffChart) severityDiffChart.destroy();
@@ -393,7 +393,7 @@
                             callbacks: {
                                 label: ctx => {
                                     const n = ctx.parsed.y;
-                                    const pct = totalExams > 0 ? ` (${Math.round(n / totalExams * 100)}%)` : '';
+                                    const pct = diffTotal > 0 ? ` (${Math.round(n / diffTotal * 100)}%)` : '';
                                     return ` ${n} exam${n !== 1 ? 's' : ''}${pct}`;
                                 },
                                 afterLabel: ctx => {
