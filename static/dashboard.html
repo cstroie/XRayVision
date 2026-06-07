@@ -367,7 +367,7 @@
             };
 
             ws.onclose = function () {
-                console.warn("WebSocket closed. Attempting reconnect in 5 seconds...");
+                console.warn("WebSocket closed. Attempting reconnect in 3 seconds...");
                 showToast("WebSocket closed");
                 setTimeout(connectWebSocket, 3000);
             };
