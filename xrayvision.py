@@ -5014,7 +5014,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
         params = {'q': cnp}
         
         logging.debug(f"Sending FHIR patient search by CNP request to {url} with params {params}")
-        async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+        async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             logging.debug(f"Received FHIR patient search by CNP response with status {resp.status}")
             if resp.status == 200:
                 data = await resp.json()
@@ -5080,7 +5080,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
                 params = {'q': formatted_name}
                 
                 logging.debug(f"Sending FHIR patient search by name request to {url} with params {params}")
-                async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+                async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     logging.debug(f"Received FHIR patient search by name response with status {resp.status}")
                     if resp.status == 200:
                         data = await resp.json()
@@ -5142,7 +5142,7 @@ async def search_fhir_servicerequests(session, patient_id, exam_datetime, exam_t
             params['region'] = exam_region
         
         # Try without full=yes parameter
-        async with session.get(url, auth=auth, params=params, timeout=30) as resp:
+        async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             if resp.status == 200:
                 data = await resp.json()
                 if data.get('resourceType') == 'Bundle' and 'entry' in data:
@@ -5193,7 +5193,7 @@ async def get_fhir_servicerequest(session, request_id):
 
         url = f"{FHIR_URL}/fhir/ServiceRequest/{request_id}"
 
-        async with session.get(url, auth=auth, timeout=30) as resp:
+        async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             if resp.status == 200:
                 data = await resp.json()
                 # Check if response is an OperationOutcome (error)
@@ -5231,7 +5231,7 @@ async def get_fhir_diagnosticreport(session, report_id):
 
         url = f"{FHIR_URL}/fhir/DiagnosticReport/{report_id}"
 
-        async with session.get(url, auth=auth, timeout=30) as resp:
+        async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as resp:
             if resp.status == 200:
                 data = await resp.json()
                 # Check if response is an OperationOutcome (error)
@@ -5272,7 +5272,7 @@ async def send_to_openai(session, headers, payload):
         return None
         
     try:
-        async with session.post(active_openai_url, headers = headers, json = payload, timeout = 300) as resp:
+        async with session.post(active_openai_url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as resp:
             if resp.status == 200:
                 return await resp.json()
             logging.warning(f"{active_openai_url} failed with status {resp.status}")
@@ -5823,7 +5823,7 @@ async def openai_health_check():
         for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
             try:
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(url.replace("/chat/completions", "/models"), timeout = 5) as resp:
+                    async with session.get(url.replace("/chat/completions", "/models"), timeout=aiohttp.ClientTimeout(total=5)) as resp:
                         health_status[url] = (resp.status == 200)
                         logging.debug(f"Health check {url} → {resp.status}")
             except Exception as e:
@@ -5864,7 +5864,7 @@ async def fhir_loop():
             async with aiohttp.ClientSession() as session:
                 # Test FHIR connectivity using the proper metadata endpoint
                 # Health check does not require authentication
-                async with session.get(f"{FHIR_URL}/fhir/Metadata", timeout=10) as resp:
+                async with session.get(f"{FHIR_URL}/fhir/Metadata", timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     health_status[FHIR_URL] = resp.status == 200
                     logging.debug(f"FHIR check {FHIR_URL} → {resp.status}")
                 
