@@ -2399,20 +2399,21 @@ def extract_dicom_metadata(ds):
     else:
         created = now
 
-    # Identify the region from the protocol name
-    region, _ = identify_anatomic_region(str(ds.ProtocolName))
+    # Identify the region from the protocol name (tag is optional in DICOM)
+    protocol_name = str(ds.ProtocolName) if 'ProtocolName' in ds and ds.ProtocolName else ''
+    region, _ = identify_anatomic_region(protocol_name)
 
     info = {
         'uid': str(ds.SOPInstanceUID),
         'patient': {
-            'name':  str(ds.PatientName),
-            'cnp':   str(ds.PatientID),
+            'name':  str(ds.PatientName) if 'PatientName' in ds else '',
+            'cnp':   str(ds.PatientID) if 'PatientID' in ds else '',
             'age':   age,
             'birthdate': birthdate,
-            'sex':   str(ds.PatientSex),
+            'sex':   str(ds.PatientSex) if 'PatientSex' in ds else '',
         },
         'exam': {
-            'protocol': str(ds.ProtocolName),
+            'protocol': protocol_name,
             'created':  created,
             'region':   region,
             'study':    str(ds.StudyInstanceUID) if 'StudyInstanceUID' in ds else None,
