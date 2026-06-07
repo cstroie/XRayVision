@@ -3517,6 +3517,8 @@ async def radiologists_monthly_trends_handler(request):
         """
         trends_rows = db_execute_query(trends_query, fetch_mode='all')
         
+        user_role = getattr(request, 'user_role', 'user')
+
         # Process the data to get top 10 radiologists per month
         monthly_trends = {}
         if trends_rows:
@@ -3524,13 +3526,14 @@ async def radiologists_monthly_trends_handler(request):
             monthly_data = {}
             for row in trends_rows:
                 month, radiologist, count = row
+                display_name = radiologist if user_role == 'admin' else extract_radiologist_initials(radiologist)
                 if month not in monthly_data:
                     monthly_data[month] = []
                 monthly_data[month].append({
-                    'radiologist': radiologist,
+                    'radiologist': display_name,
                     'count': count
                 })
-            
+
             # For each month, take top 10 radiologists
             for month, radiologists in monthly_data.items():
                 # Sort by count descending and take top 10
