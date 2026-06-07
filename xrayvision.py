@@ -1682,6 +1682,39 @@ def db_get_stats():
                 "positive": positive
             })
 
+    # Accuracy drift: per-month accuracy over all time
+    stats["accuracy_drift"] = []
+    query = """
+        SELECT strftime('%Y-%m', e.created) as month,
+               COUNT(*) as total,
+               SUM(CASE WHEN rr.severity > -1 THEN 1 ELSE 0 END) as reviewed,
+               SUM(CASE WHEN (ar.severity >= ? AND rr.severity >= ?)
+                           OR (ar.severity < ? AND rr.severity < ? AND rr.severity > -1)
+                        THEN 1 ELSE 0 END) as correct
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        LEFT JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE e.status = 'done'
+        GROUP BY month
+        ORDER BY month
+    """
+    drift_data = db_execute_query(
+        query,
+        (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD),
+        fetch_mode='all'
+    )
+    if drift_data:
+        for row in drift_data:
+            month, total, reviewed, correct = row
+            accuracy = round((correct or 0) / reviewed * 100, 1) if reviewed else None
+            stats["accuracy_drift"].append({
+                "month": month,
+                "total": total,
+                "reviewed": reviewed,
+                "correct": correct or 0,
+                "accuracy": accuracy,
+            })
+
     # Return stats
     return stats
 

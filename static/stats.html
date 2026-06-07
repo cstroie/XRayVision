@@ -143,6 +143,16 @@
                     <canvas id="monthlyTrendsChart" width="400" height="300"></canvas>
                 </article>
         </section>
+
+            <section>
+                <article class="chart-container">
+                    <h3>
+                        AI Accuracy Over Time
+                        <button class="secondary outline" onclick="downloadChart('accuracyDriftChart')">Download</button>
+                    </h3>
+                    <canvas id="accuracyDriftChart" width="400" height="250"></canvas>
+                </article>
+            </section>
         </section>
     </main>
 
@@ -161,7 +171,7 @@
         };
 
         // Chart instances
-        let regionChart, trendsChart, monthlyTrendsChart;
+        let regionChart, trendsChart, monthlyTrendsChart, accuracyDriftChart;
 
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
@@ -393,6 +403,7 @@
             if (regionChart) regionChart.destroy();
             if (trendsChart) trendsChart.destroy();
             if (monthlyTrendsChart) monthlyTrendsChart.destroy();
+            if (accuracyDriftChart) accuracyDriftChart.destroy();
 
             // Chart: region breakdown
             const regionLabels = [];
@@ -651,6 +662,91 @@
                     }
                 }
             });
+        }
+
+            // Chart: AI accuracy drift over time
+            const driftData = data.accuracy_drift || [];
+            if (driftData.length > 0) {
+                const driftLabels = driftData.map(d => d.month);
+                const driftAccuracy = driftData.map(d => d.accuracy);
+                const driftReviewed = driftData.map(d => d.reviewed);
+                accuracyDriftChart = new Chart(document.getElementById("accuracyDriftChart"), {
+                    type: 'line',
+                    data: {
+                        labels: driftLabels,
+                        datasets: [
+                            {
+                                label: 'AI Accuracy (%)',
+                                data: driftAccuracy,
+                                borderColor: chartColors.primary,
+                                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                fill: true,
+                                tension: 0.3,
+                                pointRadius: 5,
+                                yAxisID: 'yAccuracy',
+                                spanGaps: true
+                            },
+                            {
+                                label: 'Reviewed Studies',
+                                data: driftReviewed,
+                                borderColor: chartColors.secondary,
+                                backgroundColor: 'transparent',
+                                borderDash: [5, 5],
+                                tension: 0.3,
+                                pointRadius: 3,
+                                yAxisID: 'yCount'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'top', labels: { usePointStyle: true, padding: 20 } },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                callbacks: {
+                                    label: function(ctx) {
+                                        if (ctx.datasetIndex === 0) {
+                                            return ctx.parsed.y !== null ? `Accuracy: ${ctx.parsed.y}%` : 'Accuracy: N/A';
+                                        }
+                                        return `Reviewed: ${ctx.parsed.y}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Month', color: 'rgba(255,255,255,0.7)' },
+                                grid: { color: 'rgba(255,255,255,0.1)' }
+                            },
+                            yAccuracy: {
+                                type: 'linear',
+                                position: 'left',
+                                beginAtZero: true,
+                                max: 100,
+                                title: { display: true, text: 'Accuracy (%)', color: 'rgba(255,255,255,0.7)' },
+                                grid: { color: 'rgba(255,255,255,0.1)' }
+                            },
+                            yCount: {
+                                type: 'linear',
+                                position: 'right',
+                                beginAtZero: true,
+                                title: { display: true, text: 'Reviewed Studies', color: 'rgba(255,255,255,0.7)' },
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            } else {
+                const canvas = document.getElementById("accuracyDriftChart");
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
+                ctx.font = '16px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No reviewed studies available yet.', canvas.width / 2, canvas.height / 2);
+            }
         }
 
         function downloadChart(chartId) {

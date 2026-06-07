@@ -12,7 +12,7 @@ XRayVision bridges your PACS and a local AI vision model. It receives X-ray stud
 
 ```
 PACS ──C-STORE/C-MOVE──► XRayVision ──► AI Vision Model
-                               │              │
+                               │               │
                           SQLite DB  ◄─────────┘
                                │
                           FHIR / HIS ──► Radiologist reports
