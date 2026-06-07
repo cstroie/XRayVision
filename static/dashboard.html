@@ -306,14 +306,8 @@
                     updatePageTitle();
                 }
                 if (data.openai !== undefined) {
-                    if (data.openai.health.pri)
-                        oaiPri = "<ins>primary</ins>";
-                    else
-                        oaiPri = "<del>primary</del>";
-                    if (data.openai.health.sec)
-                        oaiSec = "<ins>secondary</ins>";
-                    else
-                        oaiSec = "<del>secondary</del>";
+                    const oaiPri = data.openai.health.pri ? "<ins>primary</ins>" : "<del>primary</del>";
+                    const oaiSec = data.openai.health.sec ? "<ins>secondary</ins>" : "<del>secondary</del>";
                     document.getElementById("openai-backend").innerHTML = `${oaiPri}&nbsp;${oaiSec}`;
                 }
                 if (data.timings !== undefined) {
@@ -579,7 +573,8 @@
                 }
                 
                 aiReportElement.querySelector('summary').textContent = aiInfo;
-                aiReportElement.querySelector('summary').nextElementSibling.textContent = text;
+                const aiBody = aiReportElement.querySelector('summary').nextElementSibling;
+                if (aiBody) aiBody.textContent = text;
                 aiReportElement.style.display = 'block';
             } else {
                 aiReportElement.style.display = 'none';
@@ -595,7 +590,8 @@
                 // Only show severity if it's not null and greater than -1
                 let severityText = exam.report.rad.severity !== null && exam.report.rad.severity > -1 ? ` (Severity: ${exam.report.rad.severity}/10)` : '';
                 radReportElement.querySelector('summary').textContent = `${exam.report.rad.radiologist}: ${summaryText}${severityText}`;
-                radReportElement.querySelector('summary').nextElementSibling.textContent = exam.report.rad.text;
+                const radBody = radReportElement.querySelector('summary').nextElementSibling;
+                if (radBody) radBody.textContent = exam.report.rad.text;
                 radReportElement.style.display = 'block';
             } else {
                 radReportElement.style.display = 'none';
@@ -603,8 +599,9 @@
             // Update English translation of radiologist report
             const radReportEnElement = cardElement.querySelector('.rad-report-en');
             if (exam.report.rad.text_en) {
-                radReportEnElement.querySelector('summary').innerHTML = `English Translation`;
-                radReportEnElement.querySelector('summary').nextElementSibling.textContent = exam.report.rad.text_en;
+                radReportEnElement.querySelector('summary').textContent = 'English Translation';
+                const radEnBody = radReportEnElement.querySelector('summary').nextElementSibling;
+                if (radEnBody) radEnBody.textContent = exam.report.rad.text_en;
                 radReportEnElement.style.display = 'block';
             } else {
                 radReportEnElement.style.display = 'none';
