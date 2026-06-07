@@ -1934,7 +1934,7 @@ def db_purge_ignored_errors():
                 os.remove(file_path)
             except FileNotFoundError:
                 pass
-    logging.info(f"Purged {deleted_count} old records from database and their files.")
+    logging.info(f"Purged {deleted_count or 0} old records from database and their files.")
     return deleted_count
 
 
