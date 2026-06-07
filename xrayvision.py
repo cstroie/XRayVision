@@ -1429,6 +1429,12 @@ def db_get_previous_reports(patient_cnp, region, months=3):
         AND e.region = ?
         AND ar.updated >= ?
         AND ar.text IS NOT NULL
+        AND ar.text != ''
+        AND length(ar.text) >= 30
+        AND ar.text NOT LIKE '%ROLE%'
+        AND ar.text NOT LIKE '%TASK%'
+        AND ar.text NOT LIKE '%ASSESS IN ORDER%'
+        AND ar.text NOT LIKE '%OUTPUT CONSTRAINTS%'
         AND ar.severity >= 0
         ORDER BY ar.updated DESC
     """
@@ -5760,6 +5766,17 @@ async def send_exam_to_openai(exam, max_retries = 3):
         
         prior_ai_report = (exam.get('report') or {}).get('ai') or {}
         prior_ai_text = prior_ai_report.get('text') if isinstance(prior_ai_report, dict) else None
+        # Strip old JSON wrapper format {"short":..., "report":...} if present
+        if prior_ai_text:
+            try:
+                parsed = json.loads(prior_ai_text)
+                if isinstance(parsed, dict) and 'report' in parsed:
+                    prior_ai_text = parsed['report']
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # Discard if too short or contains prompt artefacts
+        if prior_ai_text and (len(prior_ai_text) < 30 or any(k in prior_ai_text for k in ('ROLE', 'TASK', 'ASSESS IN ORDER', 'OUTPUT CONSTRAINTS'))):
+            prior_ai_text = None
         if prior_ai_text:
             logging.info(f"Previous report: {prior_ai_text}")
             data['messages'].append({'role': 'assistant', 'content': prior_ai_text})
