@@ -427,9 +427,9 @@
 
             // Chart: Age distribution
             const ageGroups = Object.keys(data.age_distribution || {}).sort((a, b) => {
-                // Sort age groups numerically; '< 18' has no hyphen so sort it first
-                if (a === '< 18') return -1;
-                if (b === '< 18') return 1;
+                // Sort age groups numerically; '> 18' has no hyphen so sort it last
+                if (a === '> 18') return 1;
+                if (b === '> 18') return -1;
                 const aStart = parseInt(a.split('-')[0]);
                 const bStart = parseInt(b.split('-')[0]);
                 return aStart - bStart;
@@ -512,9 +512,10 @@
                 }
             });
 
-            // Chart: Hourly patterns
-            const hours = Object.keys(data.hourly_patterns || {});
-            const examCounts = hours.map(hour => data.hourly_patterns[hour]);
+            // Chart: Hourly patterns — fill all 24 hours so missing hours show 0
+            const hours = Array.from({length: 24}, (_, i) => String(i).padStart(2, '0') + ':00');
+            const hourlyRaw = data.hourly_patterns || {};
+            const examCounts = Array.from({length: 24}, (_, i) => hourlyRaw[i] || 0);
             
             if (hourlyChart) hourlyChart.destroy();
             hourlyChart = new Chart(document.getElementById("hourlyChart"), {
