@@ -1281,7 +1281,10 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
              rad_text, rad_text_en, rad_severity, rad_summary, rad_created, rad_updated, rad_id, rad_type, rad_radiologist, rad_justification, rad_model, rad_latency,
              correct, reviewed) = row
                 
-            dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
+            try:
+                dt = datetime.strptime(exam_created, "%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                dt = datetime.min
             # Calculate age from birthdate if available
             patient_age = -1
             if patient_birthdate:
