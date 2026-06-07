@@ -3040,7 +3040,7 @@ async def diagnostics_stats_handler(request):
                 AVG(CAST(rr.severity AS FLOAT)) as avg_severity,
                 SUM(CASE WHEN (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?) THEN 1 ELSE 0 END) as correct_predictions,
                 COUNT(CASE WHEN ar.severity IS NOT NULL THEN 1 END) as ai_compared,
-                GROUP_CONCAT(e.region, ', ') as regions,
+                GROUP_CONCAT(e.region, '||') as regions,
                 MIN(e.created) as first_seen,
                 MAX(e.created) as last_seen
             FROM rad_reports rr
@@ -3060,7 +3060,7 @@ async def diagnostics_stats_handler(request):
                 # Process regions to get frequency
                 region_freq = {}
                 if regions:
-                    for region in regions.split(', '):
+                    for region in regions.split('||'):
                         region = region.strip().lower()
                         if region:
                             region_freq[region] = region_freq.get(region, 0) + 1
@@ -3071,9 +3071,10 @@ async def diagnostics_stats_handler(request):
                 
                 # Calculate accuracy if AI comparisons exist
                 accuracy = 0
+                correct_predictions = correct_predictions or 0
                 if ai_compared and ai_compared > 0:
                     accuracy = round((correct_predictions / ai_compared) * 100, 1)
-                
+
                 diagnostic_stats[summary] = {
                     'report_count': report_count,
                     'avg_severity': round(avg_severity, 1) if avg_severity else 0,
@@ -3267,7 +3268,7 @@ def db_get_radiologist_metrics():
         FROM rad_reports
         WHERE radiologist IS NOT NULL AND radiologist != ''
         GROUP BY radiologist
-        HAVING reports_count > 5
+        HAVING COUNT(*) > 5
         ORDER BY reports_count DESC
     """
     return db_execute_query(query, fetch_mode='all')
@@ -3334,6 +3335,7 @@ async def insights_handler(request):
         if rows:
             for row in rows:
                 age_group, total_exams, positive_findings = row
+                positive_findings = positive_findings or 0
                 insights['age_distribution'][age_group] = {
                     'total_exams': total_exams,
                     'positive_findings': positive_findings,
@@ -3389,16 +3391,23 @@ async def radiologists_handler(request):
         web.json_response: JSON response with radiologist names and report counts in {'dr. X Y': 3} format
     """
     try:
+        user_role = getattr(request, 'user_role', 'user')
         # Get distinct radiologist names and their report counts from the database
         query = """
-            SELECT radiologist, COUNT(*) as report_count 
-            FROM rad_reports 
-            WHERE radiologist IS NOT NULL AND radiologist != '' 
-            GROUP BY radiologist 
+            SELECT radiologist, COUNT(*) as report_count
+            FROM rad_reports
+            WHERE radiologist IS NOT NULL AND radiologist != ''
+            GROUP BY radiologist
             ORDER BY radiologist
         """
         rows = db_execute_query(query, fetch_mode='all')
-        radiologists = {radiologist: count for radiologist, count in rows} if rows else {}
+        if rows:
+            radiologists = {}
+            for radiologist, count in rows:
+                display_name = radiologist if user_role == 'admin' else extract_radiologist_initials(radiologist)
+                radiologists[display_name] = radiologists.get(display_name, 0) + count
+        else:
+            radiologists = {}
         return web.json_response(radiologists)
     except Exception as e:
         logging.error(f"Radiologists endpoint error: {e}")
@@ -3432,7 +3441,7 @@ async def radiologist_stats_handler(request):
                 AVG(CAST(rr.severity AS FLOAT)) as avg_severity,
                 SUM(CASE WHEN (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?) THEN 1 ELSE 0 END) as correct_predictions,
                 COUNT(CASE WHEN ar.severity >= 0 THEN 1 END) as ai_compared,
-                GROUP_CONCAT(rr.summary, ', ') as all_diagnostics
+                GROUP_CONCAT(rr.summary, '||') as all_diagnostics
             FROM rad_reports rr
             LEFT JOIN exams e ON rr.uid = e.uid
             LEFT JOIN ai_reports ar ON e.uid = ar.uid
@@ -3450,7 +3459,7 @@ async def radiologist_stats_handler(request):
                 # Process diagnostics to get frequency
                 diagnostics = {}
                 if all_diagnostics:
-                    for diag in all_diagnostics.split(', '):
+                    for diag in all_diagnostics.split('||'):
                         diag = diag.strip().lower()
                         if diag:
                             diagnostics[diag] = diagnostics.get(diag, 0) + 1
@@ -3461,10 +3470,12 @@ async def radiologist_stats_handler(request):
                 
                 # Calculate accuracy if AI comparisons exist
                 accuracy = 0
+                correct_predictions = correct_predictions or 0
                 if ai_compared and ai_compared > 0:
                     accuracy = round((correct_predictions / ai_compared) * 100, 1)
-                
-                radiologist_stats[radiologist] = {
+
+                display_name = radiologist if user_role == 'admin' else extract_radiologist_initials(radiologist)
+                radiologist_stats[display_name] = {
                     'report_count': report_count,
                     'avg_severity': round(avg_severity, 1) if avg_severity else 0,
                     'ai_accuracy': accuracy,
