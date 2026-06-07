@@ -353,6 +353,22 @@ dashboard = {
 
 
 # Database operations
+def _db_connect() -> sqlite3.Connection:
+    """Open a SQLite connection with consistent per-connection settings.
+
+    journal_mode=WAL is a persistent database-level setting written by db_init
+    and does not need to be repeated here.  All other settings are
+    per-connection and must be applied each time.
+    """
+    conn = sqlite3.connect(DB_FILE, isolation_level=None)
+    conn.execute('PRAGMA synchronous = NORMAL')
+    conn.execute('PRAGMA foreign_keys = ON')
+    conn.execute('PRAGMA cache_size = 10000')
+    conn.execute('PRAGMA temp_store = MEMORY')
+    conn.execute('PRAGMA mmap_size = 268435456')  # 256 MB
+    return conn
+
+
 def db_init():
     """
     Initialize the SQLite database with normalized tables and indexes.
@@ -547,12 +563,7 @@ def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') ->
     Returns:
         Query results based on fetch_mode, or None on error
     """
-    with sqlite3.connect(DB_FILE, isolation_level=None) as conn:
-        # Configure SQLite for concurrent access
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA synchronous=NORMAL')
-        conn.execute('PRAGMA foreign_keys = ON')
-        
+    with _db_connect() as conn:
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
@@ -579,12 +590,7 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 5)
     Returns:
         Number of affected rows or None on error
     """
-    with sqlite3.connect(DB_FILE, isolation_level=None) as conn:
-        # Configure SQLite for concurrent access
-        conn.execute('PRAGMA journal_mode=WAL')
-        conn.execute('PRAGMA synchronous=NORMAL')
-        conn.execute('PRAGMA foreign_keys = ON')
-        
+    with _db_connect() as conn:
         for attempt in range(max_retries):
             try:
                 conn.execute('BEGIN IMMEDIATE')
