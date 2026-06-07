@@ -1446,7 +1446,7 @@ async def db_get_stats():
             SUM(CASE WHEN rr.severity > -1 THEN 1 ELSE 0 END) AS reviewed
         FROM exams e
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE e.status LIKE 'done'
+        WHERE e.status = 'done'
     """
     row = db_execute_query(query, fetch_mode='one')
     if row:
@@ -1464,7 +1464,7 @@ async def db_get_stats():
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE e.status LIKE 'done'
+        WHERE e.status = 'done'
           AND ar.severity IS NOT NULL;
     """
     metrics_row = db_execute_query(query, (SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD), fetch_mode='one')
@@ -1492,7 +1492,7 @@ async def db_get_stats():
             COUNT(*) * 1.0 / (SUM(CAST(ar.latency AS REAL)) + 1) AS throughput
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
-        WHERE e.status LIKE 'done'
+        WHERE e.status = 'done'
           AND ar.latency IS NOT NULL
           AND ar.latency >= 0
           AND e.created >= datetime('now', '-1 days')
@@ -1529,7 +1529,7 @@ async def db_get_stats():
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE e.status LIKE 'done'
+        WHERE e.status = 'done'
           AND ar.severity IS NOT NULL
         GROUP BY e.region
     """
@@ -1584,7 +1584,7 @@ async def db_get_stats():
                SUM(CASE WHEN ar.severity >= ? THEN 1 ELSE 0 END) as positive
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
-        WHERE e.status LIKE 'done'
+        WHERE e.status = 'done'
           AND e.created >= date('now', '-30 days')
         GROUP BY DATE(e.created), e.region
         ORDER BY date
@@ -1610,7 +1610,7 @@ async def db_get_stats():
                SUM(CASE WHEN ar.severity >= ? THEN 1 ELSE 0 END) as positive
         FROM exams e
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
-        WHERE e.status LIKE 'done'
+        WHERE e.status = 'done'
           AND e.created >= date('now', '-12 months')
         GROUP BY strftime('%Y-%m', e.created), e.region
         ORDER BY month
