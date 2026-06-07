@@ -5515,8 +5515,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
         # Prepare request data
         headers, data = prepare_ai_request_data(prompt, image_bytes)
         
-        prior_ai_text = (exam.get('report') or {}).get('ai') or {}
-        prior_ai_text = prior_ai_text.get('text') if isinstance(prior_ai_text, dict) else None
+        prior_ai_report = (exam.get('report') or {}).get('ai') or {}
+        prior_ai_text = prior_ai_report.get('text') if isinstance(prior_ai_report, dict) else None
         if prior_ai_text:
             logging.info(f"Previous report: {prior_ai_text}")
             data['messages'].append({'role': 'assistant', 'content': prior_ai_text})
