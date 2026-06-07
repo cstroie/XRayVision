@@ -15,6 +15,6 @@ RULES
 - Ignore spelling errors in the source text.
 
 OUTPUT
-- Output ONLY the English translation as plain text
+- Output ONLY the English translation as plain text: ```text ...```
 - No JSON, no labels, no explanations
 - No text before or after the translation
