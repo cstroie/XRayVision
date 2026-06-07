@@ -335,6 +335,15 @@ if 'questions' in config:
 else:
     logging.warning("No [questions] section in configuration; region questions disabled")
 
+# Load region-specific reporting templates from config
+REGION_TEMPLATES = {}
+if 'templates' in config:
+    for key in config['templates']:
+        items = [t.strip() for t in config['templates'][key].split('|') if t.strip()]
+        REGION_TEMPLATES[key] = items
+else:
+    logging.warning("No [templates] section in configuration; region reporting templates disabled")
+
 # Load supported regions from config
 REGIONS = []
 if 'supported_regions' in config:
@@ -3064,8 +3073,17 @@ async def regions_handler(request):
         web.json_response: JSON response with regions list
     """
     try:
-        # Get distinct regions from the database
         regions = db_get_regions()
+        if request.rel_url.query.get('detail') == '1':
+            detail = []
+            for r in regions:
+                detail.append({
+                    'region': r,
+                    'question': REGION_QUESTIONS.get(r, ''),
+                    'template': REGION_TEMPLATES.get(r, []),
+                    'supported': r in REGIONS,
+                })
+            return web.json_response(detail)
         return web.json_response(regions)
     except Exception as e:
         logging.error(f"Regions endpoint error: {e}")
@@ -5609,6 +5627,14 @@ def create_exam_prompt(exam, region, question, subject, anatomy):
             subject=subject
         ).strip()
     ])
+
+    # Region-specific reporting checklist
+    template_items = REGION_TEMPLATES.get(region, [])
+    if template_items:
+        prompt_lines.append("")
+        prompt_lines.append("ASSESS IN ORDER")
+        for item in template_items:
+            prompt_lines.append(f"- {item}")
 
     # Comparison instruction only if priors exist
     if previous_reports:
