@@ -2854,7 +2854,8 @@ async def config_handler(request):
             "REMOTE_AE_TITLE": REMOTE_AE_TITLE,
             "REMOTE_AE_IP": REMOTE_AE_IP,
             "REMOTE_AE_PORT": REMOTE_AE_PORT,
-            "DASHBOARD_PORT": DASHBOARD_PORT
+            "DASHBOARD_PORT": DASHBOARD_PORT,
+            "USER_ROLE": getattr(request, 'user_role', 'user')
         }
         return web.json_response(config)
     except Exception as e:

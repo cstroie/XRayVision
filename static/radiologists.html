@@ -138,8 +138,14 @@
         let reportsChart, accuracyChart, monthlyRadiologistsChart;
 
         // Initialize page
+        let isAdmin = false;
+
         document.addEventListener('DOMContentLoaded', function() {
-            loadRadiologistStats();
+            fetch('/api/config')
+                .then(r => r.json())
+                .then(cfg => { isAdmin = cfg.USER_ROLE === 'admin'; })
+                .catch(() => {})
+                .finally(() => loadRadiologistStats());
         });
 
         function showLoading() {
@@ -207,9 +213,7 @@
         }
 
         function updateStats(data) {
-            // Get user role from a hidden element or cookie (simplified approach)
-            const isAdmin = true; // This would normally be determined by the server
-            
+
             // Calculate totals
             let totalRadiologists = Object.keys(data).length;
             let totalReports = 0;
