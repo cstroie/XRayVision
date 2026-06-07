@@ -427,6 +427,10 @@ def db_init():
         - idx_exams_region: Quick regional analysis
         - idx_exams_cnp: Efficient patient lookup
         - idx_patients_name: Fast patient name searches
+        - idx_rad_reports_radiologist: Fast GROUP BY on radiologist stats queries
+        - idx_rad_reports_summary: Fast GROUP BY on diagnostic stats queries
+        - idx_rad_reports_severity: Fast WHERE on severity distribution queries
+        - idx_ai_reports_severity: Fast WHERE on AI severity distribution queries
     """
     with sqlite3.connect(DB_FILE, isolation_level=None) as conn:
         # Configure SQLite for concurrent access
@@ -540,7 +544,23 @@ def db_init():
                 CREATE INDEX IF NOT EXISTS idx_patients_name
                 ON patients(name)
             ''')
-            
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_rad_reports_radiologist
+                ON rad_reports(radiologist)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_rad_reports_summary
+                ON rad_reports(summary)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_rad_reports_severity
+                ON rad_reports(severity)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_ai_reports_severity
+                ON ai_reports(severity)
+            ''')
+
             conn.commit()
             logging.info("Initialized SQLite database with normalized schema.")
         except Exception as e:

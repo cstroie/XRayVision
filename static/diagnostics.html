@@ -122,6 +122,8 @@
                                 <th style="text-align: right;">AI Accuracy</th>
                                 <th style="text-align: right;">AI Validated</th>
                                 <th>Top Regions</th>
+                                <th>First Seen</th>
+                                <th>Last Seen</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -558,6 +560,8 @@
                     <td style="text-align: right;">${stats.ai_accuracy}%</td>
                     <td style="text-align: right;">${stats.ai_compared}</td>
                     <td>${regionsHtml}</td>
+                    <td><small>${stats.first_seen ? stats.first_seen.slice(0, 10) : '—'}</small></td>
+                    <td><small>${stats.last_seen ? stats.last_seen.slice(0, 10) : '—'}</small></td>
                 `;
                 tbody.appendChild(row);
             }

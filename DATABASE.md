@@ -85,7 +85,11 @@ To optimize query performance, the following indexes are created:
 - `idx_exams_created`: Fast sorting by exam creation time
 - `idx_exams_study`: Efficient study-based queries
 - `idx_ai_reports_created`: Fast sorting by AI report creation time
+- `idx_ai_reports_severity`: Fast filtering by AI severity in distribution queries
 - `idx_rad_reports_created`: Fast sorting by radiologist report creation time
+- `idx_rad_reports_radiologist`: Fast GROUP BY in radiologist statistics queries
+- `idx_rad_reports_summary`: Fast GROUP BY in diagnostic statistics queries
+- `idx_rad_reports_severity`: Fast filtering by severity in distribution queries
 - `idx_patients_name`: Fast patient name searches
 
 ## Relationships
