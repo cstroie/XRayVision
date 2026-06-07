@@ -13,7 +13,7 @@
 - Export functionality: CSV/PDF export of exam lists and AI report summaries.
 - Integration with additional DICOM modalities beyond CR (e.g. DX, MR).
 - Improved statistics: AI accuracy trends over time (longitudinal accuracy drift).
-- Report templates: configurable finding templates per anatomic region.
+- ~~Report templates: configurable finding templates per anatomic region.~~ ✓ Done: `[templates]` section in config, injected as `ASSESS IN ORDER` in prompts.
 - Multi-language support: extend translation beyond Romanian → English.
 - Limit the number of database backups in the backup directory to a safe default.
 

@@ -74,6 +74,7 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 - Prompts live in `prompts/` as `.txt` files, loaded at startup by `load_prompts()` into the `PROMPTS` dict.
 - Keys: `REP_PROMPT` (report), `USR_PROMPT` (user), `REV_PROMPT` (review), `CHK_PROMPT` (check), `ANA_PROMPT` (analysis), `TRN_PROMPT` (translation).
 - Never inline prompt text in `xrayvision.py` — all prompt changes go in the `prompts/` files.
+- `USR_PROMPT` supports `{anatomy}` and `{subject}` placeholders. The `{question}` placeholder is passed but currently unused (no token in the template file) — `[questions]` config is loaded but superseded by `[templates]` for supported regions.
 
 ### Web frontend
 - Framework: **PicoCSS v2** (slate theme, dark mode default) loaded from CDN.
@@ -94,6 +95,7 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 - Reports may be in Romanian; `translate_report()` translates them to English (stored in `rad_reports.text_en`).
 - Anatomic region detection uses keyword rules from `[regions]` in config.
 - Only regions listed as `true` in `[supported_regions]` are processed; others get status `ignore`.
+- Per-region AI reporting checklists are defined in `[templates]` (delimiter `|`, not `,` — values contain commas). Loaded into `REGION_TEMPLATES` at startup; injected into `create_exam_prompt()` as an `ASSESS IN ORDER` section in the user-turn prompt.
 - FHIR server is the Hipocrate HIS (Romanian hospital information system).
 
 ### Severity and scoring
@@ -125,6 +127,7 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 - **New config option**: add to `DEFAULT_CONFIG`, read in the globals block, document in `xrayvision.cfg` with a comment.
 - **New DB column**: add to `CREATE TABLE` in `db_init()`, add `IF NOT EXISTS` / `ALTER TABLE` migration guard, update all relevant `db_select`/`db_insert`/`db_update` call sites.
 - **New prompt**: add a file in `prompts/`, add its key to `load_prompts()`, reference it from `PROMPTS['NEW_KEY']`.
+- **New region template**: add an entry to `[templates]` in `xrayvision.cfg` using `|` as the item delimiter. No code change needed.
 - **New dashboard page**: create `static/<page>.html` following the existing nav structure, add a `serve_<page>_page()` handler and route.
 
 ---
@@ -149,6 +152,8 @@ When fixing issues from `issues.txt`:
 
 - **SQL in `db_analyze`**: table name is interpolated via `PRAGMA` — validate against an allowlist before interpolating; never use user input directly in SQL f-strings.
 - **`GROUP_CONCAT` separator**: default separator `,` breaks `.split()` when values contain commas. Use `'||'` as separator and split on `'||'`.
+- **Config delimiter for multi-item values with commas**: `[templates]` uses `|` as separator because items contain commas inside parentheses. Apply the same pattern for any future config list whose items may contain commas.
+- **Blocking calls in async functions**: `process_dicom_file()` (PIL conversion) and file reads in `prepare_exam_data()` must run via `asyncio.to_thread()` — calling them directly blocks the event loop and makes the web server unreachable during DICOM ingestion.
 - **`SUM(CASE …)` returns NULL** (not 0) when no rows match — always guard with `or 0` in Python after fetching.
 - **`HAVING` with column aliases**: SQLite does not allow `HAVING alias > N`. Use `HAVING COUNT(*) > N` or repeat the expression.
 - **`isCorrect === null` vs `=== false`** in JS: `null` means not reviewed, `false` means wrong. Never use `!isCorrect` to mean "incorrect" — it catches both.
