@@ -82,12 +82,13 @@
             <section class="charts-grid">
                 <article class="chart-container">
                     <h3>
-                        AI vs Radiologist Severity Differences
+                        AI vs Radiologist Severity Agreement
                         <button class="secondary outline" onclick="downloadChart('severityDiffChart')">Download</button>
                     </h3>
                     <div style="position: relative; height: 400px;">
                         <canvas id="severityDiffChart"></canvas>
                     </div>
+                    <p id="severityDiffSummary" style="text-align: center; margin-top: 0.5rem; font-size: 0.85em; color: var(--pico-muted-color);"></p>
                 </article>
 
                 <article class="chart-container">
@@ -343,19 +344,43 @@
             });
 
             // Chart: Severity differences between AI and radiologist
-            const diffs = Object.keys(data.severity_differences || {}).map(Number).sort((a, b) => a - b);
-            const diffCounts = diffs.map(diff => data.severity_differences[diff]);
-            
+            // Group raw diffs into 5 interpretable bands
+            const rawDiffs = data.severity_differences || {};
+            const bands = [
+                { label: 'AI much lower\n(≤ −3)',  min: -Infinity, max: -3, color: '#ef4444', border: '#b91c1c' },
+                { label: 'AI lower\n(−1 or −2)',   min: -2,        max: -1, color: '#f97316', border: '#c2410c' },
+                { label: 'AI agrees\n(0)',           min: 0,         max:  0, color: '#22c55e', border: '#15803d' },
+                { label: 'AI higher\n(+1 or +2)',   min: 1,         max:  2, color: '#60a5fa', border: '#1d4ed8' },
+                { label: 'AI much higher\n(≥ +3)', min: 3,         max: Infinity, color: '#818cf8', border: '#4338ca' },
+            ];
+            let totalExams = 0;
+            const bandCounts = bands.map(b => {
+                const n = Object.entries(rawDiffs).reduce((sum, [k, v]) => {
+                    const d = Number(k);
+                    return (d >= b.min && d <= b.max) ? sum + v : sum;
+                }, 0);
+                totalExams += n;
+                return n;
+            });
+
+            // Summary line: % within ±1 of radiologist
+            const within1 = (bandCounts[1] + bandCounts[2] + bandCounts[3]);
+            const pct = totalExams > 0 ? Math.round(within1 / totalExams * 100) : 0;
+            document.getElementById('severityDiffSummary').textContent =
+                totalExams > 0
+                    ? `${pct}% of exams where AI severity is within ±1 of radiologist (${within1} of ${totalExams})`
+                    : 'No comparable exams yet.';
+
             if (severityDiffChart) severityDiffChart.destroy();
             severityDiffChart = new Chart(document.getElementById("severityDiffChart"), {
                 type: 'bar',
                 data: {
-                    labels: diffs,
+                    labels: bands.map(b => b.label),
                     datasets: [{
-                        label: 'Number of Exams',
-                        data: diffCounts,
-                        backgroundColor: diffs.map(diff => diff > 0 ? '#ef4444' : (diff < 0 ? '#22c55e' : '#94a3b8')),
-                        borderColor: diffs.map(diff => diff > 0 ? '#ef4444' : (diff < 0 ? '#22c55e' : '#94a3b8')),
+                        label: 'Exams',
+                        data: bandCounts,
+                        backgroundColor: bands.map(b => b.color),
+                        borderColor: bands.map(b => b.border),
                         borderWidth: 1
                     }]
                 },
@@ -363,36 +388,37 @@
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: {
-                            display: false
-                        },
-                        title: {
-                            display: false
-                        },
+                        legend: { display: false },
                         tooltip: {
-                            mode: 'index',
-                            intersect: false
+                            callbacks: {
+                                label: ctx => {
+                                    const n = ctx.parsed.y;
+                                    const pct = totalExams > 0 ? ` (${Math.round(n / totalExams * 100)}%)` : '';
+                                    return ` ${n} exam${n !== 1 ? 's' : ''}${pct}`;
+                                },
+                                afterLabel: ctx => {
+                                    const idx = ctx.dataIndex;
+                                    const explanations = [
+                                        'AI assigned a much lower severity than the radiologist — potential under-detection',
+                                        'AI assigned a lower severity than the radiologist',
+                                        'AI and radiologist assigned the same severity',
+                                        'AI assigned a higher severity than the radiologist',
+                                        'AI assigned a much higher severity than the radiologist — potential over-detection',
+                                    ];
+                                    return explanations[idx];
+                                }
+                            }
                         }
                     },
                     scales: {
                         x: {
-                            grid: {
-                                display: false
-                            },
-                            title: {
-                                display: true,
-                                text: 'Severity Difference (AI - Radiologist)'
-                            }
+                            grid: { display: false },
+                            ticks: { font: { size: 11 } }
                         },
                         y: {
                             beginAtZero: true,
-                            grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                            },
-                            title: {
-                                display: true,
-                                text: 'Number of Exams'
-                            }
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            title: { display: true, text: 'Number of Exams' }
                         }
                     }
                 }
