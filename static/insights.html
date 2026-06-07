@@ -141,8 +141,8 @@
                         <span id="totalRequeued">0</span>
                     </article>
                     <article>
-                        <strong>Avg Latency Improvement</strong>
-                        <span id="latencyImprovement">0s</span>
+                        <strong>Avg Latency (requeued)</strong>
+                        <span id="latencyImprovement">—</span>
                     </article>
                 </div>
             </section>
@@ -215,9 +215,10 @@
             // Update system metrics
             if (data.requeue_analysis) {
                 document.getElementById('totalRequeued').textContent = data.requeue_analysis.total_requeued || 0;
-                document.getElementById('latencyImprovement').textContent = 
-                    data.requeue_analysis.avg_latency_improvement ? 
-                    `${data.requeue_analysis.avg_latency_improvement}s` : '0s';
+                document.getElementById('latencyImprovement').textContent =
+                    data.requeue_analysis.avg_latency
+                        ? `${data.requeue_analysis.avg_latency}s`
+                        : '—';
             }
 
             // Chart: Processing times by region
