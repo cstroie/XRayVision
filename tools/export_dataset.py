@@ -197,7 +197,7 @@ def process_record(record, images_source_dir, split_dirs, stats, processed_count
     # Verify image file exists before processing
     if not os.path.exists(source_image_path):
         logging.warning(f"Image file not found: {source_image_path}")
-        return None, processed_count, skipped_count + 1
+        return None, None, processed_count, skipped_count + 1
 
     # Generate MD5 hash of the original filename for anonymization
     md5_filename = generate_md5_filename(f"{xray_id}.png")

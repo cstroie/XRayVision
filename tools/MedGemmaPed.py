@@ -177,15 +177,12 @@ def collate_fn(examples: list[dict[str, any]]):
     labels = batch["input_ids"].clone()
 
     # Mask image tokens
-    image_token_id = [
-        processor.tokenizer.convert_tokens_to_ids(
-            processor.tokenizer.special_tokens_map["boi_token"]
-        )
-    ]
+    image_token_id = processor.tokenizer.convert_tokens_to_ids(
+        processor.tokenizer.special_tokens_map["boi_token"]
+    )
     # Mask tokens that are not used in the loss computation
     labels[labels == processor.tokenizer.pad_token_id] = -100
     labels[labels == image_token_id] = -100
-    labels[labels == 262144] = -100 # MedGemma specific image token ID
 
     batch["labels"] = labels
     return batch
