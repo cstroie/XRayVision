@@ -1433,7 +1433,7 @@ def db_check_study_exists(study_uid):
     return len(results) > 0
 
 
-async def db_get_stats():
+def db_get_stats():
     """
     Retrieve comprehensive statistics from the database for dashboard
     display.
@@ -2850,7 +2850,7 @@ async def stats_handler(request):
         web.json_response: JSON response with statistical data
     """
     try:
-        return web.json_response(await db_get_stats())
+        return web.json_response(await asyncio.to_thread(db_get_stats))
     except Exception as e:
         logging.error(f"Exams page error: {e}")
         return web.json_response([], status = 500)
