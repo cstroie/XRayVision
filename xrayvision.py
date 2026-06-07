@@ -3037,7 +3037,7 @@ async def diagnostics_stats_handler(request):
         return web.json_response({}, status = 500)
 
 
-async def db_get_processing_times_by_region():
+def db_get_processing_times_by_region():
     """Get processing time analysis by region.
     
     Returns:
@@ -3058,7 +3058,7 @@ async def db_get_processing_times_by_region():
     """
     return db_execute_query(query, fetch_mode='all')
 
-async def db_get_rad_severity_distribution():
+def db_get_rad_severity_distribution():
     """Get severity distribution for radiologist reports.
     
     Returns:
@@ -3075,7 +3075,7 @@ async def db_get_rad_severity_distribution():
     """
     return db_execute_query(query, fetch_mode='all')
 
-async def db_get_ai_severity_distribution():
+def db_get_ai_severity_distribution():
     """Get severity distribution for AI reports.
     
     Returns:
@@ -3092,7 +3092,7 @@ async def db_get_ai_severity_distribution():
     """
     return db_execute_query(query, fetch_mode='all')
 
-async def db_get_severity_differences():
+def db_get_severity_differences():
     """Get severity differences between AI and radiologist reports.
     
     Returns:
@@ -3113,7 +3113,7 @@ async def db_get_severity_differences():
     """
     return db_execute_query(query, fetch_mode='all')
 
-async def db_get_age_distribution_insights(severity_threshold):
+def db_get_age_distribution_insights(severity_threshold):
     """Get patient demographics insights by age group.
     
     Args:
@@ -3163,7 +3163,7 @@ async def db_get_age_distribution_insights(severity_threshold):
     """
     return db_execute_query(query, (severity_threshold,), fetch_mode='all')
 
-async def db_get_hourly_patterns():
+def db_get_hourly_patterns():
     """Get temporal patterns by hour of day.
     
     Returns:
@@ -3180,7 +3180,7 @@ async def db_get_hourly_patterns():
     """
     return db_execute_query(query, fetch_mode='all')
 
-async def db_get_requeue_analysis():
+def db_get_requeue_analysis():
     """Get re-queue analysis data.
     
     Returns:
@@ -3199,7 +3199,7 @@ async def db_get_requeue_analysis():
     """
     return db_execute_query(query, fetch_mode='one')
 
-async def db_get_radiologist_metrics():
+def db_get_radiologist_metrics():
     """Get radiologist consistency metrics.
     
     Returns:
@@ -3241,7 +3241,7 @@ async def insights_handler(request):
         insights = {}
         
         # 1. Processing time analysis by region
-        rows = await db_get_processing_times_by_region()
+        rows = db_get_processing_times_by_region()
         insights['processing_times'] = {}
         if rows:
             for row in rows:
@@ -3252,7 +3252,7 @@ async def insights_handler(request):
                 }
         
         # 2. Severity distribution for radiologist reports
-        rows = await db_get_rad_severity_distribution()
+        rows = db_get_rad_severity_distribution()
         insights['rad_severity_distribution'] = {}
         if rows:
             for row in rows:
@@ -3260,7 +3260,7 @@ async def insights_handler(request):
                 insights['rad_severity_distribution'][str(severity)] = count
                 
         # 2b. Severity distribution for AI reports
-        rows = await db_get_ai_severity_distribution()
+        rows = db_get_ai_severity_distribution()
         insights['ai_severity_distribution'] = {}
         if rows:
             for row in rows:
@@ -3268,7 +3268,7 @@ async def insights_handler(request):
                 insights['ai_severity_distribution'][str(severity)] = count
         
         # 2c. Severity differences between AI and radiologist reports
-        rows = await db_get_severity_differences()
+        rows = db_get_severity_differences()
         insights['severity_differences'] = {}
         if rows:
             for row in rows:
@@ -3276,7 +3276,7 @@ async def insights_handler(request):
                 insights['severity_differences'][str(diff)] = count
         
         # 3. Patient demographics insights (positive findings by age group)
-        rows = await db_get_age_distribution_insights(SEVERITY_THRESHOLD)
+        rows = db_get_age_distribution_insights(SEVERITY_THRESHOLD)
         insights['age_distribution'] = {}
         if rows:
             for row in rows:
@@ -3288,7 +3288,7 @@ async def insights_handler(request):
                 }
         
         # 4. Temporal patterns (exams by hour of day)
-        rows = await db_get_hourly_patterns()
+        rows = db_get_hourly_patterns()
         insights['hourly_patterns'] = {}
         if rows:
             for row in rows:
@@ -3296,7 +3296,7 @@ async def insights_handler(request):
                 insights['hourly_patterns'][str(hour)] = count
         
         # 5. Re-queue analysis
-        row = await db_get_requeue_analysis()
+        row = db_get_requeue_analysis()
         if row:
             total_requeued, avg_latency = row
             insights['requeue_analysis'] = {
@@ -3305,7 +3305,7 @@ async def insights_handler(request):
             }
         
         # 6. Radiologist consistency (if we have multiple reports for same exam)
-        rows = await db_get_radiologist_metrics()
+        rows = db_get_radiologist_metrics()
         insights['radiologist_metrics'] = {}
         if rows:
             for row in rows:
@@ -3814,7 +3814,7 @@ async def get_report_handler(request):
                 if not exam['patient']['id']:
                     async with aiohttp.ClientSession() as session:
                         # Format patient name as "last_name first_name" for FHIR search
-                        formatted_name = await format_patient_name_for_fhir(exam['patient']['name'])
+                        formatted_name = format_patient_name_for_fhir(exam['patient']['name'])
                         patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'], formatted_name)
                         if patient_id:
                             exam['patient']['id'] = patient_id
@@ -4909,7 +4909,7 @@ def determine_patient_gender_description(info):
     return gender
 
 
-async def format_patient_name_for_fhir(dicom_name):
+def format_patient_name_for_fhir(dicom_name):
     """
     Format DICOM patient name as "last_name first_name" for FHIR search.
     
@@ -5015,7 +5015,7 @@ async def get_fhir_patient(session, cnp, patient_name=None):
         try:
             # Format patient name as "last_name first_name" for FHIR search if it's in DICOM format
             if '^' in patient_name:
-                formatted_name = await format_patient_name_for_fhir(patient_name)
+                formatted_name = format_patient_name_for_fhir(patient_name)
             else:
                 formatted_name = patient_name.strip()
             
