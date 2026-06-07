@@ -20,6 +20,7 @@ import os
 import re
 import sqlite3
 import random
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -593,8 +594,6 @@ def db_execute_query_retry(query: str, params: tuple = (), max_retries: int = 5)
                 return cursor.rowcount
             except sqlite3.OperationalError as e:
                 if "database is locked" in str(e) and attempt < max_retries - 1:
-                    # Use sync sleep for synchronous function
-                    import time
                     time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
                     continue
                 conn.rollback()
