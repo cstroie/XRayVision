@@ -87,6 +87,7 @@ DEFAULT_CONFIG = {
         'AE_PORT': '4010',
         'REMOTE_AE_TITLE': 'DICOM_SERVER',
         'REMOTE_AE_IP': '192.168.1.1',
+        'DICOM_MODALITIES': 'CR,DX',
         'REMOTE_AE_PORT': '104',
         'RETRIEVAL_METHOD': 'C-MOVE'
     },
@@ -225,6 +226,7 @@ AE_TITLE = config.get('dicom', 'AE_TITLE')
 REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
 REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
 RETRIEVAL_METHOD = config.get('dicom', 'RETRIEVAL_METHOD')
+DICOM_MODALITIES = [m.strip().upper() for m in config.get('dicom', 'DICOM_MODALITIES', fallback='CR,DX').split(',')]
 FHIR_URL = config.get('fhir', 'FHIR_URL')
 FHIR_USERNAME = config.get('fhir', 'FHIR_USERNAME')
 FHIR_PASSWORD = config.get('fhir', 'FHIR_PASSWORD')
@@ -2149,32 +2151,33 @@ async def query_and_retrieve(minutes=60):
                 time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
                 date_today = current_time.strftime('%Y%m%d')
                 queries = [(date_today, time_range)]
-            # Perform one or two queries, as needed
-            for study_date, time_range in queries:
-                # The query dataset
-                ds = Dataset()
-                ds.QueryRetrieveLevel = "STUDY"
-                ds.StudyDate = study_date
-                ds.StudyTime = time_range
-                ds.Modality = "CR"
-                # Get the responses list
-                responses = assoc.send_c_find(
-                    ds,
-                    PatientRootQueryRetrieveInformationModelFind
-                )
-                # Ask for each one to be sent
-                for (status, identifier) in responses:
-                    if status and status.Status in (0xFF00, 0xFF01):
-                        study_instance_uid = identifier.StudyInstanceUID
-                        # Check if this study is already in our database
-                        if db_check_study_exists(study_instance_uid):
-                            logging.info(f"Skipping Study {study_instance_uid} - already in database")
-                            continue
-                        logging.info(f"Found Study {study_instance_uid}")
-                        if RETRIEVAL_METHOD.upper() == 'C-GET':
-                            send_c_get(ae, study_instance_uid)
-                        else:
-                            send_c_move(ae, study_instance_uid)
+            # Perform queries for each configured modality and date range
+            for modality in DICOM_MODALITIES:
+                for study_date, time_range in queries:
+                    # The query dataset
+                    ds = Dataset()
+                    ds.QueryRetrieveLevel = "STUDY"
+                    ds.StudyDate = study_date
+                    ds.StudyTime = time_range
+                    ds.Modality = modality
+                    # Get the responses list
+                    responses = assoc.send_c_find(
+                        ds,
+                        PatientRootQueryRetrieveInformationModelFind
+                    )
+                    # Ask for each one to be sent
+                    for (status, identifier) in responses:
+                        if status and status.Status in (0xFF00, 0xFF01):
+                            study_instance_uid = identifier.StudyInstanceUID
+                            # Check if this study is already in our database
+                            if db_check_study_exists(study_instance_uid):
+                                logging.info(f"Skipping Study {study_instance_uid} - already in database")
+                                continue
+                            logging.info(f"Found Study {study_instance_uid}")
+                            if RETRIEVAL_METHOD.upper() == 'C-GET':
+                                send_c_get(ae, study_instance_uid)
+                            else:
+                                send_c_move(ae, study_instance_uid)
         except Exception as e:
             logging.error(f"Error during QueryRetrieve: {e}")
         finally:
@@ -2298,7 +2301,7 @@ def dicom_store(event):
                 logging.debug(f"Updated study/series info for exam {uid}")
         
         logging.debug(f"Skipping already processed image {uid}")
-    elif ds.Modality == "CR":
+    elif ds.Modality in DICOM_MODALITIES:
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
         try:
             ds.save_as(dicom_file, enforce_file_format=True)
