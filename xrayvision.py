@@ -6043,7 +6043,7 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
         
     exam_uid = exam['uid']
     exam_datetime = exam['created']
-    exam_type = translate_exam_type_to_fhir(exam.get('type', 'radio'))
+    exam_type = translate_exam_type_to_fhir(exam.get('type') or 'radio')
     exam_region = exam.get('region', '')
     
     # If the exam region is not in our supported regions, try to identify it again from the report text
@@ -6084,7 +6084,11 @@ async def process_single_exam_without_rad_report(session, exam, patient_id):
     # If no service request found, log and return
     if not srv_req or 'id' not in srv_req:
         # Check if exam is older than 1 month
-        exam_date = datetime.strptime(exam_datetime, "%Y-%m-%d %H:%M:%S")
+        try:
+            exam_date = datetime.strptime(exam_datetime, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            logging.warning(f"Cannot parse exam datetime '{exam_datetime}' for exam {exam_uid}, treating as recent")
+            return
         one_month_ago = datetime.now() - timedelta(days=30)
         is_old_exam = exam_date < one_month_ago
 
