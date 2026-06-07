@@ -385,7 +385,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid, normal: normal })
             })
-            .then(response => response.json())
+            .then(response => { if (!response.ok) throw new Error(response.status); return response.json(); })
             .then(data => {
                 loadPage(currentPage);
                 console.log('Status update:', data.status);
@@ -401,7 +401,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid })
             })
-            .then(response => response.json())
+            .then(response => { if (!response.ok) throw new Error(response.status); return response.json(); })
             .then(data => {
                 if (data.status === 'success') {
                     showToast("Exam re-queued for processing");
@@ -421,7 +421,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ uid: uid })
             })
-            .then(response => response.json())
+            .then(response => { if (!response.ok) throw new Error(response.status); return response.json(); })
             .then(data => {
                 if (data.status === 'success') {
                     showToast("Retrieving radiologist report");
@@ -446,7 +446,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ hours: parseInt(hours) })
             })
-            .then(response => response.json())
+            .then(response => { if (!response.ok) throw new Error(response.status); return response.json(); })
             .then(data => {
                 console.log('Query triggered:', data);
                 showToast("Query triggered");
@@ -486,7 +486,7 @@
             }
             // Fetch the updated exam data
             fetch(`/api/exams/${uid}`)
-                .then(res => res.json())
+                .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
                 .then(exam => {
                     // Update the card with new data
                     renderSingleExam(card, exam);
@@ -643,7 +643,7 @@
             const queryString = params.toString();
             const url = `/api/exams?${queryString}`;
             fetch(url)
-                .then(res => res.json())
+                .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
                 .then(data => {
                     const exams = data.exams || [];
                     const totalCount = data.total || 0;
@@ -764,7 +764,7 @@
 
         // Populate regions dropdown
         fetch('/api/regions')
-            .then(res => res.json())
+            .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
             .then(regions => {
                 const regionSelect = document.getElementById('region-list');
                 regions.forEach(region => {
@@ -782,7 +782,7 @@
 
         // Populate diagnostics dropdown
         fetch('/api/diagnostics')
-            .then(res => res.json())
+            .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
             .then(diagnostics => {
                 const diagnosticsList = document.getElementById('diagnostics-list');
                 Object.keys(diagnostics).forEach(diag => {
@@ -798,7 +798,7 @@
 
         // Populate radiologists dropdown
         fetch('/api/radiologists')
-            .then(res => res.json())
+            .then(res => { if (!res.ok) throw new Error(res.status); return res.json(); })
             .then(radiologists => {
                 const radiologistsList = document.getElementById('radiologists-list');
                 Object.keys(radiologists).forEach(rad => {
