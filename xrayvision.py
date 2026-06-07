@@ -2584,16 +2584,19 @@ def convert_dicom_to_png(dicom_file, max_size = 896):
         maxval = np.percentile(image, 99)
         image = np.clip(image, minval, maxval)
         # Normalize image to 0-255
-        image -= image.min()
-        if image.max() != 0:
-            image /= image.max()
-        image *= 255.0
+        img_min = image.min()
+        img_max = image.max()
+        if img_max > img_min:
+            image = (image - img_min) / (img_max - img_min) * 255.0
+        else:
+            image = np.zeros_like(image)
         # Save as 8 bit
         image = image.astype(np.uint8)
         # Auto adjust gamma
         image = apply_gamma_correction(image)
         # Save the PNG file
-        cv2.imwrite(png_file, image)
+        if not cv2.imwrite(png_file, image):
+            raise IOError(f"cv2.imwrite failed to write {png_file}")
         logging.debug(f"Converted PNG saved to {png_file}")
         # Return the PNG file name
         return png_file
