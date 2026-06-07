@@ -104,6 +104,7 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 - `confidence`: 0–100, -1 = not assessed (AI reports only).
 - `correct`: 1 = AI correct, 0 = AI incorrect, -1 = not yet reviewed. **Never use truthiness checks** (`correct and ...`) — `-1` is truthy and indistinguishable from `1`. Always use `== 1`, `== 0`, `== -1`.
 - `SEVERITY_THRESHOLD` (default 5) gates which positive findings trigger ntfy.sh notifications.
+- `rad_reports.id = -1` is the "stop retrying" sentinel for FHIR lookups. `db_get_exams_without_rad_report()` filters `rr.id IS NULL OR rr.id > 0`, so any exam with `id = -1` is permanently excluded from `fhir_loop`. Insert this stub when a patient cannot be resolved in FHIR (404 or ambiguous name match) to prevent infinite retries.
 
 ---
 
