@@ -82,6 +82,7 @@ Optional arguments:
 * `--model` - Model name to use for analysis
 * `--retrieval-method` - DICOM retrieval method (C-MOVE or C-GET)
 * `--log-level` - Set logging level (DEBUG, INFO, WARNING, ERROR)
+* `--translate-existing` - Translate existing radiologist reports that lack an English translation
 
 4. Open the dashboard:
 
@@ -158,33 +159,49 @@ Recorded events:
 
 ## API Endpoints
 
+Pages:
 * `/` - Main dashboard
 * `/stats` - Statistics page
+* `/stats/radiologists` - Radiologist statistics page
+* `/stats/diagnostics` - Diagnostics statistics page
+* `/stats/insights` - Insights page
 * `/about` - About page
 * `/check` - Report check page
 * `/ws` - WebSocket for real-time updates
+
+Data API:
 * `/api/exams` - Get exams with pagination and filtering
-* `/api/stats` - Get statistics data
-* `/api/config` - Get configuration parameters
-* `/api/regions` - Get supported regions
+* `/api/exams/{uid}` - Get exam by UID
 * `/api/patients` - Get patients with pagination and filtering
 * `/api/patients/{cnp}` - Get patient by CNP
-* `/api/exams/{uid}` - Get exam by UID
-* `/api/radreview` - Record radiologist review of an exam
-* `/api/requeue` - Re-queue an exam for processing
-* `/api/dicomquery` - Manually trigger DICOM QueryRetrieve
-* `/api/check` - Analyze a free-text radiology report
-* `/api/analyse` - Perform detailed three-pass analysis of a radiology report
-* `/api/translate` - Translate a Romanian radiology report to English
-* `/api/getrad` - Retrieve radiologist report from FHIR
+* `/api/stats` - Get overall statistics
+* `/api/stats/radiologists` - Get per-radiologist statistics
+* `/api/stats/radiologists/monthly_trends` - Get radiologist monthly trends
+* `/api/stats/diagnostics` - Get per-diagnostic statistics
+* `/api/stats/insights` - Get analytical insights
+* `/api/regions` - Get supported anatomic regions
+* `/api/diagnostics` - Get distinct diagnostics and counts
+* `/api/diagnostics/monthly_trends` - Get diagnostics monthly trends
+* `/api/radiologists` - Get radiologist names
+* `/api/severity` - Get severity distribution
+* `/api/config` - Get configuration parameters
 * `/api/spec` - Get OpenAPI specification
+
+Actions:
+* `/api/radreview` - Record radiologist review of an exam
+* `/api/requeue` - Re-queue an exam for AI processing
+* `/api/dicomquery` - Manually trigger DICOM QueryRetrieve
+* `/api/getrad` - Retrieve radiologist report from FHIR
+
+AI endpoints (rate-limited):
+* `/api/check` - Analyze a free-text radiology report
+* `/api/analyse` - Perform detailed three-pass analysis of a report
+* `/api/translate` - Translate a Romanian radiology report to English
 
 ---
 
 ## Future Improvements
 
-* Enhanced user management with role-based access control
-* Export functionality for reports
+* Export functionality for reports and datasets
 * Integration with more DICOM modalities
-* Improved error handling and recovery mechanisms
 * Enhanced statistics and reporting capabilities

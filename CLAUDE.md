@@ -141,8 +141,8 @@ When fixing issues from `issues.txt`:
 
 ## Known issues / active work
 
-- AI translation sometimes returns plain text instead of JSON (`{"translation": "..."}`) — parser fails and logs ERROR. Tracked in `TODO`.
-- Issues backlog in `issues.txt`: transaction isolation, WebSocket cleanup, FHIR response validation, rate limiting, path validation.
+- `translate_report()` expects the model to wrap the translation in ` ```text``` ` code fences. If the model returns plain text (no fences), the response is discarded and the function returns `None`. This is a known model behaviour issue with some versions of MedGemma.
+- Issues backlog in `issues.txt`: transaction isolation, WebSocket cleanup, FHIR response validation, path validation.
 - `acronyms.txt` / `find_acronyms.py` tools exist for expanding Romanian medical abbreviations (in progress).
 
 ## Common pitfalls (learned from bug-fix sessions)
