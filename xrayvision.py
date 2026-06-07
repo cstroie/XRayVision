@@ -2795,7 +2795,7 @@ async def exams_handler(request):
         return web.json_response({
             "exams": data,
             "total": total,
-            "pages": int(total / PAGE_SIZE) + 1,
+            "pages": math.ceil(total / PAGE_SIZE) if total else 1,
             "filters": filters,
         })
     except Exception as e:
@@ -3558,7 +3558,7 @@ async def patients_handler(request):
         return web.json_response({
             "patients": patients,
             "total": total,
-            "pages": int(total / PAGE_SIZE) + 1,
+            "pages": math.ceil(total / PAGE_SIZE) if total else 1,
             "filters": filters,
         })
     except Exception as e:
