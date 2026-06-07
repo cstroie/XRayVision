@@ -6465,6 +6465,7 @@ async def translate_existing_reports():
             SELECT uid, text
             FROM rad_reports
             WHERE text IS NOT NULL
+            AND text != ''
             AND (text_en IS NULL OR text_en = '')
             LIMIT 100
         """
@@ -6479,7 +6480,7 @@ async def translate_existing_reports():
         for row in rows:
             uid, report_text = row
             try:
-                logging.info(f"Translating report for exam {uid}")
+                logging.debug(f"Translating report for exam {uid}")
                 translation = await translate_report(report_text)
 
                 if translation:
