@@ -149,6 +149,16 @@
     </main>
 
     <script>
+        function sanitize(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         // Chart instances
         let processingTimeChart, severityChart, severityDiffChart, ageChart, hourlyChart;
 
@@ -243,11 +253,6 @@
                     },
                     scales: {
                         x: {
-                            grid: {
-                                display: false
-                            }
-                        },
-                        y: {
                             beginAtZero: true,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
@@ -255,6 +260,11 @@
                             title: {
                                 display: true,
                                 text: 'Seconds'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
                             }
                         }
                     },
@@ -390,9 +400,9 @@
 
             // Chart: Age distribution
             const ageGroups = Object.keys(data.age_distribution || {}).sort((a, b) => {
-                // Sort age groups numerically
-                if (a === '> 18') return 1;
-                if (b === '> 18') return -1;
+                // Sort age groups numerically; '< 18' has no hyphen so sort it first
+                if (a === '< 18') return -1;
+                if (b === '< 18') return 1;
                 const aStart = parseInt(a.split('-')[0]);
                 const bStart = parseInt(b.split('-')[0]);
                 return aStart - bStart;
@@ -547,7 +557,7 @@
                     const metrics = data.radiologist_metrics[radiologist];
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <th scope="row">${radiologist}</th>
+                        <th scope="row">${sanitize(radiologist)}</th>
                         <td style="text-align: right;">${metrics.reports_count}</td>
                         <td style="text-align: right;">${metrics.avg_severity}</td>
                         <td style="text-align: right;">${metrics.unique_exams}</td>

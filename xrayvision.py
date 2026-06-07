@@ -3360,12 +3360,14 @@ async def insights_handler(request):
             }
         
         # 6. Radiologist consistency (if we have multiple reports for same exam)
+        user_role = getattr(request, 'user_role', 'user')
         rows = db_get_radiologist_metrics()
         insights['radiologist_metrics'] = {}
         if rows:
             for row in rows:
                 radiologist, reports_count, avg_severity, unique_exams = row
-                insights['radiologist_metrics'][radiologist] = {
+                display_name = radiologist if user_role == 'admin' else extract_radiologist_initials(radiologist)
+                insights['radiologist_metrics'][display_name] = {
                     'reports_count': reports_count,
                     'avg_severity': round(avg_severity, 1) if avg_severity else 0,
                     'unique_exams': unique_exams,
