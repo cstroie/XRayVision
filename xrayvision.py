@@ -1364,7 +1364,6 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         LEFT JOIN ai_reports ar ON e.uid = ar.uid
         LEFT JOIN rad_reports rr ON e.uid = rr.uid
     """
-    count_params = []
     if conditions:
         count_query += ' WHERE ' + " AND ".join(conditions)
     total_row = db_execute_query(count_query, tuple(params), fetch_mode='one')
