@@ -147,6 +147,7 @@ When fixing issues from `issues.txt`:
 - `translate_report()` expects the model to wrap the translation in ` ```text``` ` code fences. If the model returns plain text (no fences), the response is discarded and the function returns `None`. This is a known model behaviour issue with some versions of MedGemma.
 - Issues backlog in `issues.txt`: transaction isolation, WebSocket cleanup, FHIR response validation, path validation.
 - `acronyms.txt` / `find_acronyms.py` tools exist for expanding Romanian medical abbreviations (in progress).
+- `[questions]` config section is loaded into `REGION_QUESTIONS` and passed to `create_exam_prompt()` but the `{question}` placeholder is not present in `usr_prompt.txt`, so questions are currently unused. Left in place intentionally — superseded by `[templates]`.
 
 ## Common pitfalls (learned from bug-fix sessions)
 
@@ -154,6 +155,7 @@ When fixing issues from `issues.txt`:
 - **`GROUP_CONCAT` separator**: default separator `,` breaks `.split()` when values contain commas. Use `'||'` as separator and split on `'||'`.
 - **Config delimiter for multi-item values with commas**: `[templates]` uses `|` as separator because items contain commas inside parentheses. Apply the same pattern for any future config list whose items may contain commas.
 - **Blocking calls in async functions**: `process_dicom_file()` (PIL conversion) and file reads in `prepare_exam_data()` must run via `asyncio.to_thread()` — calling them directly blocks the event loop and makes the web server unreachable during DICOM ingestion.
+- **Translation before AI is ready**: `translate_existing_reports()` polls `active_openai_url` (30 s interval) before querying the DB. Inline translation in `get_rad_report()` returns `False` immediately if the URL is not set, letting `fhir_loop` retry. Never call `translate_report()` when `active_openai_url is None`.
 - **`SUM(CASE …)` returns NULL** (not 0) when no rows match — always guard with `or 0` in Python after fetching.
 - **`HAVING` with column aliases**: SQLite does not allow `HAVING alias > N`. Use `HAVING COUNT(*) > N` or repeat the expression.
 - **`isCorrect === null` vs `=== false`** in JS: `null` means not reviewed, `false` means wrong. Never use `!isCorrect` to mean "incorrect" — it catches both.
