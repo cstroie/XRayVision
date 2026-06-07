@@ -2376,8 +2376,8 @@ async def load_existing_dicom_files():
             else:
                 logging.debug(f"Adding {uid} into processing queue...")
                 full_path = os.path.join(IMAGES_DIR, dicom_file)
-                # Process the DICOM file
-                process_dicom_file(full_path, uid)
+                # Process the DICOM file off the event loop (PIL conversion is CPU-heavy)
+                await asyncio.to_thread(process_dicom_file, full_path, uid)
     # At the end, update the dashboard
     await broadcast_dashboard_update()
 
@@ -5741,8 +5741,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
         # Try to get additional patient and exam information from FHIR before processing
         await update_patient_info_from_fhir(exam)
                             
-        # Prepare exam data
-        region, question, subject, anatomy, image_bytes = prepare_exam_data(exam)
+        # Prepare exam data (file read + image metadata — keep off event loop)
+        region, question, subject, anatomy, image_bytes = await asyncio.to_thread(prepare_exam_data, exam)
         if region is None:  # Exam should be ignored
             return False
             

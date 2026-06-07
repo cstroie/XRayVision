@@ -600,7 +600,7 @@ tbody tr:hover {
     }
 }
 
-#trendsChart, #monthlyTrendsChart {
+#trendsChart, #monthlyTrendsChart, #accuracyDriftChart {
     height: 300px !important;
 }
 
