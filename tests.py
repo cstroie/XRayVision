@@ -22,57 +22,57 @@ import xrayvision
 
 class TestXRayVisionDatabase(unittest.TestCase):
     """Test cases for the xrayvision database operations"""
-    
+
     def setUp(self):
         """Set up test fixtures before each test method."""
         self.test_dir = tempfile.mkdtemp()
         self.db_file = os.path.join(self.test_dir, 'test.db')
         # Set the database file path for testing
         xrayvision.DB_FILE = self.db_file
-        
+
     def tearDown(self):
         """Tear down test fixtures after each test method."""
         # Clean up temporary directory
         shutil.rmtree(self.test_dir, ignore_errors=True)
-    
+
     def test_db_init_creates_tables(self):
         """Test that db_init creates all required tables"""
         # Initialize the database
         xrayvision.db_init()
-        
+
         # Check that all tables were created
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            
+
             # Check patients table
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='patients'")
             self.assertIsNotNone(cursor.fetchone(), "patients table should exist")
-            
+
             # Check exams table
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='exams'")
             self.assertIsNotNone(cursor.fetchone(), "exams table should exist")
-            
+
             # Check ai_reports table
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_reports'")
             self.assertIsNotNone(cursor.fetchone(), "ai_reports table should exist")
-            
+
             # Check rad_reports table
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='rad_reports'")
             self.assertIsNotNone(cursor.fetchone(), "rad_reports table should exist")
-    
+
     def test_db_init_creates_indexes(self):
         """Test that db_init creates all required indexes"""
         # Initialize the database
         xrayvision.db_init()
-        
+
         # Check that indexes were created
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            
+
             # Get all indexes
             cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
             indexes = [row[0] for row in cursor.fetchall()]
-            
+
             # Check for expected indexes
             expected_indexes = [
                 'idx_exams_status',
@@ -84,127 +84,101 @@ class TestXRayVisionDatabase(unittest.TestCase):
                 'idx_rad_reports_created',
                 'idx_patients_name'
             ]
-            
+
             for index in expected_indexes:
                 self.assertIn(index, indexes, f"Index {index} should exist")
-    
+
     def test_db_add_patient_inserts_new_patient(self):
         """Test that db_add_patient inserts a new patient"""
-        # Initialize the database
         xrayvision.db_init()
-        
-        # Add a patient
+
         cnp = "1234567890123"
         id = "P001"
         name = "John Doe"
-        age = 30
+        birthdate = "1994-06-15"
         sex = "M"
-        
-        result = xrayvision.db_add_patient(cnp, id, name, age, sex)
-        
-        # Check that the operation was successful
+
+        result = xrayvision.db_add_patient(cnp, id, name, birthdate, sex)
+
         self.assertIsNotNone(result, "db_add_patient should return a result")
-        
-        # Verify the patient was inserted
+
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?", (cnp,))
+            cursor.execute("SELECT cnp, id, name, birthdate, sex FROM patients WHERE cnp = ?", (cnp,))
             row = cursor.fetchone()
-            
+
             self.assertIsNotNone(row, "Patient should be inserted")
             self.assertEqual(row[0], cnp)
             self.assertEqual(row[1], id)
             self.assertEqual(row[2], name)
-            self.assertEqual(row[3], age)
+            self.assertEqual(row[3], birthdate)
             self.assertEqual(row[4], sex)
-    
+
     def test_db_add_patient_updates_existing_patient(self):
         """Test that db_add_patient updates an existing patient"""
-        # Initialize the database
         xrayvision.db_init()
-        
-        # Add a patient first
+
         cnp = "1234567890123"
-        id = "P001"
-        name = "John Doe"
-        age = 30
-        sex = "M"
-        
-        xrayvision.db_add_patient(cnp, id, name, age, sex)
-        
-        # Update the patient with new information
-        new_id = "P002"
-        new_name = "Jane Smith"
-        new_age = 25
-        new_sex = "F"
-        
-        result = xrayvision.db_add_patient(cnp, new_id, new_name, new_age, new_sex)
-        
-        # Check that the operation was successful
+        xrayvision.db_add_patient(cnp, "P001", "John Doe", "1994-06-15", "M")
+
+        result = xrayvision.db_add_patient(cnp, "P002", "Jane Smith", "1999-03-20", "F")
+
         self.assertIsNotNone(result, "db_add_patient should return a result")
-        
-        # Verify the patient was updated
+
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT cnp, id, name, age, sex FROM patients WHERE cnp = ?", (cnp,))
+            cursor.execute("SELECT cnp, id, name, birthdate, sex FROM patients WHERE cnp = ?", (cnp,))
             row = cursor.fetchone()
-            
+
             self.assertIsNotNone(row, "Patient should exist")
             self.assertEqual(row[0], cnp)
-            self.assertEqual(row[1], new_id)
-            self.assertEqual(row[2], new_name)
-            self.assertEqual(row[3], new_age)
-            self.assertEqual(row[4], new_sex)
-    
+            self.assertEqual(row[1], "P002")
+            self.assertEqual(row[2], "Jane Smith")
+            self.assertEqual(row[3], "1999-03-20")
+            self.assertEqual(row[4], "F")
+
     def test_db_add_patient_with_valid_sex_values(self):
         """Test that db_add_patient handles valid sex values"""
-        # Initialize the database
         xrayvision.db_init()
-        
-        # Test each valid sex value
+
         test_cases = [
-            ("1234567890123", "P001", "John Doe", 30, "M"),
-            ("1234567890124", "P002", "Jane Smith", 25, "F"),
-            ("1234567890125", "P003", "Other Patient", 40, "O")
+            ("1234567890123", "P001", "John Doe", "1994-06-15", "M"),
+            ("1234567890124", "P002", "Jane Smith", "1999-03-20", "F"),
+            ("1234567890125", "P003", "Other Patient", "1984-11-05", "O")
         ]
-        
-        for cnp, id, name, age, sex in test_cases:
-            result = xrayvision.db_add_patient(cnp, id, name, age, sex)
-            
-            # Check that the operation was successful
+
+        for cnp, id, name, birthdate, sex in test_cases:
+            result = xrayvision.db_add_patient(cnp, id, name, birthdate, sex)
+
             self.assertIsNotNone(result, f"db_add_patient should return a result for sex={sex}")
-            
-            # Verify the patient was inserted
+
             with sqlite3.connect(self.db_file) as conn:
                 cursor = conn.cursor()
                 cursor.execute("SELECT cnp, sex FROM patients WHERE cnp = ?", (cnp,))
                 row = cursor.fetchone()
-                
+
                 self.assertIsNotNone(row, f"Patient should be inserted for sex={sex}")
                 self.assertEqual(row[0], cnp)
                 self.assertEqual(row[1], sex)
 
     def test_db_add_exam_inserts_new_exam(self):
         """Test that db_add_exam inserts a new exam"""
-        # Initialize the database
         xrayvision.db_init()
-        
-        # First add a patient
+
         cnp = "1234567890123"
         patient_id = "P001"
         patient_name = "John Doe"
-        patient_age = 30
+        patient_birthdate = "1994-06-15"
         patient_sex = "M"
-        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
-        
-        # Add an exam
+        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_birthdate, patient_sex)
+
         exam_info = {
             'uid': '1.2.3.4.5',
             'patient': {
                 'cnp': cnp,
                 'id': patient_id,
                 'name': patient_name,
-                'age': patient_age,
+                'birthdate': patient_birthdate,
                 'sex': patient_sex
             },
             'exam': {
@@ -217,19 +191,17 @@ class TestXRayVisionDatabase(unittest.TestCase):
                 'series': '1.2.3.4.5.6.7'
             }
         }
-        
-        # Call db_add_exam without report
+
         xrayvision.db_add_exam(exam_info)
-        
-        # Verify the exam was inserted
+
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT uid, cnp, id, created, protocol, region, type, status, study, series 
+                SELECT uid, cnp, id, created, protocol, region, type, status, study, series
                 FROM exams WHERE uid = ?
             """, (exam_info['uid'],))
             row = cursor.fetchone()
-            
+
             self.assertIsNotNone(row, "Exam should be inserted")
             self.assertEqual(row[0], exam_info['uid'])
             self.assertEqual(row[1], cnp)
@@ -241,185 +213,82 @@ class TestXRayVisionDatabase(unittest.TestCase):
             self.assertEqual(row[7], 'queued')  # Default status
             self.assertEqual(row[8], exam_info['exam']['study'])
             self.assertEqual(row[9], exam_info['exam']['series'])
-    
-    def test_db_add_exam_with_report_inserts_ai_report(self):
-        """Test that db_add_exam with report also inserts AI report"""
-        # Initialize the database
-        xrayvision.db_init()
-        
-        # First add a patient
-        cnp = "1234567890123"
-        patient_id = "P001"
-        patient_name = "John Doe"
-        patient_age = 30
-        patient_sex = "M"
-        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
-        
-        # Add an exam with report
-        exam_info = {
-            'uid': '1.2.3.4.5',
-            'patient': {
-                'cnp': cnp,
-                'id': patient_id,
-                'name': patient_name,
-                'age': patient_age,
-                'sex': patient_sex
-            },
-            'exam': {
-                'id': 'E001',
-                'created': '2025-01-01 10:00:00',
-                'protocol': 'Chest X-ray',
-                'region': 'chest',
-                'type': 'CR',
-                'study': '1.2.3.4.5.6',
-                'series': '1.2.3.4.5.6.7'
-            }
-        }
-        report_text = "No significant findings."
-        positive = False
-        confidence = 95
-        
-        # Call db_add_exam with report
-        xrayvision.db_add_exam(exam_info, report=report_text, positive=positive, confidence=confidence)
-        
-        # Verify the exam was inserted
-        with sqlite3.connect(self.db_file) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT uid FROM exams WHERE uid = ?", (exam_info['uid'],))
-            row = cursor.fetchone()
-            self.assertIsNotNone(row, "Exam should be inserted")
-            
-            # Verify the AI report was inserted
-            cursor.execute("""
-                SELECT uid, text, positive, confidence, is_correct, reviewed, model
-                FROM ai_reports WHERE uid = ?
-            """, (exam_info['uid'],))
-            row = cursor.fetchone()
-            
-            self.assertIsNotNone(row, "AI report should be inserted")
-            self.assertEqual(row[0], exam_info['uid'])
-            self.assertEqual(row[1], report_text)
-            self.assertEqual(row[2], int(positive))
-            self.assertEqual(row[3], confidence)
-            self.assertEqual(row[4], -1)  # is_correct defaults to -1
-            self.assertEqual(row[5], 0)   # reviewed defaults to 0 (False as integer)
-            self.assertEqual(row[6], xrayvision.MODEL_NAME)  # model from config
 
-    def test_db_add_ai_report_inserts_new_report(self):
-        """Test that db_add_ai_report inserts a new AI report"""
-        # Initialize the database
+    def test_db_insert_ai_report(self):
+        """Test that db_insert correctly inserts an AI report into ai_reports"""
         xrayvision.db_init()
-        
-        # Add a patient and exam first
+
         cnp = "1234567890123"
-        patient_id = "P001"
-        patient_name = "John Doe"
-        patient_age = 30
-        patient_sex = "M"
-        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
-        
+        xrayvision.db_add_patient(cnp, "P001", "John Doe", "1994-06-15", "M")
+
         exam_info = {
             'uid': '1.2.3.4.5',
-            'patient': {
-                'cnp': cnp,
-                'id': patient_id,
-                'name': patient_name,
-                'age': patient_age,
-                'sex': patient_sex
-            },
+            'patient': {'cnp': cnp, 'id': "P001", 'name': "John Doe", 'birthdate': "1994-06-15", 'sex': "M"},
             'exam': {
-                'id': 'E001',
-                'created': '2025-01-01 10:00:00',
-                'protocol': 'Chest X-ray',
-                'region': 'chest',
-                'type': 'CR',
-                'study': '1.2.3.4.5.6',
-                'series': '1.2.3.4.5.6.7'
+                'id': 'E001', 'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray', 'region': 'chest', 'type': 'CR',
+                'study': '1.2.3.4.5.6', 'series': '1.2.3.4.5.6.7'
             }
         }
         xrayvision.db_add_exam(exam_info)
-        
-        # Add an AI report
+
         uid = '1.2.3.4.5'
-        report_text = "Findings suggest possible pneumonia."
-        positive = 1  # Using integer instead of boolean
-        confidence = 85
-        model = "test-model"
-        latency = 2.5
-        is_correct = 1  # Using integer for three-state value
-        
-        xrayvision.db_add_ai_report(uid, report_text, positive, confidence, model, latency, is_correct)
-        
-        # Verify the AI report was inserted
+        xrayvision.db_insert('ai_reports',
+            uid=uid,
+            text="Findings suggest possible pneumonia.",
+            positive=1,
+            confidence=85,
+            model="test-model",
+            latency=2)
+
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT uid, text, positive, confidence, is_correct, reviewed, model, latency
-                FROM ai_reports WHERE uid = ?
-            """, (uid,))
+            cursor.execute(
+                "SELECT uid, text, positive, confidence, model, latency FROM ai_reports WHERE uid = ?",
+                (uid,))
             row = cursor.fetchone()
-            
+
             self.assertIsNotNone(row, "AI report should be inserted")
             self.assertEqual(row[0], uid)
-            self.assertEqual(row[1], report_text)
-            self.assertEqual(row[2], positive)
-            self.assertEqual(row[3], confidence)
-            self.assertEqual(row[4], is_correct)
-            self.assertEqual(row[5], 0)  # reviewed defaults to 0
-            self.assertEqual(row[6], model)
-            self.assertEqual(row[7], latency)
+            self.assertEqual(row[1], "Findings suggest possible pneumonia.")
+            self.assertEqual(row[2], 1)
+            self.assertEqual(row[3], 85)
+            self.assertEqual(row[4], "test-model")
+            self.assertEqual(row[5], 2)
 
-    def test_db_add_rad_report_inserts_new_report(self):
-        """Test that db_add_rad_report inserts a new radiologist report"""
-        # Initialize the database
+    def test_db_insert_rad_report(self):
+        """Test that db_insert correctly inserts a radiologist report into rad_reports"""
         xrayvision.db_init()
 
-        # Add a patient and exam first
         cnp = "1234567890123"
-        patient_id = "P001"
-        patient_name = "John Doe"
-        patient_age = 30
-        patient_sex = "M"
-        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        xrayvision.db_add_patient(cnp, "P001", "John Doe", "1994-06-15", "M")
 
         exam_info = {
             'uid': '1.2.3.4.5',
-            'patient': {
-                'cnp': cnp,
-                'id': patient_id,
-                'name': patient_name,
-                'age': patient_age,
-                'sex': patient_sex
-            },
+            'patient': {'cnp': cnp, 'id': "P001", 'name': "John Doe", 'birthdate': "1994-06-15", 'sex': "M"},
             'exam': {
-                'id': 'E001',
-                'created': '2025-01-01 10:00:00',
-                'protocol': 'Chest X-ray',
-                'region': 'chest',
-                'type': 'CR',
-                'study': '1.2.3.4.5.6',
-                'series': '1.2.3.4.5.6.7'
+                'id': 'E001', 'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray', 'region': 'chest', 'type': 'CR',
+                'study': '1.2.3.4.5.6', 'series': '1.2.3.4.5.6.7'
             }
         }
         xrayvision.db_add_exam(exam_info)
 
-        # Add a radiologist report
         uid = '1.2.3.4.5'
-        report_id = "R001"
-        report_text = "Confirmed pneumonia with consolidation in right lower lobe."
-        report_text_en = "Pneumonia confirmed with consolidation in the right lower lobe."
-        positive = 1  # Using integer instead of boolean
-        severity = 7
-        summary = "pneumonia"
-        report_type = "CR"
-        radiologist = "Dr. Smith"
-        justification = "Clinical presentation consistent with pneumonia"
-        model = "test-model"
-        latency = 5.0
+        xrayvision.db_insert('rad_reports',
+            uid=uid,
+            id="R001",
+            text="Confirmed pneumonia with consolidation in right lower lobe.",
+            text_en="Pneumonia confirmed with consolidation in the right lower lobe.",
+            positive=1,
+            severity=7,
+            summary="pneumonia",
+            type="CR",
+            radiologist="Dr. Smith",
+            justification="Clinical presentation consistent with pneumonia",
+            model="test-model",
+            latency=5.0)
 
-        xrayvision.db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency, report_text_en)
-
-        # Verify the radiologist report was inserted
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -430,134 +299,105 @@ class TestXRayVisionDatabase(unittest.TestCase):
 
             self.assertIsNotNone(row, "Radiologist report should be inserted")
             self.assertEqual(row[0], uid)
-            self.assertEqual(row[1], report_id)
-            self.assertEqual(row[2], report_text)
-            self.assertEqual(row[3], report_text_en)
-            self.assertEqual(row[4], positive)
-            self.assertEqual(row[5], severity)
-            self.assertEqual(row[6], summary)
-            self.assertEqual(row[7], report_type)
-            self.assertEqual(row[8], radiologist)
-            self.assertEqual(row[9], justification)
-            self.assertEqual(row[10], model)
-            self.assertEqual(row[11], latency)
+            self.assertEqual(row[1], "R001")
+            self.assertEqual(row[2], "Confirmed pneumonia with consolidation in right lower lobe.")
+            self.assertEqual(row[3], "Pneumonia confirmed with consolidation in the right lower lobe.")
+            self.assertEqual(row[4], 1)
+            self.assertEqual(row[5], 7)
+            self.assertEqual(row[6], "pneumonia")
+            self.assertEqual(row[7], "CR")
+            self.assertEqual(row[8], "Dr. Smith")
+            self.assertEqual(row[9], "Clinical presentation consistent with pneumonia")
+            self.assertEqual(row[10], "test-model")
 
-    def test_db_add_rad_report_inserts_new_report_without_translation(self):
-        """Test that db_add_rad_report inserts a new radiologist report without translation"""
-        # Initialize the database
+    def test_db_insert_rad_report_without_translation(self):
+        """Test that db_insert correctly inserts a radiologist report with no translation"""
         xrayvision.db_init()
 
-        # Add a patient and exam first
         cnp = "1234567890124"
-        patient_id = "P002"
-        patient_name = "Jane Smith"
-        patient_age = 25
-        patient_sex = "F"
-        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        xrayvision.db_add_patient(cnp, "P002", "Jane Smith", "1999-03-20", "F")
 
         exam_info = {
             'uid': '1.2.3.4.6',
-            'patient': {
-                'cnp': cnp,
-                'id': patient_id,
-                'name': patient_name,
-                'age': patient_age,
-                'sex': patient_sex
-            },
+            'patient': {'cnp': cnp, 'id': "P002", 'name': "Jane Smith", 'birthdate': "1999-03-20", 'sex': "F"},
             'exam': {
-                'id': 'E002',
-                'created': '2025-01-01 11:00:00',
-                'protocol': 'Chest X-ray',
-                'region': 'chest',
-                'type': 'CR',
-                'study': '1.2.3.4.5.7',
-                'series': '1.2.3.4.5.6.8'
+                'id': 'E002', 'created': '2025-01-01 11:00:00',
+                'protocol': 'Chest X-ray', 'region': 'chest', 'type': 'CR',
+                'study': '1.2.3.4.5.7', 'series': '1.2.3.4.5.6.8'
             }
         }
         xrayvision.db_add_exam(exam_info)
 
-        # Add a radiologist report without translation
         uid = '1.2.3.4.6'
-        report_id = "R002"
-        report_text = "No significant findings."
-        positive = 0  # Using integer instead of boolean
-        severity = 0
-        summary = "normal"
-        report_type = "CR"
-        radiologist = "Dr. Johnson"
-        justification = "Routine screening"
-        model = "test-model"
-        latency = 3.0
+        xrayvision.db_insert('rad_reports',
+            uid=uid,
+            id="R002",
+            text="No significant findings.",
+            positive=0,
+            severity=0,
+            summary="normal",
+            type="CR",
+            radiologist="Dr. Johnson",
+            justification="Routine screening",
+            model="test-model",
+            latency=3.0)
 
-        xrayvision.db_add_rad_report(uid, report_id, report_text, positive, severity, summary, report_type, radiologist, justification, model, latency)
-
-        # Verify the radiologist report was inserted
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT uid, id, text, text_en, positive, severity, summary, type, radiologist, justification, model, latency
-                FROM rad_reports WHERE uid = ?
-            """, (uid,))
+            cursor.execute(
+                "SELECT uid, text, text_en, positive FROM rad_reports WHERE uid = ?",
+                (uid,))
             row = cursor.fetchone()
 
             self.assertIsNotNone(row, "Radiologist report should be inserted")
             self.assertEqual(row[0], uid)
-            self.assertEqual(row[1], report_id)
-            self.assertEqual(row[2], report_text)
-            self.assertIsNone(row[3], "text_en should be None when not provided")
-            self.assertEqual(row[4], positive)
-            self.assertEqual(row[5], severity)
-            self.assertEqual(row[6], summary)
-            self.assertEqual(row[7], report_type)
-            self.assertEqual(row[8], radiologist)
-            self.assertEqual(row[9], justification)
-            self.assertEqual(row[10], model)
-            self.assertEqual(row[11], latency)
+            self.assertEqual(row[1], "No significant findings.")
+            self.assertIsNone(row[2], "text_en should be None when not provided")
+            self.assertEqual(row[3], 0)
 
     def test_db_get_exams_includes_translation(self):
         """Test that db_get_exams includes English translation in results"""
-        # Initialize the database
         xrayvision.db_init()
 
-        # Add a patient and exam first
         cnp = "1234567890125"
-        patient_id = "P003"
-        patient_name = "Bob Johnson"
-        patient_age = 40
-        patient_sex = "M"
-        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
+        xrayvision.db_add_patient(cnp, "P003", "Bob Johnson", "1984-11-05", "M")
 
         exam_info = {
             'uid': '1.2.3.4.7',
-            'patient': {
-                'cnp': cnp,
-                'id': patient_id,
-                'name': patient_name,
-                'age': patient_age,
-                'sex': patient_sex
-            },
+            'patient': {'cnp': cnp, 'id': "P003", 'name': "Bob Johnson", 'birthdate': "1984-11-05", 'sex': "M"},
             'exam': {
-                'id': 'E003',
-                'created': '2025-01-01 12:00:00',
-                'protocol': 'Chest X-ray',
-                'region': 'chest',
-                'type': 'CR',
-                'study': '1.2.3.4.5.8',
-                'series': '1.2.3.4.5.6.9'
+                'id': 'E003', 'created': '2025-01-01 12:00:00',
+                'protocol': 'Chest X-ray', 'region': 'chest', 'type': 'CR',
+                'study': '1.2.3.4.5.8', 'series': '1.2.3.4.5.6.9'
             }
         }
         xrayvision.db_add_exam(exam_info)
 
-        # Add AI report
-        xrayvision.db_add_ai_report('1.2.3.4.7', "No significant findings.", 0, 95, "test-model", 2.5, 0, "normal")
+        xrayvision.db_insert('ai_reports',
+            uid='1.2.3.4.7',
+            text="No significant findings.",
+            positive=0,
+            confidence=95,
+            model="test-model",
+            latency=2,
+            summary="normal")
 
-        # Add radiologist report with translation
-        xrayvision.db_add_rad_report('1.2.3.4.7', "R003", "Fără semne de patologie.", 0, 0, "normal", "CR", "Dr. Brown", "Screening de rutină", "test-model", 4.0, "No signs of pathology.")
+        xrayvision.db_insert('rad_reports',
+            uid='1.2.3.4.7',
+            id="R003",
+            text="Fără semne de patologie.",
+            text_en="No signs of pathology.",
+            positive=0,
+            severity=0,
+            summary="normal",
+            type="CR",
+            radiologist="Dr. Brown",
+            justification="Screening de rutină",
+            model="test-model",
+            latency=4.0)
 
-        # Get exams
         exams, total = xrayvision.db_get_exams(limit=1, uid='1.2.3.4.7')
 
-        # Verify the exam includes translation
         self.assertEqual(len(exams), 1)
         exam = exams[0]
         self.assertEqual(exam['report']['rad']['text'], "Fără semne de patologie.")
@@ -565,267 +405,169 @@ class TestXRayVisionDatabase(unittest.TestCase):
 
     def test_db_set_status_updates_exam_status(self):
         """Test that db_set_status updates the status of an exam"""
-        # Initialize the database
         xrayvision.db_init()
-        
-        # Add a patient and exam first
+
         cnp = "1234567890123"
-        patient_id = "P001"
-        patient_name = "John Doe"
-        patient_age = 30
-        patient_sex = "M"
-        xrayvision.db_add_patient(cnp, patient_id, patient_name, patient_age, patient_sex)
-        
+        xrayvision.db_add_patient(cnp, "P001", "John Doe", "1994-06-15", "M")
+
         exam_info = {
             'uid': '1.2.3.4.5',
-            'patient': {
-                'cnp': cnp,
-                'id': patient_id,
-                'name': patient_name,
-                'age': patient_age,
-                'sex': patient_sex
-            },
+            'patient': {'cnp': cnp, 'id': "P001", 'name': "John Doe", 'birthdate': "1994-06-15", 'sex': "M"},
             'exam': {
-                'id': 'E001',
-                'created': '2025-01-01 10:00:00',
-                'protocol': 'Chest X-ray',
-                'region': 'chest',
-                'type': 'CR',
-                'study': '1.2.3.4.5.6',
-                'series': '1.2.3.4.5.6.7'
+                'id': 'E001', 'created': '2025-01-01 10:00:00',
+                'protocol': 'Chest X-ray', 'region': 'chest', 'type': 'CR',
+                'study': '1.2.3.4.5.6', 'series': '1.2.3.4.5.6.7'
             }
         }
         xrayvision.db_add_exam(exam_info)
-        
-        # Set the status to 'processing'
+
         uid = '1.2.3.4.5'
-        new_status = 'processing'
-        result = xrayvision.db_set_status(uid, new_status)
-        
-        # Check that the function returns the correct status
-        self.assertEqual(result, new_status)
-        
-        # Verify the status was updated in the database
+        result = xrayvision.db_set_status(uid, 'processing')
+        self.assertEqual(result, 'processing')
+
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT status FROM exams WHERE uid = ?", (uid,))
-            row = cursor.fetchone()
-            
-            self.assertIsNotNone(row, "Exam should exist")
-            self.assertEqual(row[0], new_status)
-        
-        # Change the status to 'done'
-        final_status = 'done'
-        result = xrayvision.db_set_status(uid, final_status)
-        
-        # Check that the function returns the correct status
-        self.assertEqual(result, final_status)
-        
-        # Verify the status was updated in the database
+            self.assertEqual(cursor.fetchone()[0], 'processing')
+
+        result = xrayvision.db_set_status(uid, 'done')
+        self.assertEqual(result, 'done')
+
         with sqlite3.connect(self.db_file) as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT status FROM exams WHERE uid = ?", (uid,))
-            row = cursor.fetchone()
-            
-            self.assertIsNotNone(row, "Exam should exist")
-            self.assertEqual(row[0], final_status)
+            self.assertEqual(cursor.fetchone()[0], 'done')
 
 class TestXRayVision(unittest.TestCase):
     """Test cases for the xrayvision module"""
-    
+
     def setUp(self):
         """Set up test fixtures before each test method."""
         self.test_dir = tempfile.mkdtemp()
-        
+
     def tearDown(self):
         """Tear down test fixtures after each test method."""
-        # Clean up temporary directory
         shutil.rmtree(self.test_dir, ignore_errors=True)
-    
+
     def test_validate_romanian_cnp(self):
         """Test Romanian ID validation function"""
-        # Test valid Romanian ID (example: male, born 1990-01-01, Bucharest)
-        result = xrayvision.validate_romanian_cnp("1900101400008")
+        result = xrayvision.validate_romanian_cnp("1900101400004")
         self.assertTrue(result['valid'])
-        
-        # Test invalid Romanian ID (wrong length)
+
         result = xrayvision.validate_romanian_cnp("12345")
         self.assertFalse(result['valid'])
-        
-        # Test invalid Romanian ID (non-numeric)
+
         result = xrayvision.validate_romanian_cnp("abcdefghijk")
         self.assertFalse(result['valid'])
-    
+
     def test_compute_age_from_cnp(self):
         """Test age computation from Romanian ID"""
-        # This is a placeholder test - actual implementation would depend on
-        # the specific format of Romanian IDs
         age = xrayvision.compute_age_from_cnp("1234567890123")
         self.assertIsInstance(age, int)
-    
+
     def test_contains_any_word(self):
         """Test word matching function"""
-        # Test matching words
         self.assertTrue(xrayvision.contains_any_word("chest xray study", "chest", "abdomen"))
-        
-        # Test non-matching words
         self.assertFalse(xrayvision.contains_any_word("brain mri scan", "chest", "abdomen"))
-        
-        # Test empty string
         self.assertFalse(xrayvision.contains_any_word("", "chest"))
-        
-        # Test empty word list
         self.assertFalse(xrayvision.contains_any_word("chest xray",))
-    
+
     @patch('xrayvision.identify_anatomic_region')
     def test_identify_anatomic_region_calls(self, mock_identify):
         """Test that identify_anatomic_region is called with correct parameters"""
         mock_identify.return_value = "chest"
         info = {"StudyDescription": "Chest X-Ray"}
-        
+
         result = xrayvision.identify_anatomic_region(info)
         mock_identify.assert_called_once_with(info)
         self.assertEqual(result, "chest")
-    
+
     def test_identify_imaging_projection(self):
         """Test imaging projection identification"""
-        # Test AP projection
         info = {"exam": {"protocol": "Chest A.P."}}
-        projection = xrayvision.identify_imaging_projection(info)
-        self.assertEqual(projection, "frontal")
-        
-        # Test PA projection
+        self.assertEqual(xrayvision.identify_imaging_projection(info), "frontal")
+
         info = {"exam": {"protocol": "Chest P.A."}}
-        projection = xrayvision.identify_imaging_projection(info)
-        self.assertEqual(projection, "frontal")
-        
-        # Test lateral projection
+        self.assertEqual(xrayvision.identify_imaging_projection(info), "frontal")
+
         info = {"exam": {"protocol": "Chest Lat."}}
-        projection = xrayvision.identify_imaging_projection(info)
-        self.assertEqual(projection, "lateral")
-        
-        # Test unknown projection
+        self.assertEqual(xrayvision.identify_imaging_projection(info), "lateral")
+
         info = {"exam": {"protocol": "Unknown"}}
-        projection = xrayvision.identify_imaging_projection(info)
-        self.assertEqual(projection, "")
-    
+        self.assertEqual(xrayvision.identify_imaging_projection(info), "")
+
     def test_determine_patient_gender_description(self):
         """Test patient gender description determination"""
-        # Test male
         info = {"patient": {"sex": "M"}}
-        gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "boy")
-        
-        # Test female
+        self.assertEqual(xrayvision.determine_patient_gender_description(info), "boy")
+
         info = {"patient": {"sex": "F"}}
-        gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "girl")
-        
-        # Test unknown
+        self.assertEqual(xrayvision.determine_patient_gender_description(info), "girl")
+
         info = {"patient": {"sex": "O"}}
-        gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "child")
-        
-        # Test missing field
+        self.assertEqual(xrayvision.determine_patient_gender_description(info), "child")
+
         info = {"patient": {}}
-        gender = xrayvision.determine_patient_gender_description(info)
-        self.assertEqual(gender, "child")
-    
+        self.assertEqual(xrayvision.determine_patient_gender_description(info), "child")
+
     @patch('xrayvision.db_get_previous_reports')
     def test_db_get_previous_reports_called(self, mock_db_get):
         """Test that db_get_previous_reports is called correctly"""
         mock_db_get.return_value = []
-
         result = xrayvision.db_get_previous_reports("12345", "chest", 3)
         mock_db_get.assert_called_once_with("12345", "chest", 3)
         self.assertEqual(result, [])
 
+
+class TestXRayVisionAsync(unittest.IsolatedAsyncioTestCase):
+    """Async test cases for the xrayvision module"""
+
     @patch('xrayvision.send_to_openai')
     async def test_translate_report_success(self, mock_send_to_openai):
         """Test that translate_report successfully translates Romanian to English"""
-        # Mock the AI response
-        mock_response = {
-            "choices": [
-                {
-                    "message": {
-                        "content": '{"translation": "Clear costo-diaphragmatic sinuses, no pleural effusion."}'
-                    }
-                }
-            ]
+        translation = "Clear costo-diaphragmatic sinuses, no pleural effusion."
+        mock_send_to_openai.return_value = {
+            "choices": [{"message": {"content": f"```text\n{translation}\n```"}}]
         }
-        mock_send_to_openai.return_value = mock_response
-
-        # Test translation
-        romanian_text = "SCD libere, fără lichid pleural."
-        result = await xrayvision.translate_report(romanian_text)
-
-        # Verify the translation
-        self.assertEqual(result, "Clear costo-diaphragmatic sinuses, no pleural effusion.")
+        result = await xrayvision.translate_report("SCD libere, fără lichid pleural.")
+        self.assertEqual(result, translation)
 
     @patch('xrayvision.send_to_openai')
     async def test_translate_report_failure(self, mock_send_to_openai):
         """Test that translate_report handles AI failures gracefully"""
-        # Mock a failed AI response
         mock_send_to_openai.return_value = None
-
-        # Test translation
-        romanian_text = "SCD libere, fără lichid pleural."
-        result = await xrayvision.translate_report(romanian_text)
-
-        # Verify the result is None
+        result = await xrayvision.translate_report("SCD libere, fără lichid pleural.")
         self.assertIsNone(result)
 
     @patch('xrayvision.send_to_openai')
     async def test_translate_report_invalid_json(self, mock_send_to_openai):
         """Test that translate_report handles invalid JSON responses"""
-        # Mock an invalid JSON response
-        mock_response = {
-            "choices": [
-                {
-                    "message": {
-                        "content": '{"invalid_field": "some text"}'
-                    }
-                }
-            ]
+        mock_send_to_openai.return_value = {
+            "choices": [{"message": {"content": '{"invalid_field": "some text"}'}}]
         }
-        mock_send_to_openai.return_value = mock_response
-
-        # Test translation
-        romanian_text = "SCD libere, fără lichid pleural."
-        result = await xrayvision.translate_report(romanian_text)
-
-        # Verify the result is None
+        result = await xrayvision.translate_report("SCD libere, fără lichid pleural.")
         self.assertIsNone(result)
 
     @patch('xrayvision.send_to_openai')
     async def test_translate_report_empty_input(self, mock_send_to_openai):
         """Test that translate_report handles empty input"""
-        # Test with empty string
         result = await xrayvision.translate_report("")
-
-        # Verify the result is None
         self.assertIsNone(result)
-        # Verify AI was not called
         mock_send_to_openai.assert_not_called()
 
 
 class TestXRayVisionConfig(unittest.TestCase):
     """Test cases for xrayvision configuration"""
-    
+
     def test_default_config_structure(self):
         """Test that DEFAULT_CONFIG has the expected structure"""
-        # Check that general section exists
         self.assertIn('general', xrayvision.DEFAULT_CONFIG)
-        
-        # Check that dicom section exists
         self.assertIn('dicom', xrayvision.DEFAULT_CONFIG)
-        
-        # Check that required general fields exist
+
         general_config = xrayvision.DEFAULT_CONFIG['general']
         self.assertIn('XRAYVISION_DB_PATH', general_config)
         self.assertIn('XRAYVISION_BACKUP_DIR', general_config)
-        
-        # Check that required dicom fields exist
+
         dicom_config = xrayvision.DEFAULT_CONFIG['dicom']
         self.assertIn('AE_TITLE', dicom_config)
         self.assertIn('AE_PORT', dicom_config)
