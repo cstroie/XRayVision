@@ -117,6 +117,7 @@
                 <option value="error">Error</option>
                 <option value="any">Status: any</option>
             </select>
+            <button class="secondary outline" onclick="exportCSV()" title="Export current filters to CSV">&#x2193; CSV</button>
         </section>
 
         <section class="pagination" role="group" style="gap: 0;">
@@ -682,6 +683,23 @@
 
         function jumpToPage(page) {
             loadPage(parseInt(page));
+        }
+
+        function exportCSV() {
+            const params = new URLSearchParams();
+            const reviewed = document.getElementById('filter-reviewed').value;
+            const positive = document.getElementById('filter-positive').value;
+            const correct  = document.getElementById('filter-correct').value;
+            const region   = document.getElementById('filter-region').value;
+            const status   = document.getElementById('filter-status').value;
+            const search   = document.getElementById('search-input').value;
+            if (reviewed !== 'any') params.set('reviewed', reviewed);
+            if (positive !== 'any') params.set('positive', positive);
+            if (correct  !== 'any') params.set('correct',  correct);
+            if (region   !== 'any') params.set('region',   region);
+            if (status   !== 'any') params.set('status',   status);
+            if (search)             params.set('search',   search);
+            window.location.href = '/api/exams/export?' + params.toString();
         }
 
         function showToast(msg) {

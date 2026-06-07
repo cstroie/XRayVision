@@ -2887,6 +2887,81 @@ async def exams_handler(request):
         return web.json_response([], status = 500)
 
 
+async def csv_export_handler(request):
+    """Export exams as a CSV file.
+
+    Accepts the same filter query parameters as /api/exams and returns a
+    downloadable CSV containing up to 10 000 matching exams.
+
+    Args:
+        request: aiohttp request object
+
+    Returns:
+        web.Response: CSV file download response
+    """
+    try:
+        user_role = getattr(request, 'user_role', 'user')
+        filters = {}
+        for f in ['positive', 'correct', 'reviewed']:
+            value = request.query.get(f, 'any')
+            if value != 'any':
+                filters[f] = 1 if value.lower().startswith('y') else 0
+        for f in ['region', 'status', 'search', 'diagnostic', 'radiologist']:
+            value = request.query.get(f, 'any')
+            if value != 'any':
+                filters[f] = value
+        data, _ = db_get_exams(limit=10000, offset=0, **filters)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            'uid', 'patient_name', 'cnp', 'age', 'sex',
+            'exam_date', 'region', 'status', 'modality', 'protocol',
+            'ai_positive', 'ai_severity', 'ai_confidence',
+            'rad_positive', 'rad_severity', 'rad_diagnostic', 'radiologist',
+            'correct',
+        ])
+        for exam in data:
+            p = exam.get('patient', {})
+            e = exam.get('exam', {})
+            ai = exam.get('report', {}).get('ai', {})
+            rad = exam.get('report', {}).get('rad', {})
+            name = p.get('name', '')
+            rad_name = rad.get('radiologist', '')
+            if user_role != 'admin':
+                name = extract_patient_initials(name)
+                rad_name = extract_radiologist_initials(rad_name)
+            writer.writerow([
+                exam.get('uid', ''),
+                name,
+                p.get('cnp', ''),
+                p.get('age', ''),
+                p.get('sex', ''),
+                e.get('date', ''),
+                e.get('region', ''),
+                e.get('status', ''),
+                e.get('type', ''),
+                e.get('protocol', ''),
+                ai.get('positive', ''),
+                ai.get('severity', ''),
+                ai.get('confidence', ''),
+                rad.get('positive', ''),
+                rad.get('severity', ''),
+                rad.get('summary', ''),
+                rad_name,
+                exam.get('report', {}).get('correct', ''),
+            ])
+        filename = f"xrayvision_{datetime.now().strftime('%Y%m%d')}.csv"
+        return web.Response(
+            body=output.getvalue(),
+            content_type='text/csv',
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        logging.error(f"CSV export error: {e}")
+        return web.json_response({"error": "Export failed"}, status=500)
+
+
 async def stats_handler(request):
     """Provide statistical data for the dashboard.
 
@@ -5762,6 +5837,7 @@ async def start_dashboard():
     
     # API endpoints - Data retrieval
     app.router.add_get('/api/exams', exams_handler)
+    app.router.add_get('/api/exams/export', csv_export_handler)
     app.router.add_get('/api/exams/{uid}', exam_handler)
     app.router.add_get('/api/patients', patients_handler)
     app.router.add_get('/api/patients/{cnp}', patient_handler)
