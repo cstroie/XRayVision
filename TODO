@@ -12,7 +12,7 @@
   per-user activity log.
 - Export functionality: CSV/PDF export of exam lists and AI report summaries.
 - Integration with additional DICOM modalities beyond CR (e.g. DX, MR).
-- Improved statistics: AI accuracy trends over time, per-region performance charts.
+- Improved statistics: AI accuracy trends over time (longitudinal accuracy drift).
 - Report templates: configurable finding templates per anatomic region.
 - Multi-language support: extend translation beyond Romanian → English.
 
