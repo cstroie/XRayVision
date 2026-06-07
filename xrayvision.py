@@ -5825,7 +5825,11 @@ async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region
     # Handle multiple presentedForm items by finding the one with the matching region and type
     report_text = None
     presented_form = None
-    
+
+    if not isinstance(report.get('presentedForm'), list) or not report['presentedForm']:
+        logging.warning(f"FHIR DiagnosticReport for exam {exam_uid} has no presentedForm")
+        return None, None
+
     if len(report['presentedForm']) == 1:
         # Single presented form - use it directly
         presented_form = report['presentedForm'][0]
