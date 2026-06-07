@@ -6418,9 +6418,16 @@ async def process_exams_without_rad_reports(session):
     patient_name = result['patient']['name']
     if not patient_id:
         patient_id = await get_patient_id_from_fhir(session, patient_cnp, patient_name)
-    # If still no patient ID, log and skip
+    # If still no patient ID, mark all their unresolved exams with id=-1 to stop retrying
     if not patient_id:
-        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp} or name '{patient_name}', skipping exams")
+        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp} or name '{patient_name}', marking exams as unresolvable")
+        for exam in exams:
+            exam_uid = exam['uid']
+            existing = db_select_one('rad_reports', exam_uid)
+            if existing:
+                db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
+            else:
+                db_insert('rad_reports', uid=exam_uid, id=-1)
         return
     
     # Process each exam for this patient
