@@ -195,11 +195,14 @@ except Exception as e:
 USERS = {}
 if 'users' in config:
     for user in config['users']:
-        password, role = config.get('users', user).split(',', 1)
-        USERS[user.strip()] = {
-            'password': password.strip(),
-            'role': role.strip()
-        }
+        try:
+            password, role = config.get('users', user).split(',', 1)
+            USERS[user.strip()] = {
+                'password': password.strip(),
+                'role': role.strip()
+            }
+        except ValueError:
+            logging.error(f"Malformed user entry '{user}' in config — expected 'password,role'")
 
 # Extract configuration values
 OPENAI_URL_PRIMARY = config.get('openai', 'OPENAI_URL_PRIMARY')
