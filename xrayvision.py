@@ -3773,7 +3773,7 @@ async def rad_review(request):
         # Use authenticated username as radiologist name, fallback to '' if not available
         radiologist = getattr(request, 'username', '')
         
-        if uid is None or normal is None:
+        if not uid or normal is None:
             return web.json_response({'status': 'error', 'message': 'UID and normal status are required'}, status=400)
         
         # Update the radiologist report
