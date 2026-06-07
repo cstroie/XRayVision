@@ -609,7 +609,7 @@ tbody tr:hover {
     height: 300px !important;
 }
 
-#regionChart, #globalChart {
+#regionChart {
     height: 200px !important;
 }
 
