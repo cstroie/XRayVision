@@ -3800,7 +3800,8 @@ async def rad_review(request):
         exam_data = exams[0] if exams else {}
         verdict = 'normal' if normal else 'abnormal'
         correct = exam_data.get('report', {}).get('correct')
-        logging.info(f"Exam {uid} marked as {verdict} by radiologist {radiologist}, which {correct and 'validates' or 'invalidates'} the AI report.")
+        validation_str = 'validates' if correct == 1 else 'invalidates' if correct == 0 else 'does not assess'
+        logging.info(f"Exam {uid} marked as {verdict} by radiologist {radiologist}, which {validation_str} the AI report.")
         audit_logger.info(f"RAD_REVIEW uid={uid} verdict={verdict} radiologist={radiologist} ip={request.remote}")
         await broadcast_dashboard_update(event = "radreview", payload = exam_data)
         response = {'status': 'success'}
