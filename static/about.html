@@ -171,7 +171,7 @@
     <script>
         // Fetch global parameters from the server
         fetch('/api/config')
-            .then(response => response.json())
+            .then(response => { if (!response.ok) throw new Error(response.status); return response.json(); })
             .then(data => {
                 document.getElementById('openai-primary').textContent = data.OPENAI_URL_PRIMARY || 'Not configured';
                 document.getElementById('openai-secondary').textContent = data.OPENAI_URL_SECONDARY || 'Not configured';
