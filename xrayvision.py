@@ -189,7 +189,7 @@ try:
     if local_config_files:
         logging.debug("Local configuration loaded from local.cfg")
 except Exception as e:
-    logging.debug("Using default configuration values")
+    logging.error(f"Failed to load configuration file: {e}; using default values")
 
 # User roles configuration
 USERS = {}
