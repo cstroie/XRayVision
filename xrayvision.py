@@ -104,8 +104,14 @@ DEFAULT_CONFIG = {
         'LOAD_DICOM': 'False',
         'NO_QUERY': 'False',
         'ENABLE_NTFY': 'False',
+        'ENABLE_HIS': 'True',
         'QUERY_INTERVAL': '300',
         'SEVERITY_THRESHOLD': '5'
+    },
+    'fhir': {
+        'FHIR_URL': 'http://127.0.0.1:44660',
+        'FHIR_USERNAME': 'hipocrate',
+        'FHIR_PASSWORD': 'hipocrate'
     }
 }
 
