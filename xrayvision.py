@@ -4330,7 +4330,7 @@ async def check_rad_report_and_update(uid):
         start_time = asyncio.get_running_loop().time()
         analysis_result = await check_report(report_text)
         end_time = asyncio.get_running_loop().time()
-        processing_time = end_time - start_time  # In seconds
+        processing_time = int((end_time - start_time) * 1000)  # In milliseconds
 
         # Check if analysis was successful
         if 'error' in analysis_result:
@@ -4365,7 +4365,7 @@ async def check_rad_report_and_update(uid):
 
         # Update the database
         db_update('rad_reports', 'uid = ?', (uid,), **update_fields)
-        logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {int(processing_time)}s")
+        logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {processing_time}ms")
         if translation:
             logging.info(f"Added English translation for exam {uid}")
         return True
