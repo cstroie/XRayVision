@@ -1952,9 +1952,8 @@ def db_backup():
         backup_path = os.path.join(BACKUP_DIR, backup_filename)
         # Create backup using SQLite backup API
         with sqlite3.connect(DB_FILE) as conn:
-            backup_conn = sqlite3.connect(backup_path)
-            conn.backup(backup_conn)
-            backup_conn.close()
+            with sqlite3.connect(backup_path) as backup_conn:
+                conn.backup(backup_conn)
         logging.info(f"Database backed up to {backup_path}")
         return backup_path
     except Exception as e:
