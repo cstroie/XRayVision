@@ -78,36 +78,40 @@ article>footer {
     overflow: hidden;
 }
 
+/* unreviewed, no finding — neutral dark */
 .image-card:not(.reviewed):not(.positive) {
-    border-left: 4px solid var(--pico-color-zinc-800);
-    border-right: 4px solid var(--pico-color-zinc-800);
+    border-left: 4px solid var(--pico-color-zinc-700);
+    border-right: 4px solid var(--pico-color-zinc-700);
 }
 
 .image-card:not(.reviewed):not(.positive) .ai-report {
     background-color: rgba(45, 49, 56, 0.3);
-    border-left: 3px solid var(--pico-color-zinc-800);
+    border-left: 3px solid var(--pico-color-zinc-700);
 }
 
+/* unreviewed, positive finding — amber: needs attention */
 .image-card:not(.reviewed).positive {
-    border-left: 4px solid var(--pico-color-zinc-400);
-    border-right: 4px solid var(--pico-color-zinc-400);
+    border-left: 4px solid var(--pico-color-amber-500);
+    border-right: 4px solid var(--pico-color-amber-500);
 }
 
 .image-card:not(.reviewed).positive .ai-report {
-    background-color: rgba(136, 145, 164, 0.3);
-    border-left: 3px solid var(--pico-color-zinc-400);
+    background-color: rgba(120, 80, 0, 0.25);
+    border-left: 3px solid var(--pico-color-amber-500);
 }
 
+/* reviewed, no finding — jade: confirmed normal */
 .image-card.reviewed:not(.positive) {
-    border-left: 4px solid var(--pico-color-jade-800);
-    border-right: 4px solid var(--pico-color-jade-800);
+    border-left: 4px solid var(--pico-color-jade-600);
+    border-right: 4px solid var(--pico-color-jade-600);
 }
 
 .image-card.reviewed:not(.positive) .ai-report {
     background-color: rgba(3, 56, 35, 0.3);
-    border-left: 3px solid var(--pico-color-jade-800);
+    border-left: 3px solid var(--pico-color-jade-600);
 }
 
+/* reviewed, positive, AI correct — red: confirmed pathology */
 .image-card.reviewed.positive:not(.incorrect) {
     border-left: 4px solid var(--pico-color-red-600);
     border-right: 4px solid var(--pico-color-red-600);
@@ -118,24 +122,26 @@ article>footer {
     border-left: 3px solid var(--pico-color-red-600);
 }
 
+/* reviewed, positive, AI incorrect — false positive */
 .image-card.reviewed.positive.incorrect {
-    border-left: 4px solid var(--pico-color-pumpkin-800);
-    border-right: 4px solid var(--pico-color-pumpkin-800);
-}
-
-.image-card.reviewed.positive.incorrect .ai-report {
-    background-color: rgba(72, 40, 2, 0.3);
-    border-left: 3px solid var(--pico-color-pumpkin-800);
-}
-
-.image-card.reviewed.incorrect:not(.positive) {
     border-left: 4px solid var(--pico-color-pumpkin-600);
     border-right: 4px solid var(--pico-color-pumpkin-600);
 }
 
-.image-card.reviewed.incorrect:not(.positive) .ai-report {
-    background-color: rgba(139, 79, 0, 0.3);
+.image-card.reviewed.positive.incorrect .ai-report {
+    background-color: rgba(110, 55, 0, 0.3);
     border-left: 3px solid var(--pico-color-pumpkin-600);
+}
+
+/* reviewed, not positive, AI incorrect — false negative */
+.image-card.reviewed.incorrect:not(.positive) {
+    border-left: 4px solid var(--pico-color-pumpkin-400);
+    border-right: 4px solid var(--pico-color-pumpkin-400);
+}
+
+.image-card.reviewed.incorrect:not(.positive) .ai-report {
+    background-color: rgba(139, 79, 0, 0.2);
+    border-left: 3px solid var(--pico-color-pumpkin-400);
 }
 
 .image-card .rad-report.severity--1 {
@@ -178,64 +184,47 @@ article>footer {
     border-left: 3px solid var(--pico-color-red-800);
 }
 
-.image-card.reviewed:not(.positive):not(.invalid)::after {
-    content: "NORMAL";
+/* shared badge base */
+.image-card.reviewed::after,
+.image-card:not(.reviewed).positive::after {
     position: absolute;
     top: 0.75rem;
     right: 2.5rem;
     font-size: 0.7rem;
     font-weight: 600;
     color: #ffffff;
-    background-color: var(--pico-color-jade-800);
     border-radius: 0.25rem;
     padding: 0.25rem 0.5rem;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     white-space: nowrap;
+}
+
+/* unreviewed positive — amber badge */
+.image-card:not(.reviewed).positive::after {
+    content: "PENDING REVIEW";
+    background-color: var(--pico-color-amber-600);
+    color: #000000;
+}
+
+.image-card.reviewed:not(.positive):not(.invalid)::after {
+    content: "NORMAL";
+    background-color: var(--pico-color-jade-600);
 }
 
 .image-card.reviewed.positive:not(.incorrect)::after {
     content: "POSITIVE FINDING";
-    position: absolute;
-    top: 0.75rem;
-    right: 2.5rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #ffffff;
     background-color: var(--pico-color-red-600);
-    border-radius: 0.25rem;
-    padding: 0.25rem 0.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    white-space: nowrap;
 }
 
 .image-card.reviewed.positive.incorrect::after {
     content: "FALSE POSITIVE";
-    position: absolute;
-    top: 0.75rem;
-    right: 2.5rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #ffffff;
-    background-color: var(--pico-color-pumpkin-800);
-    border-radius: 0.25rem;
-    padding: 0.25rem 0.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    white-space: nowrap;
+    background-color: var(--pico-color-pumpkin-600);
 }
 
 .image-card.reviewed.incorrect:not(.positive)::after {
     content: "FALSE NEGATIVE";
-    position: absolute;
-    top: 0.75rem;
-    right: 2.5rem;
-    font-size: 0.7rem;
-    font-weight: 600;
-    color: #ffffff;
-    background-color: var(--pico-color-pumpkin-600);
-    border-radius: 0.25rem;
-    padding: 0.25rem 0.5rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    white-space: nowrap;
+    background-color: var(--pico-color-pumpkin-400);
+    color: #000000;
 }
 
 .image-card.queued::after {
@@ -412,11 +401,11 @@ button.abnormal {
 }
 
 .lightbox.incorrect img {
-    border: 2px solid var(--pico-color-pumpkin-800);
+    border: 2px solid var(--pico-color-pumpkin-600);
 }
 
 .lightbox.positive img {
-    border: 2px solid var(--pico-color-red-800);
+    border: 2px solid var(--pico-color-red-600);
 }
 
 .lightbox .lightbox-text {
