@@ -2789,7 +2789,10 @@ async def exams_handler(request):
         # Get user role from request (set by auth_middleware)
         user_role = getattr(request, 'user_role', 'user')
         
-        page = int(request.query.get("page", "1"))
+        try:
+            page = max(1, int(request.query.get("page", "1")))
+        except ValueError:
+            return web.json_response({"error": "Invalid page parameter"}, status=400)
         filters = {}
         for filter in ['positive', 'correct', 'reviewed']:
             value = request.query.get(filter, 'any')
@@ -3575,7 +3578,10 @@ async def patients_handler(request):
         # Get user role from request (set by auth_middleware)
         user_role = getattr(request, 'user_role', 'user')
         
-        page = int(request.query.get("page", "1"))
+        try:
+            page = max(1, int(request.query.get("page", "1")))
+        except ValueError:
+            return web.json_response({"error": "Invalid page parameter"}, status=400)
         filters = {}
         for filter in ['search']:
             value = request.query.get(filter, 'any')
@@ -3724,7 +3730,10 @@ async def dicom_query(request):
     """
     try:
         data = await request.json()
-        hours = int(data.get('hours', 3))
+        try:
+            hours = max(1, min(168, int(data.get('hours', 3))))  # clamp 1–168 h (1 week)
+        except (ValueError, TypeError):
+            return web.json_response({'status': 'error', 'message': 'Invalid hours parameter'}, status=400)
         logging.debug(f"Manual QueryRetrieve triggered for the last {hours} hours.")
         audit_logger.info(f"DICOM_QUERY hours={hours} user={getattr(request, 'username', '')} ip={request.remote}")
         await query_and_retrieve(hours * 60)
