@@ -4,7 +4,7 @@
 
 XRayVision is an async Python application that acts as a DICOM relay and AI-assisted radiology analysis platform. It receives X-ray studies from a PACS via C-STORE or C-MOVE/C-GET, converts them to PNG, sends them to a local/remote OpenAI-compatible vision model (default: MedGemma 4B-IT), stores the AI findings alongside radiologist reports fetched from FHIR, and surfaces everything via a live web dashboard.
 
-The entire backend lives in a **single file**: `xrayvision.py` (~6400 lines). Do not split it into modules unless explicitly asked.
+The entire backend lives in a **single file**: `xrayvision.py` (~6600 lines). Do not split it into modules unless explicitly asked.
 
 ---
 
@@ -83,7 +83,11 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 - Navigation order: Dashboard → Statistics (dropdown: Stats / Radiologists / Diagnostics / Insights) → Check → About.
 - Active page link gets class `contrast` to highlight current page.
 - Real-time updates delivered via WebSocket (`/ws`), not polling.
+- WebSocket `onmessage` handler must JSON.parse inside try/catch — malformed frames must not kill the handler.
 - Image previews use a lightbox pattern (JS in the HTML files).
+- XSS prevention: use `sanitize()` before injecting into `innerHTML`; use `textContent` (no sanitize needed) for plain text nodes. Do not double-escape by combining both.
+- Radiologist name anonymization is server-side only (`extract_radiologist_initials()` for non-admin users). Frontend pages must not re-anonymize names already returned by the API.
+- Chart.js with `indexAxis: 'y'`: `x` is the value axis, `y` is the label axis. Place `beginAtZero`, `max`, and axis titles on `x`, not `y`.
 
 ### Domain specifics
 - **Romanian healthcare context**: patient IDs are CNP (Personal Numeric Code), validated and parsed in `validate_romanian_cnp()` / `compute_age_from_cnp()`.
@@ -96,6 +100,7 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 - `positive`: -1 = not assessed, 0 = no findings, 1 = findings present (both AI and rad reports).
 - `severity`: 0–10 scale, -1 = not assessed (rad reports only in the DB; AI reports also have this column).
 - `confidence`: 0–100, -1 = not assessed (AI reports only).
+- `correct`: 1 = AI correct, 0 = AI incorrect, -1 = not yet reviewed. **Never use truthiness checks** (`correct and ...`) — `-1` is truthy and indistinguishable from `1`. Always use `== 1`, `== 0`, `== -1`.
 - `SEVERITY_THRESHOLD` (default 5) gates which positive findings trigger ntfy.sh notifications.
 
 ---
@@ -137,8 +142,18 @@ When fixing issues from `issues.txt`:
 ## Known issues / active work
 
 - AI translation sometimes returns plain text instead of JSON (`{"translation": "..."}`) — parser fails and logs ERROR. Tracked in `TODO`.
-- Issues backlog in `issues.txt`:  transaction isolation, WebSocket cleanup, FHIR response validation, rate limiting, path validation.
+- Issues backlog in `issues.txt`: transaction isolation, WebSocket cleanup, FHIR response validation, rate limiting, path validation.
 - `acronyms.txt` / `find_acronyms.py` tools exist for expanding Romanian medical abbreviations (in progress).
+
+## Common pitfalls (learned from bug-fix sessions)
+
+- **SQL in `db_analyze`**: table name is interpolated via `PRAGMA` — validate against an allowlist before interpolating; never use user input directly in SQL f-strings.
+- **`GROUP_CONCAT` separator**: default separator `,` breaks `.split()` when values contain commas. Use `'||'` as separator and split on `'||'`.
+- **`SUM(CASE …)` returns NULL** (not 0) when no rows match — always guard with `or 0` in Python after fetching.
+- **`HAVING` with column aliases**: SQLite does not allow `HAVING alias > N`. Use `HAVING COUNT(*) > N` or repeat the expression.
+- **`isCorrect === null` vs `=== false`** in JS: `null` means not reviewed, `false` means wrong. Never use `!isCorrect` to mean "incorrect" — it catches both.
+- **Empty query params**: a query param present but empty (e.g. `?positive=`) passes `!= 'any'` checks but `value[0]` raises `IndexError`. Use `value.lower().startswith('y')` or check `len(value)` first.
+- **`result["choices"][0]` accesses**: the AI API can return an error dict without `choices`. Wrap in try/except or check key existence first — but note all current call sites are already inside broad `try/except Exception` blocks.
 
 ---
 
