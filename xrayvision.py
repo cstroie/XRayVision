@@ -3892,11 +3892,11 @@ async def check_report(report_text):
     Tracks checking timing statistics.
     """
     try:
-        logging.debug(f"Report check request received with report length: {len(report_text.split())} words")
-
         if not report_text:
             logging.warning("Report check request failed: no report text provided")
             return {'error': 'No report text provided'}
+
+        logging.debug(f"Report check request received with report length: {len(report_text.split())} words")
 
         # Add space after punctuation marks to properly separate phrases
         processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
@@ -4086,11 +4086,11 @@ async def translate_report(report_text):
     Uses caching to avoid re-translating identical reports.
     """
     try:
-        logging.debug(f"Translation request received: {' '.join(report_text.split()[:10])}...")
-
         if not report_text:
             logging.warning("Translation request failed: no report text provided")
             return None
+
+        logging.debug(f"Translation request received: {' '.join(report_text.split()[:10])}...")
 
         # Check cache first
         report_hash = hash(report_text)
@@ -4379,11 +4379,11 @@ async def detailed_analysis_report(report_text):
     Tracks analysis timing statistics.
     """
     try:
-        logging.debug(f"Detailed analysis request received ({len(report_text.split())} words)")
-
         if not report_text:
             logging.warning("Detailed analysis request failed: no report text provided")
             return {'error': 'No report text provided'}
+
+        logging.debug(f"Detailed analysis request received ({len(report_text.split())} words)")
 
         # Add space after punctuation marks to properly separate phrases
         processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
