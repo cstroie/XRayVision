@@ -2517,14 +2517,17 @@ def apply_gamma_correction(image, gamma = 1.2):
         if len(image.shape) > 2:
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         mid = 0.5
-        mean = np.median(image)
-        if mean <= 0:
+        median = np.median(image)
+        if median <= 0:
             logging.debug("Image median is zero, using gamma=1.0 (identity)")
-            mean = mid * 255  # results in gamma = 1.0
-        gamma = math.log(mid * 255) / math.log(mean)
+            median = mid * 255  # results in gamma = 1.0
+        gamma = math.log(mid * 255) / math.log(median)
         logging.debug(f"Calculated gamma is {gamma:.2f}")
     # Build a lookup table mapping the pixel values [0, 255] to
     # their adjusted gamma values
+    if gamma == 0:
+        logging.debug("Gamma is zero, using gamma=1.0 (identity)")
+        gamma = 1.0
     invGamma = 1.0 / gamma
     table = np.array([((i / 255.0) ** invGamma) * 255
         for i in np.arange(0, 256)]).astype("uint8")
