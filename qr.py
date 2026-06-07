@@ -158,8 +158,8 @@ def query_retrieve_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month
         start_date = datetime(year, month, day)
         end_date = (start_date + timedelta(days = 1))
     # Process each day separately
-    for day in range((end_date - start_date).days):
-        date = (start_date + timedelta(days=day)).strftime("%Y%m%d")
+    for day_offset in range((end_date - start_date).days):
+        date = (start_date + timedelta(days=day_offset)).strftime("%Y%m%d")
         logging.info(f"Query studies for {date}.")
         # The query dataset
         ds = Dataset()
@@ -184,10 +184,9 @@ def query_retrieve_cr_studies(local_ae, peer_ae, peer_ip, peer_port, year, month
                     else:
                         logging.info(f"[{date}] Queued Study UID: {study_instance_uid}")
                         send_c_move(ae, peer_ae, peer_ip, peer_port, study_instance_uid)
-            # Sleep
-            time.sleep(1)
-            # Release the association
+            # Release the association before sleeping
             assoc.release()
+            time.sleep(1)
         else:
             logging.warning(f"Association failed for {date}.")
 
