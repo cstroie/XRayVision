@@ -114,7 +114,90 @@ Serve the favicon.ico file.
 ## WebSocket
 
 #### GET /ws
-Handle WebSocket connections for real-time dashboard updates. Sends JSON events for queue status, processing state, AI health, and radiologist reviews.
+
+Establishes a persistent WebSocket connection for real-time dashboard updates. The server pushes a JSON frame to all connected clients whenever state changes (new exam, processing complete, review submitted, etc.).
+
+**Authentication:** same session cookie as REST endpoints.
+
+---
+
+### Frame structure
+
+Every frame is a JSON object. All fields are always present; `event` is only included when a named event triggered the broadcast.
+
+```json
+{
+  "dashboard": {
+    "queue_size":     2,
+    "check_queue_size": 0,
+    "processing":     "J.D.",
+    "error_count":    1,
+    "ignore_count":   4,
+    "success_count":  37
+  },
+  "openai": {
+    "url": "http://192.168.3.238:1234/v1/chat/completions",
+    "health": {
+      "pri": true,
+      "sec": false
+    }
+  },
+  "timings": {
+    "avg_latency": 12.4,
+    "min_latency": 8.1,
+    "max_latency": 31.7
+  },
+  "next_query": "2026-06-07 23:45:00",
+  "event": {
+    "name": "new_exam",
+    "payload": { "uid": "1.2.3...", "positive": true, "reviewed": false, "severity": 7 }
+  }
+}
+```
+
+`next_query` is `"Disabled"` when `NO_QUERY=True`.
+
+---
+
+### Named events
+
+| `event.name` | Triggered by | `event.payload` |
+|---|---|---|
+| `connected` | Client just connected | `{ "address": "127.0.0.1" }` |
+| `new_exam` | AI analysis complete | `{ "uid", "positive", "reviewed", "severity" }` |
+| `radreview` | Radiologist submitted a review | full exam object (same shape as `/api/exams/{uid}`) |
+| `radreport` | Radiologist report fetched from FHIR | `{ "uid", "rad_report": { ... } }` |
+| `radcheck` | AI cross-check of a rad report complete | `{ "uid" }` |
+| `requeue` | Exam manually re-queued | `{ "uid", "status": "requeue" }` |
+
+Frames without an `event` key are heartbeat/state-sync broadcasts (e.g. after queue size changes or FHIR loop completes).
+
+---
+
+### Client-side handling
+
+```js
+const ws = new WebSocket(`ws://${location.host}/ws`);
+ws.onmessage = (msg) => {
+    let data;
+    try { data = JSON.parse(msg.data); } catch { return; }
+
+    // Always update dashboard state
+    updateQueueDisplay(data.dashboard);
+    updateAIHealth(data.openai);
+
+    // Handle named events
+    if (data.event) {
+        switch (data.event.name) {
+            case 'new_exam':   handleNewExam(data.event.payload);   break;
+            case 'radreview':  handleReview(data.event.payload);    break;
+            case 'requeue':    handleRequeue(data.event.payload);   break;
+        }
+    }
+};
+```
+
+**Important:** always wrap `JSON.parse` in try/catch — a malformed frame must not kill the handler.
 
 ---
 
