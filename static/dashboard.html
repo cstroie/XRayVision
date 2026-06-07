@@ -464,7 +464,7 @@
             lightboxImg.src = imageSrc;
 
             lightbox.classList.remove('incorrect', 'positive');
-            if (!(isCorrect)) {
+            if (isCorrect === false) {
                 lightbox.classList.add('incorrect');
             } else if (isPositive) {
                 lightbox.classList.add('positive');
@@ -520,7 +520,7 @@
             let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : (exam.patient.name || '');
 
             // Update card classes
-            cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status ? '' + exam.exam.status : ''}`;
+            cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect === false ? 'incorrect' : ''} ${exam.exam.status ? '' + exam.exam.status : ''}`;
 
             // Update image
             const imgElement = cardElement.querySelector('.xray img');
@@ -595,7 +595,7 @@
                 let summaryText = exam.report.rad.summary ? exam.report.rad.summary : '';
                 // Only show severity if it's not null and greater than -1
                 let severityText = exam.report.rad.severity !== null && exam.report.rad.severity > -1 ? ` (Severity: ${exam.report.rad.severity}/10)` : '';
-                radReportElement.querySelector('summary').textContent = `${exam.report.rad.radiologist}: ${summaryText}${severityText}`;
+                radReportElement.querySelector('summary').textContent = `${exam.report.rad.radiologist || 'Radiologist'}: ${summaryText}${severityText}`;
                 const radBody = radReportElement.querySelector('summary').nextElementSibling;
                 if (radBody) radBody.textContent = exam.report.rad.text;
                 radReportElement.style.display = 'block';
@@ -756,7 +756,7 @@
                 let patientNameParts = (item.patient.name || '').split('^');
                 let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : (item.patient.name || '');
                 
-                cardElement.querySelector('.xray img').onclick = () => openLightbox(`/images/${item.uid}.png`, sanitize(formattedPatientName), sanitize(text), isCorrect, isPositive);
+                cardElement.querySelector('.xray img').onclick = () => openLightbox(`/images/${item.uid}.png`, formattedPatientName, text, isCorrect, isPositive);
                 cardElement.querySelector('.abnormal').onclick = () => radreview(item.uid, false);
                 cardElement.querySelector('.normal').onclick = () => radreview(item.uid, true);
                 cardElement.querySelector('.secondary:nth-child(3)').onclick = () => lookagain(item.uid);
