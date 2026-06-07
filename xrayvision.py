@@ -6296,12 +6296,12 @@ async def maintenance_loop():
         # Clean up dead WebSocket clients to prevent unbounded memory growth
         await cleanup_dead_websocket_clients()
 
-        # Purge old ignored/error records
-        db_purge_ignored_errors()
+        # Purge old ignored/error records (offloaded — runs multiple DELETE queries)
+        await asyncio.to_thread(db_purge_ignored_errors)
 
-        # Create database backup
+        # Create database backup (offloaded — sqlite3.backup can take seconds on large DBs)
         try:
-            db_backup()
+            await asyncio.to_thread(db_backup)
         except Exception as e:
             logging.error(f"Database backup failed: {e}")
 
