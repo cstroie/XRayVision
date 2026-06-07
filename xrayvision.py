@@ -1176,7 +1176,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
         conditions.append("LOWER(rr.radiologist) = LOWER(?)")
         params.append(filters['radiologist'])
     if 'uid' in filters:
-        conditions.append("e.uid = LOWER(?)")
+        conditions.append("e.uid = ?")
         params.append(filters['uid'])
     if 'cnp' in filters:
         conditions.append("p.cnp = ?")
