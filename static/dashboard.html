@@ -153,7 +153,7 @@
                     </div>
                 </figure>
                 <aside class="details">
-                    <details close>
+                    <details>
                         <summary><strong></strong></summary>
                         <div class="patient-details">
                             <div class="patient-cnp"></div>
@@ -170,7 +170,7 @@
                         <summary></summary>
                         <div></div>
                     </details>
-                    <details class="report rad-report-en" close>
+                    <details class="report rad-report-en">
                         <summary>English Translation</summary>
                         <div></div>
                     </details>
@@ -520,7 +520,7 @@
             let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : exam.patient.name;
 
             // Update card classes
-            cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status ? 'status-' + exam.exam.status : ''}`;
+            cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status ? '' + exam.exam.status : ''}`;
 
             // Update image
             const imgElement = cardElement.querySelector('.xray img');
@@ -579,7 +579,7 @@
                 }
                 
                 aiReportElement.querySelector('summary').textContent = aiInfo;
-                aiReportElement.querySelector('summary').nextSibling.textContent = text;
+                aiReportElement.querySelector('summary').nextElementSibling.textContent = text;
                 aiReportElement.style.display = 'block';
             } else {
                 aiReportElement.style.display = 'none';
@@ -595,7 +595,7 @@
                 // Only show severity if it's not null and greater than -1
                 let severityText = exam.report.rad.severity !== null && exam.report.rad.severity > -1 ? ` (Severity: ${exam.report.rad.severity}/10)` : '';
                 radReportElement.querySelector('summary').textContent = `${exam.report.rad.radiologist}: ${summaryText}${severityText}`;
-                radReportElement.querySelector('summary').nextSibling.textContent = exam.report.rad.text;
+                radReportElement.querySelector('summary').nextElementSibling.textContent = exam.report.rad.text;
                 radReportElement.style.display = 'block';
             } else {
                 radReportElement.style.display = 'none';
@@ -604,7 +604,7 @@
             const radReportEnElement = cardElement.querySelector('.rad-report-en');
             if (exam.report.rad.text_en) {
                 radReportEnElement.querySelector('summary').innerHTML = `English Translation`;
-                radReportEnElement.querySelector('summary').nextSibling.textContent = exam.report.rad.text_en;
+                radReportEnElement.querySelector('summary').nextElementSibling.textContent = exam.report.rad.text_en;
                 radReportEnElement.style.display = 'block';
             } else {
                 radReportEnElement.style.display = 'none';
