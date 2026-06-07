@@ -5294,7 +5294,7 @@ async def update_patient_info_from_fhir(exam):
                         logging.error(f"Error parsing birthdate from FHIR for patient {patient_cnp}: {e}")
 
 
-async def prepare_exam_data(exam):
+def prepare_exam_data(exam):
     """
     Prepare exam data for AI processing by identifying region, projection, etc.
     
@@ -5503,7 +5503,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
         await update_patient_info_from_fhir(exam)
                             
         # Prepare exam data
-        region, question, subject, anatomy, image_bytes = await prepare_exam_data(exam)
+        region, question, subject, anatomy, image_bytes = prepare_exam_data(exam)
         if region is None:  # Exam should be ignored
             return False
             
