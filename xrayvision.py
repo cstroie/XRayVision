@@ -4600,7 +4600,12 @@ async def auth_middleware(request, handler):
         # Only log AUTH_OK for page navigation, not for every API/WebSocket poll
         if not request.path.startswith('/api/') and request.path not in ('/ws', '/favicon.ico'):
             audit_logger.info(f"AUTH_OK user={username} role={user_info['role']} ip={request.remote} path={request.path}")
-    except (ValueError, UnicodeDecodeError) as e:
+    except UnicodeDecodeError:
+        audit_logger.warning(f"AUTH_FAIL user=<malformed> ip={request.remote} path={request.path}")
+        raise web.HTTPUnauthorized(
+            text = "401: Invalid authentication",
+            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
+    except ValueError:
         raise web.HTTPUnauthorized(
             text = "401: Invalid authentication",
             headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
