@@ -95,7 +95,8 @@ DEFAULT_CONFIG = {
         'DASHBOARD_PORT': '8000'
     },
     'notifications': {
-        'NTFY_URL': 'https://ntfy.sh/xrayvision-alerts'
+        'NTFY_URL': 'https://ntfy.sh/xrayvision-alerts',
+        'NTFY_IMAGE_BASE_URL': ''
     },
     'processing': {
         'PAGE_SIZE': '10',
@@ -199,6 +200,7 @@ OPENAI_URL_PRIMARY = config.get('openai', 'OPENAI_URL_PRIMARY')
 OPENAI_URL_SECONDARY = config.get('openai', 'OPENAI_URL_SECONDARY')
 OPENAI_API_KEY = config.get('openai', 'OPENAI_API_KEY')
 NTFY_URL = config.get('notifications', 'NTFY_URL')
+NTFY_IMAGE_BASE_URL = config.get('notifications', 'NTFY_IMAGE_BASE_URL')
 DASHBOARD_PORT = config.getint('dashboard', 'DASHBOARD_PORT')
 AE_TITLE = config.get('dicom', 'AE_TITLE')
 AE_PORT = config.getint('dicom', 'AE_PORT')
@@ -4668,16 +4670,16 @@ async def send_ntfy_notification(uid, report, info):
         return
 
     try:
-        # Construct image URL
-        image_url = f"https://xray.eridu.eu.org/static/{uid}.png"
         # Create headers and message body
         message = f"Positive finding in {info['exam']['region']} study\nPatient: {info['patient']['name']}\nReport: {report}"
         headers = {
             "Title": "XRayVision Alert - Positive Finding",
             "Tags": "warning,skull",
             "Priority": "4",
-            "Attach": image_url
         }
+        # Attach image URL only if a public base URL is configured
+        if NTFY_IMAGE_BASE_URL:
+            headers["Attach"] = f"{NTFY_IMAGE_BASE_URL.rstrip('/')}/images/{uid}.png"
 
         # Post the notification
         async with aiohttp.ClientSession() as session:
