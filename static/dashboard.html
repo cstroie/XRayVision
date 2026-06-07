@@ -295,7 +295,13 @@
             };
 
             ws.onmessage = function (event) {
-                let data = JSON.parse(event.data);
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {
+                    console.warn("WebSocket: received non-JSON message", event.data);
+                    return;
+                }
                 if (data.dashboard !== undefined) {
                     dashboardData = data.dashboard;
                     document.getElementById('queue').textContent = data.dashboard.queue_size;
@@ -510,8 +516,8 @@
             let formattedTime = `${String(createdDate.getHours()).padStart(2, '0')}:${String(createdDate.getMinutes()).padStart(2, '0')}:${String(createdDate.getSeconds()).padStart(2, '0')}`;
             let datetimeString = createdDate.toISOString();
 
-            let patientNameParts = exam.patient.name.split('^');
-            let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : exam.patient.name;
+            let patientNameParts = (exam.patient.name || '').split('^');
+            let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : (exam.patient.name || '');
 
             // Update card classes
             cardElement.className = `grid image-card ${isReviewed ? 'reviewed' : ''} ${isPositive ? 'positive' : ''} ${isCorrect ? '' : 'incorrect'} ${exam.exam.status ? '' + exam.exam.status : ''}`;
@@ -747,8 +753,8 @@
                 const text = item.report.ai.text || "";
                 let isPositive = item.report.ai.positive;
                 let isCorrect = item.report.correct;
-                let patientNameParts = item.patient.name.split('^');
-                let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : item.patient.name;
+                let patientNameParts = (item.patient.name || '').split('^');
+                let formattedPatientName = patientNameParts.length > 1 ? `${patientNameParts[0]} ${patientNameParts[1]}` : (item.patient.name || '');
                 
                 cardElement.querySelector('.xray img').onclick = () => openLightbox(`/images/${item.uid}.png`, sanitize(formattedPatientName), sanitize(text), isCorrect, isPositive);
                 cardElement.querySelector('.abnormal').onclick = () => radreview(item.uid, false);
