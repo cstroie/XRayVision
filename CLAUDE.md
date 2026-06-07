@@ -1,0 +1,149 @@
+# XRayVision — Developer Guide for Claude
+
+## Project overview
+
+XRayVision is an async Python application that acts as a DICOM relay and AI-assisted radiology analysis platform. It receives X-ray studies from a PACS via C-STORE or C-MOVE/C-GET, converts them to PNG, sends them to a local/remote OpenAI-compatible vision model (default: MedGemma 4B-IT), stores the AI findings alongside radiologist reports fetched from FHIR, and surfaces everything via a live web dashboard.
+
+The entire backend lives in a **single file**: `xrayvision.py` (~6400 lines). Do not split it into modules unless explicitly asked.
+
+---
+
+## Architecture
+
+```
+DICOM server (pynetdicom)
+    └─ C-STORE handler → dicom_store()
+         └─ QUEUE_EVENT → relay_to_openai_loop()
+              └─ send_exam_to_openai()
+                   ├─ update_patient_info_from_fhir()  ← FHIR integration
+                   ├─ prepare_exam_data()               ← region/projection/gender
+                   ├─ create_exam_prompt()              ← prompt assembly
+                   └─ send_to_openai()                  ← HTTP to AI API
+
+query_retrieve_loop()    ← periodic C-FIND + C-MOVE/C-GET from PACS
+fhir_loop()             ← polls FHIR for radiologist reports on processed exams
+maintenance_loop()      ← DB backup, dead WebSocket cleanup
+
+aiohttp web server
+    ├─ Static HTML pages  (static/*.html)
+    ├─ REST API           (/api/*)
+    └─ WebSocket          (/ws) → broadcast_dashboard_update()
+```
+
+---
+
+## Key design decisions
+
+### Single-file layout
+All Python logic stays in `xrayvision.py`. Functions are ordered: config → DB → DICOM → AI → web handlers → loops → main. Do not reorganise this order.
+
+### Configuration
+- `xrayvision.cfg` — tracked default config (safe to commit, no secrets)
+- `local.cfg` — untracked local overrides (in `.gitignore`)
+- Config is loaded once at startup via `configparser`. To add a new option, add it to `DEFAULT_CONFIG` and read it in the globals block below `load_prompts()`.
+
+### Logging format
+All log lines use a single global logger with the format:
+```
+%(asctime)s | %(levelname)8s | %(message)s
+```
+Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation response`
+
+- Use `logging.info/warning/error/debug` — never `print()`.
+- Level names are right-aligned to 8 chars via `%(levelname)8s`.
+- Third-party loggers (`aiohttp`, `asyncio`, `pynetdicom`, `pydicom`) are suppressed to `WARNING`.
+- A separate `xrayvision_audit.log` file exists for audit events (access, reviews, re-queuing).
+
+### Database
+- SQLite with WAL journal mode, NORMAL sync, foreign keys ON.
+- Schema: `patients` → `exams` → `ai_reports` + `rad_reports`.
+- All writes go through `db_execute_query_retry()` (exponential backoff, up to 5 retries).
+- Read-only queries use `db_execute_query()`.
+- Helper builders: `db_create_insert_query()`, `db_create_select_query()`, `db_select()`, `db_insert()`, `db_update()`.
+- Result unpacking: `db_unpack_result(result, keys)` converts a list of tuples into a dict.
+- Schema changes require updating both the `CREATE TABLE` in `db_init()` and any relevant helper queries throughout the file.
+
+### AI integration
+- Two endpoints: `OPENAI_URL_PRIMARY` and `OPENAI_URL_SECONDARY` (failover).
+- `active_openai_url` is set by `openai_health_check()` running every 60 s.
+- All AI calls go through `send_to_openai(session, headers, payload)`.
+- `send_exam_to_openai()` implements exponential backoff (3 retries, 2 s / 4 s / 8 s delays).
+- AI responses are expected as JSON with specific keys; parsing failures are logged at ERROR level (see `TODO` for known edge cases with MedGemma returning plain text).
+
+### Prompt system
+- Prompts live in `prompts/` as `.txt` files, loaded at startup by `load_prompts()` into the `PROMPTS` dict.
+- Keys: `REP_PROMPT` (report), `USR_PROMPT` (user), `REV_PROMPT` (review), `CHK_PROMPT` (check), `ANA_PROMPT` (analysis), `TRN_PROMPT` (translation).
+- Never inline prompt text in `xrayvision.py` — all prompt changes go in the `prompts/` files.
+
+### Web frontend
+- Framework: **PicoCSS v2** (slate theme, dark mode default) loaded from CDN.
+- Font: Inter via CSS variable `--pico-font-family-sans-serif`.
+- All pages share `static/styles.css` and the same `<nav>` structure.
+- Pages: `dashboard.html`, `stats.html`, `radiologists.html`, `diagnostics.html`, `insights.html`, `check.html`, `about.html`.
+- Navigation order: Dashboard → Statistics (dropdown: Stats / Radiologists / Diagnostics / Insights) → Check → About.
+- Active page link gets class `contrast` to highlight current page.
+- Real-time updates delivered via WebSocket (`/ws`), not polling.
+- Image previews use a lightbox pattern (JS in the HTML files).
+
+### Domain specifics
+- **Romanian healthcare context**: patient IDs are CNP (Personal Numeric Code), validated and parsed in `validate_romanian_cnp()` / `compute_age_from_cnp()`.
+- Reports may be in Romanian; `translate_report()` translates them to English (stored in `rad_reports.text_en`).
+- Anatomic region detection uses keyword rules from `[regions]` in config.
+- Only regions listed as `true` in `[supported_regions]` are processed; others get status `ignore`.
+- FHIR server is the Hipocrate HIS (Romanian hospital information system).
+
+### Severity and scoring
+- `positive`: -1 = not assessed, 0 = no findings, 1 = findings present (both AI and rad reports).
+- `severity`: 0–10 scale, -1 = not assessed (rad reports only in the DB; AI reports also have this column).
+- `confidence`: 0–100, -1 = not assessed (AI reports only).
+- `SEVERITY_THRESHOLD` (default 5) gates which positive findings trigger ntfy.sh notifications.
+
+---
+
+## Status values for exams
+
+| Status | Meaning |
+|---|---|
+| `none` | Received, not yet queued |
+| `queued` | Waiting in processing queue |
+| `processing` | Currently being sent to AI |
+| `done` | AI analysis complete |
+| `error` | Processing failed |
+| `ignore` | Unsupported region, skipped |
+| `requeue` | Manually re-queued for reprocessing |
+
+---
+
+## Adding new features
+
+- **New API endpoint**: add `async def <name>_handler(request)` then register it in `start_dashboard()` with `app.router.add_*()`.
+- **New config option**: add to `DEFAULT_CONFIG`, read in the globals block, document in `xrayvision.cfg` with a comment.
+- **New DB column**: add to `CREATE TABLE` in `db_init()`, add `IF NOT EXISTS` / `ALTER TABLE` migration guard, update all relevant `db_select`/`db_insert`/`db_update` call sites.
+- **New prompt**: add a file in `prompts/`, add its key to `load_prompts()`, reference it from `PROMPTS['NEW_KEY']`.
+- **New dashboard page**: create `static/<page>.html` following the existing nav structure, add a `serve_<page>_page()` handler and route.
+
+---
+
+## Known issues / active work
+
+- AI translation sometimes returns plain text instead of JSON (`{"translation": "..."}`) — parser fails and logs ERROR. Tracked in `TODO`.
+- Issues backlog in `issues.txt`:  transaction isolation, WebSocket cleanup, FHIR response validation, rate limiting, path validation.
+- `acronyms.txt` / `find_acronyms.py` tools exist for expanding Romanian medical abbreviations (in progress).
+
+---
+
+## File map
+
+| Path | Purpose |
+|---|---|
+| `xrayvision.py` | Entire application |
+| `xrayvision.cfg` | Default configuration (committed) |
+| `local.cfg` | Local overrides (gitignored) |
+| `prompts/*.txt` | AI prompt templates |
+| `static/*.html` | Dashboard pages |
+| `static/styles.css` | Shared CSS (PicoCSS overrides) |
+| `static/spec.json` | OpenAPI specification |
+| `tools/` | Offline utilities (dataset export, fine-tuning) |
+| `tests.py` | Test suite |
+| `DATABASE.md` | DB schema reference |
+| `API.md` | REST API reference |
