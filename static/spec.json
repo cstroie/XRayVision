@@ -37,9 +37,18 @@
                 "type": "string",
                 "description": "Patient CNP (Romanian personal identification number)"
               },
+              "id": {
+                "type": "string",
+                "description": "Patient ID from hospital system"
+              },
               "age": {
                 "type": "integer",
-                "description": "Patient age in years"
+                "description": "Patient age in years (computed from birthdate)"
+              },
+              "birthdate": {
+                "type": "string",
+                "format": "date",
+                "description": "Patient birth date (YYYY-MM-DD)"
               },
               "sex": {
                 "type": "string",
@@ -86,12 +95,11 @@
                 "properties": {
                   "text": {
                     "type": "string",
-                    "description": "AI-generated report content"
+                    "description": "AI-generated report findings"
                   },
-                  "short": {
+                  "summary": {
                     "type": "string",
-                    "enum": ["yes", "no"],
-                    "description": "Whether pathological findings are present"
+                    "description": "AI-generated report impression/summary"
                   },
                   "created": {
                     "type": "string",
@@ -104,8 +112,13 @@
                     "description": "Report last update timestamp"
                   },
                   "positive": {
-                    "type": "boolean",
-                    "description": "Binary indicator of findings"
+                    "type": "integer",
+                    "enum": [-1, 0, 1],
+                    "description": "Findings indicator: -1=not assessed, 0=no findings, 1=findings present"
+                  },
+                  "severity": {
+                    "type": "integer",
+                    "description": "Severity score (0-10, -1 if not assessed)"
                   },
                   "confidence": {
                     "type": "integer",
@@ -117,7 +130,7 @@
                   },
                   "latency": {
                     "type": "integer",
-                    "description": "Time in seconds needed to analyze the image by the AI (-1 if not assessed)"
+                    "description": "Processing time in seconds (-1 if not assessed)"
                   }
                 }
               },
@@ -126,11 +139,16 @@
                 "properties": {
                   "text": {
                     "type": "string",
-                    "description": "Radiologist report content"
+                    "description": "Radiologist report content (original language)"
+                  },
+                  "text_en": {
+                    "type": "string",
+                    "description": "Radiologist report translated to English (null if not translated)"
                   },
                   "positive": {
-                    "type": "boolean",
-                    "description": "Binary indicator of findings"
+                    "type": "integer",
+                    "enum": [-1, 0, 1],
+                    "description": "Findings indicator: -1=not assessed, 0=no findings, 1=findings present"
                   },
                   "severity": {
                     "type": "integer",
@@ -138,7 +156,7 @@
                   },
                   "summary": {
                     "type": "string",
-                    "description": "Brief summary of findings"
+                    "description": "Brief diagnostic summary"
                   },
                   "created": {
                     "type": "string",
@@ -160,7 +178,7 @@
                   },
                   "radiologist": {
                     "type": "string",
-                    "description": "Identifier for the radiologist"
+                    "description": "Identifier for the radiologist (initials for non-admin users)"
                   },
                   "justification": {
                     "type": "string",
@@ -178,17 +196,19 @@
               },
               "correct": {
                 "type": "integer",
-                "description": "Validation status (-1=not assessed, 0=incorrect, 1=correct)"
+                "enum": [-1, 0, 1],
+                "description": "AI validation status: -1=not reviewed, 0=incorrect, 1=correct"
               },
               "reviewed": {
                 "type": "integer",
-                "description": "Review status (0=not reviewed, 1=reviewed)"
+                "enum": [0, 1],
+                "description": "Review status: 0=not reviewed, 1=reviewed"
               }
             }
           },
           "status": {
             "type": "string",
-            "enum": ["none", "queued", "processing", "done", "error", "ignore"],
+            "enum": ["none", "queued", "processing", "done", "error", "ignore", "requeue"],
             "description": "Processing status"
           }
         }
@@ -222,74 +242,18 @@
             "additionalProperties": {
               "type": "object",
               "properties": {
-                "total": {
-                  "type": "integer"
-                },
-                "reviewed": {
-                  "type": "integer"
-                },
-                "positive": {
-                  "type": "integer"
-                },
-                "wrong": {
-                  "type": "integer"
-                },
-                "tpos": {
-                  "type": "integer"
-                },
-                "tneg": {
-                  "type": "integer"
-                },
-                "fpos": {
-                  "type": "integer"
-                },
-                "fneg": {
-                  "type": "integer"
-                },
-                "ppv": {
-                  "oneOf": [
-                    {
-                      "type": "integer"
-                    },
-                    {
-                      "type": "string",
-                      "enum": ["-"]
-                    }
-                  ]
-                },
-                "pnv": {
-                  "oneOf": [
-                    {
-                      "type": "integer"
-                    },
-                    {
-                      "type": "string",
-                      "enum": ["-"]
-                    }
-                  ]
-                },
-                "snsi": {
-                  "oneOf": [
-                    {
-                      "type": "integer"
-                    },
-                    {
-                      "type": "string",
-                      "enum": ["-"]
-                    }
-                  ]
-                },
-                "spci": {
-                  "oneOf": [
-                    {
-                      "type": "integer"
-                    },
-                    {
-                      "type": "string",
-                      "enum": ["-"]
-                    }
-                  ]
-                }
+                "total": { "type": "integer" },
+                "reviewed": { "type": "integer" },
+                "positive": { "type": "integer" },
+                "wrong": { "type": "integer" },
+                "tpos": { "type": "integer" },
+                "tneg": { "type": "integer" },
+                "fpos": { "type": "integer" },
+                "fneg": { "type": "integer" },
+                "ppv": { "oneOf": [{ "type": "integer" }, { "type": "string", "enum": ["-"] }] },
+                "pnv": { "oneOf": [{ "type": "integer" }, { "type": "string", "enum": ["-"] }] },
+                "snsi": { "oneOf": [{ "type": "integer" }, { "type": "string", "enum": ["-"] }] },
+                "spci": { "oneOf": [{ "type": "integer" }, { "type": "string", "enum": ["-"] }] }
               }
             }
           },
@@ -318,65 +282,24 @@
       "Config": {
         "type": "object",
         "properties": {
-          "OPENAI_URL_PRIMARY": {
-            "type": "string",
-            "description": "Primary OpenAI API URL"
-          },
-          "OPENAI_URL_SECONDARY": {
-            "type": "string",
-            "description": "Secondary OpenAI API URL"
-          },
-          "NTFY_URL": {
-            "type": "string",
-            "description": "NTFY notification URL"
-          },
-          "AE_TITLE": {
-            "type": "string",
-            "description": "DICOM AE Title"
-          },
-          "AE_PORT": {
-            "type": "integer",
-            "description": "DICOM AE Port"
-          },
-          "REMOTE_AE_TITLE": {
-            "type": "string",
-            "description": "Remote DICOM AE Title"
-          },
-          "REMOTE_AE_IP": {
-            "type": "string",
-            "description": "Remote DICOM AE IP"
-          },
-          "REMOTE_AE_PORT": {
-            "type": "integer",
-            "description": "Remote DICOM AE Port"
-          }
+          "OPENAI_URL_PRIMARY": { "type": "string", "description": "Primary OpenAI API URL" },
+          "OPENAI_URL_SECONDARY": { "type": "string", "description": "Secondary OpenAI API URL" },
+          "NTFY_URL": { "type": "string", "description": "NTFY notification URL" },
+          "AE_TITLE": { "type": "string", "description": "DICOM AE Title" },
+          "AE_PORT": { "type": "integer", "description": "DICOM AE Port" },
+          "REMOTE_AE_TITLE": { "type": "string", "description": "Remote DICOM AE Title" },
+          "REMOTE_AE_IP": { "type": "string", "description": "Remote DICOM AE IP" },
+          "REMOTE_AE_PORT": { "type": "integer", "description": "Remote DICOM AE Port" }
         }
       },
       "CNPValidationResponse": {
         "type": "object",
         "properties": {
-          "valid": {
-            "type": "boolean",
-            "description": "Whether the CNP is valid"
-          },
-          "birth_date": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Birth date extracted from CNP"
-          },
-          "age": {
-            "type": "integer",
-            "description": "Current age in years"
-          },
-          "sex": {
-            "type": "string",
-            "enum": ["M", "F"],
-            "description": "Sex derived from CNP"
-          },
-          "county": {
-            "type": "integer",
-            "description": "County code"
-          }
+          "valid": { "type": "boolean", "description": "Whether the CNP is valid" },
+          "birth_date": { "type": "string", "format": "date-time", "description": "Birth date extracted from CNP" },
+          "age": { "type": "integer", "description": "Current age in years" },
+          "sex": { "type": "string", "enum": ["M", "F"], "description": "Sex derived from CNP" },
+          "county": { "type": "integer", "description": "County code" }
         }
       },
       "QueryRequest": {
@@ -392,30 +315,46 @@
       "CheckReportRequest": {
         "type": "object",
         "properties": {
-          "report": {
-            "type": "string",
-            "description": "Radiology report text to analyze"
-          }
+          "report": { "type": "string", "description": "Radiology report text to analyze" }
         },
         "required": ["report"]
       },
       "CheckReportResponse": {
         "type": "object",
         "properties": {
-          "pathologic": {
-            "type": "string",
-            "enum": ["yes", "no"],
-            "description": "Whether any anomaly exists"
-          },
-          "severity": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10,
-            "description": "Severity score (0-10)"
-          },
-          "summary": {
-            "type": "string",
-            "description": "Diagnosis in maximum 5 words"
+          "pathologic": { "type": "string", "enum": ["yes", "no"], "description": "Whether any anomaly exists" },
+          "severity": { "type": "integer", "minimum": 0, "maximum": 10, "description": "Severity score (0-10)" },
+          "summary": { "type": "string", "description": "Diagnosis in maximum 5 words" }
+        }
+      },
+      "ReportRequest": {
+        "type": "object",
+        "properties": {
+          "report": { "type": "string", "description": "Radiology report text" }
+        },
+        "required": ["report"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "description": "Error message" }
+        }
+      }
+    },
+    "responses": {
+      "RateLimited": {
+        "description": "Too many requests",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Internal server error",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
           }
         }
       }
@@ -427,16 +366,7 @@
         "summary": "Serve dashboard page",
         "description": "Serve the main dashboard HTML page",
         "responses": {
-          "200": {
-            "description": "Dashboard HTML page",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
+          "200": { "description": "Dashboard HTML page", "content": { "text/html": { "schema": { "type": "string" } } } }
         }
       }
     },
@@ -445,16 +375,34 @@
         "summary": "Serve statistics page",
         "description": "Serve the statistics HTML page",
         "responses": {
-          "200": {
-            "description": "Statistics HTML page",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
+          "200": { "description": "Statistics HTML page", "content": { "text/html": { "schema": { "type": "string" } } } }
+        }
+      }
+    },
+    "/stats/radiologists": {
+      "get": {
+        "summary": "Serve radiologists statistics page",
+        "description": "Serve the radiologist statistics HTML page",
+        "responses": {
+          "200": { "description": "Radiologists HTML page", "content": { "text/html": { "schema": { "type": "string" } } } }
+        }
+      }
+    },
+    "/stats/diagnostics": {
+      "get": {
+        "summary": "Serve diagnostics statistics page",
+        "description": "Serve the diagnostics statistics HTML page",
+        "responses": {
+          "200": { "description": "Diagnostics HTML page", "content": { "text/html": { "schema": { "type": "string" } } } }
+        }
+      }
+    },
+    "/stats/insights": {
+      "get": {
+        "summary": "Serve insights page",
+        "description": "Serve the insights HTML page",
+        "responses": {
+          "200": { "description": "Insights HTML page", "content": { "text/html": { "schema": { "type": "string" } } } }
         }
       }
     },
@@ -463,16 +411,7 @@
         "summary": "Serve about page",
         "description": "Serve the about HTML page",
         "responses": {
-          "200": {
-            "description": "About HTML page",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
+          "200": { "description": "About HTML page", "content": { "text/html": { "schema": { "type": "string" } } } }
         }
       }
     },
@@ -481,16 +420,7 @@
         "summary": "Serve report check page",
         "description": "Serve the report check HTML page",
         "responses": {
-          "200": {
-            "description": "Check HTML page",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
+          "200": { "description": "Check HTML page", "content": { "text/html": { "schema": { "type": "string" } } } }
         }
       }
     },
@@ -499,17 +429,7 @@
         "summary": "Serve favicon",
         "description": "Serve the favicon.ico file",
         "responses": {
-          "200": {
-            "description": "Favicon file",
-            "content": {
-              "image/x-icon": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              }
-            }
-          }
+          "200": { "description": "Favicon file", "content": { "image/x-icon": { "schema": { "type": "string", "format": "binary" } } } }
         }
       }
     },
@@ -518,9 +438,7 @@
         "summary": "WebSocket connection",
         "description": "Handle WebSocket connections for real-time dashboard updates",
         "responses": {
-          "101": {
-            "description": "WebSocket connection established"
-          }
+          "101": { "description": "WebSocket connection established" }
         }
       }
     },
@@ -528,88 +446,18 @@
       "get": {
         "summary": "Get exams",
         "description": "Provide paginated exam data with optional filters",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "security": [{ "basicAuth": [] }],
         "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 1
-            },
-            "description": "Page number"
-          },
-          {
-            "name": "reviewed",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": ["any", "yes", "no"]
-            },
-            "description": "Filter by review status (yes = severity > -1, no = severity = -1)"
-          },
-          {
-            "name": "positive",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": ["any", "yes", "no"]
-            },
-            "description": "Filter by AI prediction"
-          },
-          {
-            "name": "correct",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": ["any", "yes", "no"]
-            },
-            "description": "Filter by correctness status"
-          },
-          {
-            "name": "region",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by anatomic region"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by processing status"
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by patient name, CNP, or UID"
-          },
-          {
-            "name": "diagnostic",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by radiologist diagnostic summary"
-          },
-          {
-            "name": "radiologist",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by radiologist name"
-          }
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "description": "Page number" },
+          { "name": "reviewed", "in": "query", "schema": { "type": "string", "enum": ["any", "yes", "no"] }, "description": "Filter by review status (yes = severity > -1, no = severity = -1)" },
+          { "name": "positive", "in": "query", "schema": { "type": "string", "enum": ["any", "yes", "no"] }, "description": "Filter by AI prediction" },
+          { "name": "correct", "in": "query", "schema": { "type": "string", "enum": ["any", "yes", "no"] }, "description": "Filter by correctness status" },
+          { "name": "region", "in": "query", "schema": { "type": "string" }, "description": "Filter by anatomic region" },
+          { "name": "status", "in": "query", "schema": { "type": "string" }, "description": "Filter by processing status" },
+          { "name": "search", "in": "query", "schema": { "type": "string" }, "description": "Filter by patient name, CNP, or UID" },
+          { "name": "diagnostic", "in": "query", "schema": { "type": "string" }, "description": "Filter by radiologist diagnostic summary" },
+          { "name": "radiologist", "in": "query", "schema": { "type": "string" }, "description": "Filter by radiologist name" },
+          { "name": "severity", "in": "query", "schema": { "type": "string" }, "description": "Filter by severity with interval notation (e.g. '3-6', '-8', '2-', '5')" }
         ],
         "responses": {
           "200": {
@@ -619,110 +467,31 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "exams": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Exam"
-                      }
-                    },
-                    "total": {
-                      "type": "integer"
-                    },
-                    "pages": {
-                      "type": "integer"
-                    },
-                    "filters": {
-                      "type": "object"
-                    }
+                    "exams": { "type": "array", "items": { "$ref": "#/components/schemas/Exam" } },
+                    "total": { "type": "integer" },
+                    "pages": { "type": "integer" },
+                    "filters": { "type": "object" }
                   }
                 }
               }
             }
           },
-          "500": {
-            "description": "Internal server error"
-          }
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
-    "/api/stats": {
+    "/api/exams/{uid}": {
       "get": {
-        "summary": "Get statistics",
-        "description": "Provide statistical data for the dashboard",
-        "security": [
-          {
-            "basicAuth": []
-          }
+        "summary": "Get exam by UID",
+        "description": "Provide a single exam's data by UID",
+        "security": [{ "basicAuth": [] }],
+        "parameters": [
+          { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Exam UID" }
         ],
         "responses": {
-          "200": {
-            "description": "Statistical data",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Stats"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/config": {
-      "get": {
-        "summary": "Get configuration",
-        "description": "Provide global configuration parameters to the frontend",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Configuration parameters",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Config"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        }
-      }
-    },
-    "/api/regions": {
-      "get": {
-        "summary": "Get regions",
-        "description": "Provide supported regions for the frontend dropdown",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of regions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error"
-          }
+          "200": { "description": "Exam data", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Exam" } } } },
+          "404": { "description": "Exam not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
@@ -730,29 +499,10 @@
       "get": {
         "summary": "Get patients",
         "description": "Provide paginated patient data with optional filters",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "security": [{ "basicAuth": [] }],
         "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "default": 1
-            },
-            "description": "Page number"
-          },
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            },
-            "description": "Filter by patient name or CNP"
-          }
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 }, "description": "Page number" },
+          { "name": "search", "in": "query", "schema": { "type": "string" }, "description": "Filter by patient name or CNP" }
         ],
         "responses": {
           "200": {
@@ -767,47 +517,24 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "cnp": {
-                            "type": "string",
-                            "description": "Patient CNP (Romanian personal identification number)"
-                          },
-                          "id": {
-                            "type": "string",
-                            "description": "Patient ID from hospital system"
-                          },
-                          "name": {
-                            "type": "string",
-                            "description": "Patient full name"
-                          },
-                          "age": {
-                            "type": "integer",
-                            "description": "Patient age in years"
-                          },
-                          "sex": {
-                            "type": "string",
-                            "enum": ["M", "F", "O"],
-                            "description": "Patient sex (M, F, or O)"
-                          }
+                          "cnp": { "type": "string" },
+                          "id": { "type": "string" },
+                          "name": { "type": "string" },
+                          "age": { "type": "integer" },
+                          "birthdate": { "type": "string", "format": "date" },
+                          "sex": { "type": "string", "enum": ["M", "F", "O"] }
                         }
                       }
                     },
-                    "total": {
-                      "type": "integer"
-                    },
-                    "pages": {
-                      "type": "integer"
-                    },
-                    "filters": {
-                      "type": "object"
-                    }
+                    "total": { "type": "integer" },
+                    "pages": { "type": "integer" },
+                    "filters": { "type": "object" }
                   }
                 }
               }
             }
           },
-          "500": {
-            "description": "Internal server error"
-          }
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
@@ -815,21 +542,9 @@
       "get": {
         "summary": "Get patient by CNP",
         "description": "Provide a single patient's data by CNP",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "security": [{ "basicAuth": [] }],
         "parameters": [
-          {
-            "name": "cnp",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Patient CNP"
-          }
+          { "name": "cnp", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Patient CNP" }
         ],
         "responses": {
           "200": {
@@ -839,109 +554,204 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "cnp": {
-                      "type": "string",
-                      "description": "Patient CNP (Romanian personal identification number)"
-                    },
-                    "id": {
-                      "type": "string",
-                      "description": "Patient ID from hospital system"
-                    },
-                    "name": {
-                      "type": "string",
-                      "description": "Patient full name"
-                    },
-                    "age": {
-                      "type": "integer",
-                      "description": "Patient age in years"
-                    },
-                    "sex": {
-                      "type": "string",
-                      "enum": ["M", "F", "O"],
-                      "description": "Patient sex (M, F, or O)"
-                    },
-                    "exams": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "description": "List of exam UIDs for this patient"
-                    }
+                    "cnp": { "type": "string" },
+                    "id": { "type": "string" },
+                    "name": { "type": "string" },
+                    "age": { "type": "integer" },
+                    "birthdate": { "type": "string", "format": "date" },
+                    "sex": { "type": "string", "enum": ["M", "F", "O"] },
+                    "exams": { "type": "array", "items": { "type": "string" }, "description": "List of exam UIDs" }
                   }
                 }
               }
             }
           },
-          "404": {
-            "description": "Patient not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error"
-          }
+          "404": { "description": "Patient not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
-    "/api/exams/{uid}": {
+    "/api/stats": {
       "get": {
-        "summary": "Get exam by UID",
-        "description": "Provide a single exam's data by UID",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "uid",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Exam UID"
-          }
-        ],
+        "summary": "Get statistics",
+        "description": "Provide statistical data for the dashboard",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": { "description": "Statistical data", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Stats" } } } },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/regions": {
+      "get": {
+        "summary": "Get regions",
+        "description": "Provide supported regions for the frontend dropdown",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": { "description": "List of regions", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } } },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/diagnostics": {
+      "get": {
+        "summary": "Get diagnostics",
+        "description": "Provide distinct diagnostic summaries and their report counts",
+        "security": [{ "basicAuth": [] }],
         "responses": {
           "200": {
-            "description": "Exam data",
+            "description": "Map of diagnostic summary to report count",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Exam"
-                }
+                "schema": { "type": "object", "additionalProperties": { "type": "integer" } }
               }
             }
           },
-          "404": {
-            "description": "Exam not found",
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/diagnostics/monthly_trends": {
+      "get": {
+        "summary": "Get diagnostics monthly trends",
+        "description": "Provide monthly trends for the top 10 diagnostics over the last 12 months",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Monthly trend data keyed by month (YYYY-MM)",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": { "type": "object" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/radiologists": {
+      "get": {
+        "summary": "Get radiologists",
+        "description": "Provide distinct radiologist names. Non-admin users receive initials only.",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "List of radiologist names or initials",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/stats/radiologists": {
+      "get": {
+        "summary": "Get radiologist statistics",
+        "description": "Provide per-radiologist performance statistics. Non-admin users receive anonymized names.",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Per-radiologist statistics",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": { "type": "object" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/stats/radiologists/monthly_trends": {
+      "get": {
+        "summary": "Get radiologist monthly trends",
+        "description": "Provide monthly report counts per radiologist over the last 12 months. Non-admin users receive anonymized names.",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Monthly trend data per radiologist keyed by month (YYYY-MM)",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": { "type": "object" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/stats/diagnostics": {
+      "get": {
+        "summary": "Get diagnostics statistics",
+        "description": "Provide per-diagnostic performance statistics including accuracy, sensitivity, and PPV",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Per-diagnostic statistics",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": { "type": "object" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/stats/insights": {
+      "get": {
+        "summary": "Get insights",
+        "description": "Provide analytical insights including age distribution, processing times, and radiologist metrics",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Insights data",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
-                      "type": "string"
-                    }
+                    "age_distribution": { "type": "object" },
+                    "processing_times": { "type": "object" },
+                    "radiologist_metrics": { "type": "object" }
                   }
                 }
               }
             }
           },
-          "500": {
-            "description": "Internal server error"
-          }
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/severity": {
+      "get": {
+        "summary": "Get severity distribution",
+        "description": "Provide severity levels and their report counts",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Map of severity level (as string key) to report count",
+            "content": {
+              "application/json": {
+                "schema": { "type": "object", "additionalProperties": { "type": "integer" } }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "summary": "Get configuration",
+        "description": "Provide global configuration parameters to the frontend",
+        "security": [{ "basicAuth": [] }],
+        "responses": {
+          "200": { "description": "Configuration parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Config" } } } },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
@@ -949,11 +759,7 @@
       "post": {
         "summary": "Radiologist review",
         "description": "Record radiologist's review of an exam as normal or abnormal",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "security": [{ "basicAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -961,14 +767,8 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "uid": {
-                    "type": "string",
-                    "description": "Unique identifier of the exam"
-                  },
-                  "normal": {
-                    "type": "boolean",
-                    "description": "Whether the radiologist marked the case as normal"
-                  }
+                  "uid": { "type": "string", "description": "Unique identifier of the exam" },
+                  "normal": { "type": "boolean", "description": "Whether the radiologist marked the case as normal" }
                 },
                 "required": ["uid", "normal"]
               }
@@ -976,33 +776,15 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Review status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
+          "200": { "description": "Review status", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" } } } } } }
         }
       }
     },
     "/api/requeue": {
       "post": {
         "summary": "Re-queue exam",
-        "description": "Re-queue an exam for processing",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "description": "Re-queue an exam for AI processing",
+        "security": [{ "basicAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -1010,10 +792,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "uid": {
-                    "type": "string",
-                    "description": "Unique identifier of the exam"
-                  }
+                  "uid": { "type": "string", "description": "Unique identifier of the exam" }
                 },
                 "required": ["uid"]
               }
@@ -1025,17 +804,7 @@
             "description": "Re-queue status",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
+                "schema": { "type": "object", "properties": { "status": { "type": "string" }, "message": { "type": "string" } } }
               }
             }
           }
@@ -1046,19 +815,11 @@
       "post": {
         "summary": "Trigger DICOM query",
         "description": "Trigger a manual DICOM query/retrieve operation",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "security": [{ "basicAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QueryRequest"
-              }
-            }
+            "application/json": { "schema": { "$ref": "#/components/schemas/QueryRequest" } }
           }
         },
         "responses": {
@@ -1066,17 +827,7 @@
             "description": "Operation status",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
+                "schema": { "type": "object", "properties": { "status": { "type": "string" }, "message": { "type": "string" } } }
               }
             }
           }
@@ -1087,38 +838,72 @@
       "post": {
         "summary": "Check report",
         "description": "Analyze a free-text radiology report for pathological findings",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "security": [{ "basicAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CheckReportRequest"
-              }
-            }
+            "application/json": { "schema": { "$ref": "#/components/schemas/CheckReportRequest" } }
+          }
+        },
+        "responses": {
+          "200": { "description": "Analysis results", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CheckReportResponse" } } } },
+          "400": { "description": "Bad request" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/analyse": {
+      "post": {
+        "summary": "Detailed analysis",
+        "description": "Perform detailed three-pass analysis of a radiology report using the ANA_PROMPT",
+        "security": [{ "basicAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ReportRequest" } }
           }
         },
         "responses": {
           "200": {
-            "description": "Analysis results",
+            "description": "Detailed analysis results",
+            "content": {
+              "application/json": { "schema": { "type": "object" } }
+            }
+          },
+          "400": { "description": "Bad request (no report text provided)" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/api/translate": {
+      "post": {
+        "summary": "Translate report",
+        "description": "Translate a Romanian radiology report to English",
+        "security": [{ "basicAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ReportRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Translation result",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CheckReportResponse"
+                  "type": "object",
+                  "properties": {
+                    "translation": { "type": "string", "description": "English translation of the report" }
+                  }
                 }
               }
             }
           },
-          "400": {
-            "description": "Bad request"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
@@ -1126,11 +911,7 @@
       "post": {
         "summary": "Get radiologist report",
         "description": "Retrieve radiologist report for an exam from FHIR and queue for LLM processing",
-        "security": [
-          {
-            "basicAuth": []
-          }
-        ],
+        "security": [{ "basicAuth": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -1138,10 +919,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "uid": {
-                    "type": "string",
-                    "description": "Unique identifier of the exam"
-                  }
+                  "uid": { "type": "string", "description": "Unique identifier of the exam" }
                 },
                 "required": ["uid"]
               }
@@ -1153,26 +931,12 @@
             "description": "Retrieval status",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    }
-                  }
-                }
+                "schema": { "type": "object", "properties": { "status": { "type": "string" }, "message": { "type": "string" } } }
               }
             }
           },
-          "400": {
-            "description": "Bad request"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
+          "400": { "description": "Bad request" },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
@@ -1181,16 +945,7 @@
         "summary": "Get API specification",
         "description": "Serve the OpenAPI specification file",
         "responses": {
-          "200": {
-            "description": "OpenAPI specification",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
+          "200": { "description": "OpenAPI specification", "content": { "application/json": { "schema": { "type": "object" } } } }
         }
       }
     }
