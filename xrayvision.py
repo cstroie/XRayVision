@@ -6358,6 +6358,12 @@ async def main():
     logging.info(f"Python SQLite version: {sqlite3.version}")
     logging.info(f"SQLite library version: {sqlite3.sqlite_version}")
 
+    # Warn about insecure default credentials still in use
+    if any(u['password'] == 'admin' for u in USERS.values()):
+        logging.warning("SECURITY: Default admin password is still in use. Update credentials in local.cfg.")
+    if OPENAI_API_KEY == 'sk-your-api-key':
+        logging.warning("SECURITY: Default OPENAI_API_KEY placeholder is still set. Update it in local.cfg.")
+
     # Reset any exams stuck in 'processing' status back to 'queued'
     reset_count = db_update('exams', "status = ?", ('processing',), status='queued')
     if reset_count and reset_count > 0:
