@@ -3186,15 +3186,16 @@ async def db_get_requeue_analysis():
     Returns:
         tuple: Tuple containing (total_requeued, avg_latency_improvement) or None
     """
+    # ai_reports has one row per uid (uid is PK), so count exams that were
+    # reprocessed by checking updated > created on the ai_reports row.
     query = """
-        SELECT 
+        SELECT
             COUNT(*) as total_requeued,
-            AVG(CAST(ai2.latency AS FLOAT) - CAST(ai1.latency AS FLOAT)) as avg_latency_improvement
+            AVG(CAST(ar.latency AS FLOAT)) as avg_latency
         FROM exams e
-        JOIN ai_reports ai1 ON e.uid = ai1.uid
-        JOIN ai_reports ai2 ON e.uid = ai2.uid
+        JOIN ai_reports ar ON e.uid = ar.uid
         WHERE e.status = 'done'
-        AND ai1.created < ai2.created
+        AND ar.updated > ar.created
     """
     return db_execute_query(query, fetch_mode='one')
 
@@ -3297,10 +3298,10 @@ async def insights_handler(request):
         # 5. Re-queue analysis
         row = await db_get_requeue_analysis()
         if row:
-            total_requeued, avg_improvement = row
+            total_requeued, avg_latency = row
             insights['requeue_analysis'] = {
                 'total_requeued': total_requeued or 0,
-                'avg_latency_improvement': round(avg_improvement, 2) if avg_improvement else 0
+                'avg_latency': round(avg_latency, 2) if avg_latency else 0
             }
         
         # 6. Radiologist consistency (if we have multiple reports for same exam)
