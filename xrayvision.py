@@ -1146,7 +1146,7 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
     if 'correct' in filters:
         if filters['correct'] == 1:
             # Correct predictions (TP or TN)
-            conditions.append("((rr.severity = -1 OR rr.severity IS NULL) OR (ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?))")
+            conditions.append("((ar.severity >= ? AND rr.severity >= ?) OR (ar.severity < ? AND rr.severity < ?))")
             params.extend([SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD, SEVERITY_THRESHOLD])
         else:
             # Incorrect predictions (FP or FN)
@@ -3910,12 +3910,12 @@ async def check_report(report_text):
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME}")
 
         # Start timing
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             # Calculate timing statistics
             global timings
-            end_time = asyncio.get_event_loop().time()
+            end_time = asyncio.get_running_loop().time()
             processing_time = int((end_time - start_time) * 1000)  # In milliseconds
             if timings['checking'] > 0:
                 timings['checking'] = int((3 * timings['checking'] + processing_time) / 4)
@@ -4110,12 +4110,12 @@ async def translate_report(report_text):
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
 
         # Start timing
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             # Calculate timing statistics
             global timings
-            end_time = asyncio.get_event_loop().time()
+            end_time = asyncio.get_running_loop().time()
             processing_time = int((end_time - start_time) * 1000)  # In milliseconds
             if timings['translation'] > 0:
                 timings['translation'] = int((3 * timings['translation'] + processing_time) / 4)
@@ -4292,9 +4292,9 @@ async def check_rad_report_and_update(uid):
 
         # Summarize the radiologist report
         logging.info(f"Summarizing radiologist report for exam {uid}")
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         analysis_result = await check_report(report_text)
-        end_time = asyncio.get_event_loop().time()
+        end_time = asyncio.get_running_loop().time()
         processing_time = end_time - start_time  # In seconds
 
         # Check if analysis was successful
@@ -4397,12 +4397,12 @@ async def detailed_analysis_report(report_text):
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for detailed analysis")
 
         # Start timing
-        start_time = asyncio.get_event_loop().time()
+        start_time = asyncio.get_running_loop().time()
         async with aiohttp.ClientSession() as session:
             result = await send_to_openai(session, headers, payload)
             # Calculate timing statistics
             global timings
-            end_time = asyncio.get_event_loop().time()
+            end_time = asyncio.get_running_loop().time()
             processing_time = int((end_time - start_time) * 1000)  # In milliseconds
             if timings['analysis'] > 0:
                 timings['analysis'] = int((3 * timings['analysis'] + processing_time) / 4)
@@ -4552,7 +4552,7 @@ async def rate_limit_middleware(request, handler):
     if not request.path.startswith('/api/'):
         return await handler(request)
     ip = request.remote
-    now = asyncio.get_event_loop().time()
+    now = asyncio.get_running_loop().time()
     window = 60.0
     limit = _RATE_LIMIT_HEAVY_MAX if request.path in _RATE_LIMIT_HEAVY else _RATE_LIMIT_DEFAULT_MAX
     timestamps = _rate_limit_store.get(ip, [])
@@ -5531,13 +5531,13 @@ async def send_exam_to_openai(exam, max_retries = 3):
         while attempt <= max_retries:
             try:
                 # Start timing
-                start_time = asyncio.get_event_loop().time()
+                start_time = asyncio.get_running_loop().time()
                 async with aiohttp.ClientSession() as session:
                     result = await send_to_openai(session, headers, data)
 
                     # Calculate timing statistics
                     global timings
-                    end_time = asyncio.get_event_loop().time()
+                    end_time = asyncio.get_running_loop().time()
                     processing_time = int((end_time - start_time) * 1000)  # In milliseconds
                     if timings['examination'] > 0:
                         timings['examination'] = int((3 * timings['examination'] + processing_time) / 4)
@@ -5927,7 +5927,11 @@ async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region
             return None, None
     
     # Extract the report text from the selected presented form
-    report_text = presented_form.get('data', '').strip()
+    report_text = presented_form.get('data', '')
+    if not isinstance(report_text, str):
+        logging.warning(f"FHIR presentedForm data is not a string for exam {exam_uid}")
+        return None, None
+    report_text = report_text.strip()
     if not report_text:
         logging.warning(f"No data found in presentedForm for exam {exam_uid}")
         return None, None
