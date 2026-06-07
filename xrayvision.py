@@ -4553,6 +4553,10 @@ async def rate_limit_middleware(request, handler):
         return web.json_response({"error": "Too many requests"}, status=429)
     timestamps.append(now)
     _rate_limit_store[ip] = timestamps
+    # Evict IPs with no activity in the last window to prevent unbounded growth
+    stale = [k for k, v in _rate_limit_store.items() if not v or now - v[-1] >= window]
+    for k in stale:
+        del _rate_limit_store[k]
     return await handler(request)
 
 
