@@ -163,11 +163,6 @@ Recorded events:
 * `/about` - About page
 * `/check` - Report check page
 * `/ws` - WebSocket for real-time updates
-* `/` - Main dashboard
-* `/stats` - Statistics page
-* `/about` - About page
-* `/check` - Report check page
-* `/ws` - WebSocket for real-time updates
 * `/api/exams` - Get exams with pagination and filtering
 * `/api/stats` - Get statistics data
 * `/api/config` - Get configuration parameters
