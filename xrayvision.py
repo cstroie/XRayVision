@@ -517,15 +517,17 @@ def db_execute_query(query: str, params: tuple = (), fetch_mode: str = 'all') ->
         
         try:
             cursor = conn.cursor()
-            cursor.execute(query, params)
-
-            if fetch_mode == 'all':
-                return cursor.fetchall()
-            elif fetch_mode == 'one':
-                return cursor.fetchone()
-            elif fetch_mode == 'none':
+            if fetch_mode == 'none':
+                conn.execute('BEGIN IMMEDIATE')
+                cursor.execute(query, params)
                 conn.commit()
                 return cursor.rowcount
+            else:
+                cursor.execute(query, params)
+                if fetch_mode == 'all':
+                    return cursor.fetchall()
+                elif fetch_mode == 'one':
+                    return cursor.fetchone()
         except Exception as e:
             conn.rollback()
             return handle_error(e, "database query execution", None, raise_on_error=False)

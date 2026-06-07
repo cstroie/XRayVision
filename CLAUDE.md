@@ -124,6 +124,16 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 
 ---
 
+## Issue workflow
+
+When fixing issues from `issues.txt`:
+1. Fix one issue at a time — no bundling unrelated changes.
+2. Verify the fix makes sense against the actual code before committing.
+3. Commit with a focused message referencing the issue number.
+4. Move to the next issue only after the commit is done.
+
+---
+
 ## Known issues / active work
 
 - AI translation sometimes returns plain text instead of JSON (`{"translation": "..."}`) — parser fails and logs ERROR. Tracked in `TODO`.
