@@ -60,6 +60,14 @@ logging.getLogger('pydicom').setLevel(logging.WARNING)
 # Set default log level
 logging.getLogger().setLevel(logging.INFO)
 
+# Audit logger — records security and clinical actions to a separate file
+audit_logger = logging.getLogger('xrayvision.audit')
+audit_logger.setLevel(logging.INFO)
+audit_logger.propagate = False
+_audit_handler = logging.FileHandler("xrayvision_audit.log")
+_audit_handler.setFormatter(logging.Formatter('%(asctime)s | %(levelname)8s | %(message)s'))
+audit_logger.addHandler(_audit_handler)
+
 # Configuration
 import configparser
 
@@ -3660,6 +3668,7 @@ async def dicom_query(request):
         data = await request.json()
         hours = int(data.get('hours', 3))
         logging.debug(f"Manual QueryRetrieve triggered for the last {hours} hours.")
+        audit_logger.info(f"DICOM_QUERY hours={hours} user={getattr(request, 'username', '')} ip={request.remote}")
         await query_and_retrieve(hours * 60)
         return web.json_response({'status': 'success',
                                   'message': f'Query triggered for the last {hours} hours.'})
@@ -3697,10 +3706,12 @@ async def rad_review(request):
         
         # Update the radiologist report
         db_rad_review(uid, normal, radiologist)
-        
+
         # Get the updated exam data
         exam_data = db_get_exams(limit=1, uid=uid)
-        logging.info(f"Exam {uid} marked as {normal and 'normal' or 'abnormal'} by radiologist {radiologist}, which {exam_data['report']['correct'] and 'validates' or 'invalidates'} the AI report.")
+        verdict = 'normal' if normal else 'abnormal'
+        logging.info(f"Exam {uid} marked as {verdict} by radiologist {radiologist}, which {exam_data['report']['correct'] and 'validates' or 'invalidates'} the AI report.")
+        audit_logger.info(f"RAD_REVIEW uid={uid} verdict={verdict} radiologist={radiologist} ip={request.remote}")
         await broadcast_dashboard_update(event = "radreview", payload = exam_data)
         response = {'status': 'success'}
         return web.json_response(response)
@@ -3734,6 +3745,7 @@ async def requeue_exam(request):
         
         if success:
             logging.info(f"Exam {uid} re-queued for processing.")
+            audit_logger.info(f"REQUEUE uid={uid} user={getattr(request, 'username', '')} ip={request.remote}")
             # Notify the queue
             QUEUE_EVENT.set()
             payload = {'uid': uid}
@@ -4556,7 +4568,7 @@ async def auth_middleware(request, handler):
         username, password = credentials.split(':', 1)
         user_info = USERS.get(username)
         if not user_info or user_info['password'] != password:
-            logging.warning(f"Invalid authentication for user: {username}")
+            audit_logger.warning(f"AUTH_FAIL user={username} ip={request.remote} path={request.path}")
             raise ValueError("Invalid authentication")
         # Store user role and username in request for later use
         request.user_role = user_info['role']
