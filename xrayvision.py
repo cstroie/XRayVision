@@ -6417,6 +6417,16 @@ async def process_exams_without_rad_reports(session):
     # If patient ID is not known, search for it in FHIR
     patient_name = result['patient']['name']
     if not patient_id:
+        if not validate_romanian_cnp(patient_cnp):
+            logging.warning(f"Invalid CNP '{patient_cnp}' for patient '{patient_name}', marking exams as unresolvable")
+            for exam in exams:
+                exam_uid = exam['uid']
+                existing = db_select_one('rad_reports', exam_uid)
+                if existing:
+                    db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
+                else:
+                    db_insert('rad_reports', uid=exam_uid, id=-1)
+            return
         patient_id = await get_patient_id_from_fhir(session, patient_cnp, patient_name)
     # If still no patient ID, only mark unresolvable if the exams are old enough
     if not patient_id:
