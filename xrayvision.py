@@ -13,6 +13,9 @@
 import argparse
 import asyncio
 import base64
+import csv
+import glob
+import io
 import json
 import logging
 import math
@@ -76,7 +79,8 @@ import configparser
 DEFAULT_CONFIG = {
     'general': {
         'XRAYVISION_DB_PATH': 'xrayvision.db',
-        'XRAYVISION_BACKUP_DIR': 'backup'
+        'XRAYVISION_BACKUP_DIR': 'backup',
+        'BACKUP_MAX_FILES': '30'
     },
     'dicom': {
         'AE_TITLE': 'XRAYVISION',
@@ -215,6 +219,7 @@ IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
 DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
 BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
+BACKUP_MAX_FILES = config.getint('general', 'BACKUP_MAX_FILES', fallback=30)
 MODEL_NAME = config.get('openai', 'MODEL_NAME')
 AE_TITLE = config.get('dicom', 'AE_TITLE')
 REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
@@ -1981,6 +1986,15 @@ def db_backup():
             with sqlite3.connect(backup_path) as backup_conn:
                 conn.backup(backup_conn)
         logging.info(f"Database backed up to {backup_path}")
+        # Rotate: remove oldest backups when over the limit
+        try:
+            backups = sorted(glob.glob(os.path.join(BACKUP_DIR, 'xrayvision_*.db')))
+            while len(backups) > BACKUP_MAX_FILES:
+                oldest = backups.pop(0)
+                os.remove(oldest)
+                logging.info(f"Removed old backup: {oldest}")
+        except Exception as rot_e:
+            logging.warning(f"Backup rotation failed: {rot_e}")
         return backup_path
     except Exception as e:
         logging.error(f"Failed to create database backup: {e}")
