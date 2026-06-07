@@ -210,21 +210,25 @@ OPENAI_URL_SECONDARY = config.get('openai', 'OPENAI_URL_SECONDARY')
 OPENAI_API_KEY = config.get('openai', 'OPENAI_API_KEY')
 NTFY_URL = config.get('notifications', 'NTFY_URL')
 NTFY_IMAGE_BASE_URL = config.get('notifications', 'NTFY_IMAGE_BASE_URL')
-DASHBOARD_PORT = config.getint('dashboard', 'DASHBOARD_PORT')
-AE_TITLE = config.get('dicom', 'AE_TITLE')
-AE_PORT = config.getint('dicom', 'AE_PORT')
-REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
-REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
-REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
-RETRIEVAL_METHOD = config.get('dicom', 'RETRIEVAL_METHOD')
-FHIR_URL = config.get('fhir', 'FHIR_URL')
-FHIR_USERNAME = config.get('fhir', 'FHIR_USERNAME')
-FHIR_PASSWORD = config.get('fhir', 'FHIR_PASSWORD')
 IMAGES_DIR = 'images'
 STATIC_DIR = 'static'
 DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
 BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
 MODEL_NAME = config.get('openai', 'MODEL_NAME')
+AE_TITLE = config.get('dicom', 'AE_TITLE')
+REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
+REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
+RETRIEVAL_METHOD = config.get('dicom', 'RETRIEVAL_METHOD')
+FHIR_URL = config.get('fhir', 'FHIR_URL')
+FHIR_USERNAME = config.get('fhir', 'FHIR_USERNAME')
+FHIR_PASSWORD = config.get('fhir', 'FHIR_PASSWORD')
+try:
+    DASHBOARD_PORT = config.getint('dashboard', 'DASHBOARD_PORT')
+    AE_PORT = config.getint('dicom', 'AE_PORT')
+    REMOTE_AE_PORT = config.getint('dicom', 'REMOTE_AE_PORT')
+except ValueError as e:
+    logging.error(f"Invalid integer in configuration: {e}")
+    raise SystemExit(1)
 
 # Prompt loading function
 def load_prompts():
