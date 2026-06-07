@@ -58,7 +58,7 @@
             <label for="report-text">Radiology report</label>
             <textarea id="report-text" name="report" placeholder="Enter radiology report text here..." rows="8" required></textarea>
             <fieldset role="group">
-                <button type="submit" id="check-btn" form="check-form">Quick Check</button>
+                <button type="button" id="check-btn" form="check-form">Quick Check</button>
                 <button type="button" id="analyse-btn">Detailed Analysis</button>
             </fieldset>
         </form>
@@ -95,14 +95,12 @@
         }
 
         function colorizePathologic(element, value) {
-            // Ensure only "yes" or "no" values are displayed
-            const normalizedValue = (value === "yes" || value === "no") ? value : "no";
-            element.textContent = normalizedValue;
-            if (normalizedValue === "no") {
-                element.style.color = "#2dd4bf"; // green
-            } else {
-                element.style.color = "#f87171"; // red
+            if (value !== "yes" && value !== "no") {
+                element.textContent = value || 'N/A';
+                return;
             }
+            element.textContent = value;
+            element.style.color = value === "no" ? "#2dd4bf" : "#f87171";
         }
         
         function colorizeSeverity(element, value) {
