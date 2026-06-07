@@ -83,6 +83,16 @@
     </template>
 
     <script>
+        function sanitize(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         function colorizePathologic(element, value) {
             // Ensure only "yes" or "no" values are displayed
             const normalizedValue = (value === "yes" || value === "no") ? value : "no";
@@ -175,9 +185,9 @@
             const firstPassContent = document.createElement('div');
             if (data.first_pass) {
                 firstPassContent.innerHTML = `
-                    <p><strong>Topic:</strong> ${data.first_pass.topic || 'N/A'}</p>
-                    <p><strong>Purpose:</strong> ${data.first_pass.purpose || 'N/A'}</p>
-                    <p><strong>Primary Findings:</strong> ${data.first_pass.primary_findings || 'N/A'}</p>
+                    <p><strong>Topic:</strong> ${sanitize(data.first_pass.topic) || 'N/A'}</p>
+                    <p><strong>Purpose:</strong> ${sanitize(data.first_pass.purpose) || 'N/A'}</p>
+                    <p><strong>Primary Findings:</strong> ${sanitize(data.first_pass.primary_findings) || 'N/A'}</p>
                 `;
             } else {
                 firstPassContent.innerHTML = `
@@ -257,7 +267,7 @@
                     });
                     thirdHtml += '</ul>';
                 }
-                thirdHtml += `<p><strong>Critique:</strong> ${data.third_pass.critique || 'N/A'}</p>`;
+                thirdHtml += `<p><strong>Critique:</strong> ${sanitize(data.third_pass.critique) || 'N/A'}</p>`;
                 thirdPassContent.innerHTML = thirdHtml;
             } else {
                 thirdPassContent.innerHTML = `
@@ -275,7 +285,7 @@
             overallSection.querySelector('[data-field="title"]').textContent = 'Overall Assessment';
             
             const overallContent = document.createElement('div');
-            overallContent.innerHTML = `<p>${data.overall_assessment || 'N/A'}</p>`;
+            overallContent.innerHTML = `<p>${sanitize(data.overall_assessment) || 'N/A'}</p>`;
             overallSection.querySelector('[data-field="content"]').appendChild(overallContent);
             container.appendChild(overallSection);
             
