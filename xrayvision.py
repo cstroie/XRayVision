@@ -4501,6 +4501,33 @@ async def translate_handler(request):
         return web.json_response({'error': 'Internal server error'}, status=500)
 
 
+# Per-IP request timestamps for rate limiting: {ip: [timestamps]}
+_rate_limit_store: dict = {}
+# Heavy AI endpoints get a stricter limit
+_RATE_LIMIT_HEAVY = {'/api/check', '/api/analyse', '/api/translate'}
+_RATE_LIMIT_HEAVY_MAX = 10    # requests per minute
+_RATE_LIMIT_DEFAULT_MAX = 60  # requests per minute
+
+@web.middleware
+async def rate_limit_middleware(request, handler):
+    """Sliding-window per-IP rate limiter for API endpoints."""
+    if not request.path.startswith('/api/'):
+        return await handler(request)
+    ip = request.remote
+    now = asyncio.get_event_loop().time()
+    window = 60.0
+    limit = _RATE_LIMIT_HEAVY_MAX if request.path in _RATE_LIMIT_HEAVY else _RATE_LIMIT_DEFAULT_MAX
+    timestamps = _rate_limit_store.get(ip, [])
+    # Drop entries older than the window
+    timestamps = [t for t in timestamps if now - t < window]
+    if len(timestamps) >= limit:
+        logging.warning(f"Rate limit exceeded for {ip} on {request.path}")
+        return web.json_response({"error": "Too many requests"}, status=429)
+    timestamps.append(now)
+    _rate_limit_store[ip] = timestamps
+    return await handler(request)
+
+
 @web.middleware
 async def auth_middleware(request, handler):
     """Basic authentication middleware for API endpoints.
@@ -5567,7 +5594,7 @@ async def start_dashboard():
     middleware and all required routes.
     """
     global web_server
-    app = web.Application(middlewares = [auth_middleware])
+    app = web.Application(middlewares = [rate_limit_middleware, auth_middleware])
     app.router.add_get('/', serve_dashboard_page)
     app.router.add_get('/stats', serve_stats_page)
     app.router.add_get('/about', serve_about_page)
