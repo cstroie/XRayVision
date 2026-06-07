@@ -134,6 +134,26 @@ All events are logged to:
 
 Timestamps, info, warnings, and errors are all captured.
 
+### Audit log
+
+Security and clinical actions are recorded separately in `xrayvision_audit.log`.
+The audit log is write-only from the application and never appears in the main log or console.
+
+Each entry follows the same format as the main log:
+```
+2026-06-07 10:15:42,301 |     INFO | AUTH_OK user=admin role=admin ip=192.168.1.5 path=/api/exams
+```
+
+Recorded events:
+
+| Event | Level | Trigger |
+|---|---|---|
+| `AUTH_OK` | INFO | Successful login — user, role, IP, requested path |
+| `AUTH_FAIL` | WARNING | Failed login attempt — username, IP, requested path |
+| `RAD_REVIEW` | INFO | Radiologist marks exam normal/abnormal — exam UID, verdict, radiologist, IP |
+| `REQUEUE` | INFO | Exam re-queued for AI reprocessing — exam UID, user, IP |
+| `DICOM_QUERY` | INFO | Manual DICOM QueryRetrieve triggered — time span (hours), user, IP |
+
 ---
 
 ## API Endpoints
@@ -169,7 +189,6 @@ Timestamps, info, warnings, and errors are all captured.
 ## Future Improvements
 
 * Enhanced user management with role-based access control
-* More detailed audit logging
 * Export functionality for reports
 * Integration with more DICOM modalities
 * Improved error handling and recovery mechanisms

@@ -4573,6 +4573,7 @@ async def auth_middleware(request, handler):
         # Store user role and username in request for later use
         request.user_role = user_info['role']
         request.username = username
+        audit_logger.info(f"AUTH_OK user={username} role={user_info['role']} ip={request.remote} path={request.path}")
     except (ValueError, UnicodeDecodeError) as e:
         raise web.HTTPUnauthorized(
             text = "401: Invalid authentication",
