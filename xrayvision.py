@@ -1285,6 +1285,35 @@ def db_get_exams(limit = PAGE_SIZE, offset = 0, **filters):
             except ValueError:
                 pass  # Invalid severity value, ignore filter
 
+    if 'confidence' in filters:
+        conf_value = str(filters['confidence']).strip()
+        # Same interval notation as severity: "80-", "-49", "50-79"
+        if '-' in conf_value and conf_value != '-':
+            parts = conf_value.split('-', 1)
+            try:
+                if parts[0] == '':  # "-49" format (0 to 49)
+                    upper = int(parts[1])
+                    conditions.append("ar.confidence >= 0 AND ar.confidence <= ?")
+                    params.append(upper)
+                elif parts[1] == '':  # "80-" format (80 to 100)
+                    lower = int(parts[0])
+                    conditions.append("ar.confidence >= ?")
+                    params.append(lower)
+                else:  # "50-79" format
+                    lower = int(parts[0])
+                    upper = int(parts[1])
+                    conditions.append("ar.confidence >= ? AND ar.confidence <= ?")
+                    params.extend([lower, upper])
+            except ValueError:
+                pass
+        else:
+            try:
+                exact_val = int(conf_value)
+                conditions.append("ar.confidence = ?")
+                params.append(exact_val)
+            except ValueError:
+                pass
+
     # Build WHERE clause
     where = ""
     if conditions:
@@ -2911,6 +2940,10 @@ async def exams_handler(request):
                     filters['severity_op'] = severity_op
             except ValueError:
                 pass  # Ignore invalid severity value
+        # Handle confidence filter with interval notation (e.g. "80-", "-49", "50-79")
+        confidence_value = request.query.get('confidence', 'any')
+        if confidence_value != 'any' and confidence_value:
+            filters['confidence'] = confidence_value
         offset = (page - 1) * PAGE_SIZE
         data, total = db_get_exams(limit = PAGE_SIZE, offset = offset, **filters)
         
@@ -2965,6 +2998,9 @@ async def csv_export_handler(request):
             value = request.query.get(f, 'any')
             if value != 'any':
                 filters[f] = value
+        confidence_value = request.query.get('confidence', 'any')
+        if confidence_value != 'any' and confidence_value:
+            filters['confidence'] = confidence_value
         data, _ = db_get_exams(limit=10000, offset=0, **filters)
 
         output = io.StringIO()
@@ -6768,7 +6804,11 @@ async def main():
     reset_count = db_update('exams', "status = ?", ('processing',), status='queued')
     if reset_count and reset_count > 0:
         logging.info(f"Reset {reset_count} exams from 'processing' to 'queued' status")
-        # Signal the queue to process these reset exams
+        QUEUE_EVENT.set()
+    # Recover orphaned 'none' exams (received before a crash, never queued)
+    none_count = db_update('exams', "status = ?", ('none',), status='queued')
+    if none_count and none_count > 0:
+        logging.info(f"Recovered {none_count} orphaned exams from 'none' to 'queued' status")
         QUEUE_EVENT.set()
 
     # Load exams

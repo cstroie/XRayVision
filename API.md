@@ -221,6 +221,7 @@ Provide paginated exam data with optional filters.
 - `diagnostic` (string) — Filter by radiologist diagnostic summary
 - `radiologist` (string) — Filter by radiologist name
 - `severity` (string) — Filter by severity with interval notation (e.g. `3-6`, `-8`, `2-`, `5`)
+- `confidence` (string) — Filter by AI confidence with interval notation (e.g. `80-`, `-49`, `50-79`)
 
 **Response:**
 ```json
