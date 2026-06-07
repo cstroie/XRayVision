@@ -2478,6 +2478,9 @@ def apply_gamma_correction(image, gamma = 1.2):
             image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         mid = 0.5
         mean = np.median(image)
+        if mean <= 0:
+            logging.debug("Image median is zero, skipping auto-gamma (using gamma=1.0)")
+            mean = mid * 255  # results in gamma = 1.0
         gamma = math.log(mid * 255) / math.log(mean)
         logging.debug(f"Calculated gamma is {gamma:.2f}")
     # Build a lookup table mapping the pixel values [0, 255] to
