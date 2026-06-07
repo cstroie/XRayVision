@@ -237,7 +237,24 @@
             if (reportsChart) reportsChart.destroy();
             if (accuracyChart) accuracyChart.destroy();
             if (monthlyDiagnosticsChart) monthlyDiagnosticsChart.destroy();
-            
+
+            if (topDiagnostics.length === 0) {
+                ['reportsChart', 'accuracyChart'].forEach(id => {
+                    const canvas = document.getElementById(id);
+                    if (canvas) {
+                        const ctx = canvas.getContext('2d');
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.save();
+                        ctx.fillStyle = 'var(--pico-muted-color)';
+                        ctx.font = '14px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText('No diagnostic data available yet.', canvas.width / 2, canvas.height / 2);
+                        ctx.restore();
+                    }
+                });
+            }
+
             // Chart: Reports by Diagnostic
             reportsChart = new Chart(document.getElementById("reportsChart"), {
                 type: 'bar',
