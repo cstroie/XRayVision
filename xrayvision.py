@@ -2099,49 +2099,52 @@ async def query_and_retrieve(minutes=60):
             f"QueryRetrieve association established. "
             f"Asking for studies in the last {minutes} minutes."
         )
-        # Prepare the timespan
-        current_time = datetime.now()
-        past_time = current_time - timedelta(minutes=minutes)
-        # Check if the time span crosses midnight, split into two queries
-        # This is necessary because DICOM time ranges can't wrap around midnight
-        if past_time.date() < current_time.date():
-            date_yesterday = past_time.strftime('%Y%m%d')
-            time_yesterday = f"{past_time.strftime('%H%M%S')}-235959"
-            date_today = current_time.strftime('%Y%m%d')
-            time_today = f"000000-{current_time.strftime('%H%M%S')}"
-            queries = [(date_yesterday, time_yesterday), (date_today, time_today)]
-        else:
-            time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
-            date_today = current_time.strftime('%Y%m%d')
-            queries = [(date_today, time_range)]
-        # Perform one or two queries, as needed
-        for study_date, time_range in queries:
-            # The query dataset
-            ds = Dataset()
-            ds.QueryRetrieveLevel = "STUDY"
-            ds.StudyDate = study_date
-            ds.StudyTime = time_range
-            ds.Modality = "CR"
-            # Get the responses list
-            responses = assoc.send_c_find(
-                ds,
-                PatientRootQueryRetrieveInformationModelFind
-            )
-            # Ask for each one to be sent
-            for (status, identifier) in responses:
-                if status and status.Status in (0xFF00, 0xFF01):
-                    study_instance_uid = identifier.StudyInstanceUID
-                    # Check if this study is already in our database
-                    if db_check_study_exists(study_instance_uid):
-                        logging.info(f"Skipping Study {study_instance_uid} - already in database")
-                        continue
-                    logging.info(f"Found Study {study_instance_uid}")
-                    if RETRIEVAL_METHOD.upper() == 'C-GET':
-                        await send_c_get(ae, study_instance_uid)
-                    else:
-                        await send_c_move(ae, study_instance_uid)
-        # Release the association
-        assoc.release()
+        try:
+            # Prepare the timespan
+            current_time = datetime.now()
+            past_time = current_time - timedelta(minutes=minutes)
+            # Check if the time span crosses midnight, split into two queries
+            # This is necessary because DICOM time ranges can't wrap around midnight
+            if past_time.date() < current_time.date():
+                date_yesterday = past_time.strftime('%Y%m%d')
+                time_yesterday = f"{past_time.strftime('%H%M%S')}-235959"
+                date_today = current_time.strftime('%Y%m%d')
+                time_today = f"000000-{current_time.strftime('%H%M%S')}"
+                queries = [(date_yesterday, time_yesterday), (date_today, time_today)]
+            else:
+                time_range = f"{past_time.strftime('%H%M%S')}-{current_time.strftime('%H%M%S')}"
+                date_today = current_time.strftime('%Y%m%d')
+                queries = [(date_today, time_range)]
+            # Perform one or two queries, as needed
+            for study_date, time_range in queries:
+                # The query dataset
+                ds = Dataset()
+                ds.QueryRetrieveLevel = "STUDY"
+                ds.StudyDate = study_date
+                ds.StudyTime = time_range
+                ds.Modality = "CR"
+                # Get the responses list
+                responses = assoc.send_c_find(
+                    ds,
+                    PatientRootQueryRetrieveInformationModelFind
+                )
+                # Ask for each one to be sent
+                for (status, identifier) in responses:
+                    if status and status.Status in (0xFF00, 0xFF01):
+                        study_instance_uid = identifier.StudyInstanceUID
+                        # Check if this study is already in our database
+                        if db_check_study_exists(study_instance_uid):
+                            logging.info(f"Skipping Study {study_instance_uid} - already in database")
+                            continue
+                        logging.info(f"Found Study {study_instance_uid}")
+                        if RETRIEVAL_METHOD.upper() == 'C-GET':
+                            await send_c_get(ae, study_instance_uid)
+                        else:
+                            await send_c_move(ae, study_instance_uid)
+        except Exception as e:
+            logging.error(f"Error during QueryRetrieve: {e}")
+        finally:
+            assoc.release()
     else:
         logging.error("Could not establish QueryRetrieve association.")
 
