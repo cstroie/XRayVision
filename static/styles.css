@@ -57,7 +57,8 @@ article:hover {
 }
 
 article>footer {
-    border-radius: var(--card-border-radius);
+    border-bottom-left-radius: var(--card-border-radius);
+    border-bottom-right-radius: var(--card-border-radius);
 }
 
 /* Dashboard Specific Styles */
@@ -113,12 +114,6 @@ article>footer {
 }
 
 .image-card.reviewed.positive:not(.incorrect) .ai-report {
-    background-color: rgba(92, 22, 13, 0.3);
-    border-left: 3px solid var(--pico-color-red-600);
-}
-
-.image-card .rad-report.severity-9,
-.image-card .rad-report.severity-10 {
     background-color: rgba(92, 22, 13, 0.3);
     border-left: 3px solid var(--pico-color-red-600);
 }
