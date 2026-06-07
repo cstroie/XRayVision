@@ -4846,8 +4846,8 @@ def identify_anatomic_region(info):
             region = region_key
             break
     else:
-        # Fallback
-        region = desc
+        # No keyword matched — store empty string rather than the full protocol string
+        region = ''
 
     # Get question from config or use fallback
     question = REGION_QUESTIONS.get(region, "Is there anything abnormal")
