@@ -143,6 +143,7 @@
                     <canvas id="monthlyTrendsChart" width="400" height="300"></canvas>
                 </article>
         </section>
+        </section>
     </main>
 
     <script>
@@ -283,10 +284,10 @@
                 <td style="text-align: right;">${data.total}</td>
                 <td style="text-align: right;">${data.reviewed}</td>
                 <td style="text-align: right;">${data.wrong}</td>
-                <td style="text-align: right;">${totalPpv}%</td>
-                <td style="text-align: right;">${totalPnv}%</td>
-                <td style="text-align: right;">${totalSnsi}%</td>
-                <td style="text-align: right;">${totalSpci}%</td>
+                <td style="text-align: right;">${totalPpv !== '-' ? totalPpv + '%' : '-'}</td>
+                <td style="text-align: right;">${totalPnv !== '-' ? totalPnv + '%' : '-'}</td>
+                <td style="text-align: right;">${totalSnsi !== '-' ? totalSnsi + '%' : '-'}</td>
+                <td style="text-align: right;">${totalSpci !== '-' ? totalSpci + '%' : '-'}</td>
                 <td style="text-align: right;">${(() => {
                     if (totalMcc === '-') return '-';
                     const mcc = parseFloat(totalMcc);
