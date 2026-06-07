@@ -375,16 +375,18 @@
             severityDiffChart = new Chart(document.getElementById("severityDiffChart"), {
                 type: 'bar',
                 data: {
-                    labels: bands.map(b => b.label),
+                    labels: bands.map(b => b.label.replace('\n', ' ')),
                     datasets: [{
                         label: 'Exams',
                         data: bandCounts,
                         backgroundColor: bands.map(b => b.color),
                         borderColor: bands.map(b => b.border),
-                        borderWidth: 1
+                        borderWidth: 1,
+                        borderRadius: 4,
                     }]
                 },
                 options: {
+                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
@@ -392,12 +394,11 @@
                         tooltip: {
                             callbacks: {
                                 label: ctx => {
-                                    const n = ctx.parsed.y;
+                                    const n = ctx.parsed.x;
                                     const pct = diffTotal > 0 ? ` (${Math.round(n / diffTotal * 100)}%)` : '';
                                     return ` ${n} exam${n !== 1 ? 's' : ''}${pct}`;
                                 },
                                 afterLabel: ctx => {
-                                    const idx = ctx.dataIndex;
                                     const explanations = [
                                         'AI assigned a much lower severity than the radiologist — potential under-detection',
                                         'AI assigned a lower severity than the radiologist',
@@ -405,20 +406,20 @@
                                         'AI assigned a higher severity than the radiologist',
                                         'AI assigned a much higher severity than the radiologist — potential over-detection',
                                     ];
-                                    return explanations[idx];
+                                    return explanations[ctx.dataIndex];
                                 }
                             }
                         }
                     },
                     scales: {
                         x: {
-                            grid: { display: false },
-                            ticks: { font: { size: 11 } }
-                        },
-                        y: {
                             beginAtZero: true,
                             grid: { color: 'rgba(255, 255, 255, 0.1)' },
                             title: { display: true, text: 'Number of Exams' }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { font: { size: 12 } }
                         }
                     }
                 }
