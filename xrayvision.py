@@ -695,7 +695,12 @@ def db_analyze(table_name):
     # Check cache first
     if table_name in _db_analyze_cache:
         return _db_analyze_cache[table_name]
-    
+
+    # Validate table name: only allow alphanumeric and underscores
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', table_name):
+        logging.error(f"db_analyze: invalid table name '{table_name}'")
+        return None, []
+
     query = f"PRAGMA table_info({table_name})"
     rows = db_execute_query(query, fetch_mode='all')
     
