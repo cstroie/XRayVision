@@ -2265,14 +2265,14 @@ def dicom_store(event):
         
         logging.debug(f"Skipping already processed image {uid}")
     elif ds.Modality == "CR":
-        # Check the Modality
         dicom_file = os.path.join(IMAGES_DIR, f"{uid}.dcm")
-        # Save the DICOM file
-        ds.save_as(dicom_file, enforce_file_format = True)
+        try:
+            ds.save_as(dicom_file, enforce_file_format=True)
+        except Exception as e:
+            logging.error(f"Failed to save DICOM file {dicom_file}: {e}")
+            return 0x0110  # Processing failure — file not stored
         logging.debug(f"DICOM file saved to {dicom_file}")
-        # Process the DICOM file
         process_dicom_file(dicom_file, uid)
-        # Notify the queue
         asyncio.run_coroutine_threadsafe(broadcast_dashboard_update(), MAIN_LOOP)
     else:
         logging.debug(f"Received {ds.Modality} study {uid} — modality not supported, discarding")
