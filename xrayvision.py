@@ -2129,12 +2129,16 @@ async def send_c_move(ae, study_instance_uid):
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
         ds.StudyInstanceUID = study_instance_uid
-        # Get the response
-        responses = assoc.send_c_move(
+        # Iterate responses to actually drive the transfer
+        for status, _ in assoc.send_c_move(
             ds,
             AE_TITLE,
             PatientRootQueryRetrieveInformationModelMove
-        )
+        ):
+            if status:
+                logging.debug(f"C-MOVE {study_instance_uid} status: 0x{status.Status:04X}")
+            else:
+                logging.warning(f"C-MOVE {study_instance_uid}: no status returned (connection may have failed)")
         # Release the association
         assoc.release()
     else:
@@ -2159,11 +2163,15 @@ async def send_c_get(ae, study_instance_uid):
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
         ds.StudyInstanceUID = study_instance_uid
-        # Get the response
-        responses = assoc.send_c_get(
+        # Iterate responses to actually drive the transfer
+        for status, _ in assoc.send_c_get(
             ds,
             PatientRootQueryRetrieveInformationModelGet
-        )
+        ):
+            if status:
+                logging.debug(f"C-GET {study_instance_uid} status: 0x{status.Status:04X}")
+            else:
+                logging.warning(f"C-GET {study_instance_uid}: no status returned (connection may have failed)")
         # Release the association
         assoc.release()
     else:
