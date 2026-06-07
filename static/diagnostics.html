@@ -137,6 +137,16 @@
         // Chart instances
         let reportsChart, accuracyChart, monthlyDiagnosticsChart;
 
+        function sanitize(text) {
+            if (!text) return '';
+            return String(text)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         // Initialize page
         document.addEventListener('DOMContentLoaded', function() {
             loadDiagnosticStats();
@@ -256,21 +266,21 @@
                     },
                     scales: {
                         x: {
-                            grid: {
-                                display: false
-                            }
-                        },
-                        y: {
                             beginAtZero: true,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
                             }
                         }
                     },
                     indexAxis: 'y'
                 }
             });
-            
+
             // Chart: AI Validation Accuracy
             // Sort data by accuracy (descending) for the accuracy chart
             const accuracyData = topDiagnostics.map((d, i) => ({
@@ -315,22 +325,22 @@
                     },
                     scales: {
                         x: {
-                            grid: {
-                                display: false
-                            }
-                        },
-                        y: {
                             beginAtZero: true,
                             max: 100,
                             grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
                             }
                         }
                     },
                     indexAxis: 'y'
                 }
             });
-            
+
             // Chart: Monthly trends for top diagnostics
             // Fetch the monthly trends data
             fetch('/api/diagnostics/monthly_trends')
@@ -531,18 +541,18 @@
             for (const diagnostic of sortedDiagnostics) {
                 const stats = data[diagnostic];
                 
-                // Format top regions
+                // Format top regions (sanitized — region names may contain special chars)
                 let regionsHtml = '';
                 if (Object.keys(stats.top_regions).length > 0) {
                     const regions = Object.entries(stats.top_regions)
-                        .map(([region, count]) => `${region} (${count})`)
+                        .map(([region, count]) => `${sanitize(region)} (${count})`)
                         .join(', ');
                     regionsHtml = `<small>${regions}</small>`;
                 }
-                
+
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <th scope="row">${diagnostic}</th>
+                    <th scope="row">${sanitize(diagnostic)}</th>
                     <td style="text-align: right;">${stats.report_count}</td>
                     <td style="text-align: right;">${stats.avg_severity}</td>
                     <td style="text-align: right;">${stats.ai_accuracy}%</td>
