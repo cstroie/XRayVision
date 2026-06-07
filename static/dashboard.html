@@ -820,16 +820,6 @@
             loadPage(1, q);
         });
         
-        var docWidth = document.documentElement.offsetWidth;
-
-[].forEach.call(
-  document.querySelectorAll('*'),
-  function(el) {
-    if (el.offsetWidth > docWidth) {
-      console.warn(el);
-    }
-  }
-);
     </script>
 </body>
 
