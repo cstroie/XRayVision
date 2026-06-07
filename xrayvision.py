@@ -5375,7 +5375,7 @@ async def search_fhir_servicerequests(session, patient_id, exam_datetime, exam_t
                     logging.error(f"FHIR service requests search error: unexpected response format")
                     return []
             else:
-                logging.warning(f"FHIR service requests search failed with status {resp.status}")
+                logging.debug(f"FHIR service requests search failed with status {resp.status}")
     except Exception as e:
         logging.error(f"FHIR service requests search error: {e}")
     return []
@@ -6132,7 +6132,7 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime, exa
     # Search for service requests
     srv_reqs = await search_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region)
     if not srv_reqs:
-        logging.warning(f"No service requests found for exam {exam_uid}")
+        logging.debug(f"No service requests found for exam {exam_uid}")
         return None
 
     # search_fhir_servicerequests already ensures at most one result
@@ -6434,7 +6434,7 @@ async def process_exams_without_rad_reports(session):
     # If patient ID is not known, search for it in FHIR
     patient_name = result['patient']['name']
     if not patient_id:
-        if not validate_romanian_cnp(patient_cnp):
+        if not validate_romanian_cnp(patient_cnp).get('valid'):
             logging.warning(f"Invalid CNP '{patient_cnp}' for patient '{patient_name}', marking exams as unresolvable")
             for exam in exams:
                 exam_uid = exam['uid']
