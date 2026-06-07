@@ -2882,19 +2882,24 @@ async def config_handler(request):
         web.json_response: JSON response with configuration parameters
     """
     try:
+        user_role = getattr(request, 'user_role', 'user')
         config = {
-            "OPENAI_URL_PRIMARY": OPENAI_URL_PRIMARY,
-            "OPENAI_URL_SECONDARY": OPENAI_URL_SECONDARY,
             "MODEL_NAME": MODEL_NAME,
-            "NTFY_URL": NTFY_URL,
             "AE_TITLE": AE_TITLE,
             "AE_PORT": AE_PORT,
-            "REMOTE_AE_TITLE": REMOTE_AE_TITLE,
-            "REMOTE_AE_IP": REMOTE_AE_IP,
-            "REMOTE_AE_PORT": REMOTE_AE_PORT,
             "DASHBOARD_PORT": DASHBOARD_PORT,
-            "USER_ROLE": getattr(request, 'user_role', 'user')
+            "USER_ROLE": user_role,
         }
+        # Infrastructure addresses only exposed to admins
+        if user_role == 'admin':
+            config.update({
+                "OPENAI_URL_PRIMARY": OPENAI_URL_PRIMARY,
+                "OPENAI_URL_SECONDARY": OPENAI_URL_SECONDARY,
+                "NTFY_URL": NTFY_URL,
+                "REMOTE_AE_TITLE": REMOTE_AE_TITLE,
+                "REMOTE_AE_IP": REMOTE_AE_IP,
+                "REMOTE_AE_PORT": REMOTE_AE_PORT,
+            })
         return web.json_response(config)
     except Exception as e:
         logging.error(f"Config endpoint error: {e}")
