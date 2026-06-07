@@ -4209,15 +4209,16 @@ def validate_translation(source_text, translated_text):
     if len(translated_text.strip()) < 10:
         return False, f"Translation is too short ({len(translated_text)} characters)"
 
-    # Check if translation contains only placeholder text or error messages
+    # Check if translation contains AI refusal/error boilerplate.
+    # Use specific multi-word phrases only — single words like "error", "unable",
+    # "failed", "sorry" appear legitimately in medical English reports.
     placeholder_patterns = [
         r"\b(no translation available)\b",
         r"\b(could not translate)\b",
         r"\b(translation failed)\b",
-        r"\b(error)\b",
-        r"\b(sorry)\b",
-        r"\b(unable)\b",
-        r"\b(failed)\b"
+        r"\b(i am unable to)\b",
+        r"\b(i cannot translate)\b",
+        r"\b(i('m| am) sorry)\b",
     ]
 
     for pattern in placeholder_patterns:
