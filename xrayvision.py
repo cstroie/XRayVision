@@ -4504,7 +4504,10 @@ async def check_rad_report_and_update(uid):
         # Extract the report text
         report_text = rad_report['text']
 
-        # Translate the report from Romanian to English
+        # Translate the report from Romanian to English (skip if AI not yet reachable)
+        if not active_openai_url:
+            logging.debug(f"Skipping translation for exam {uid}: AI service not reachable")
+            return False
         logging.info(f"Translating radiologist report for exam {uid}")
         translation = await translate_report(report_text)
         if translation:
@@ -6459,6 +6462,11 @@ async def translate_existing_reports():
     This function finds all radiologist reports without English translations
     and translates them using the LLM. Validates translations before saving.
     """
+    # Wait until the AI service is reachable before attempting any translation
+    while active_openai_url is None:
+        logging.debug("translate_existing_reports: waiting for AI service to become available...")
+        await asyncio.sleep(30)
+
     try:
         # Get all exams with radiologist reports that don't have translations
         query = """
