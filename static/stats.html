@@ -348,7 +348,7 @@
                         <div style="margin-top: 1rem; font-size: 0.9rem; text-align: center;">
                             <div>MCC: ${(() => {
                                 const mcc = counts.mcc;
-                                if (mcc === undefined) return '<span style="color: dark-gray">-</span>';
+                                if (mcc === undefined) return '<span style="color: var(--pico-muted-color)">-</span>';
                                 const mccValue = mcc.toFixed(2);
                                 let interpretation = '';
                                 let color = '';
