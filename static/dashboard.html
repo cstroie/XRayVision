@@ -363,6 +363,13 @@
                         showToast(`Radiologist report processed`);
                         // Update specific exam if it's on the current page
                         updateExamCard(data.event.payload.uid);
+                    } else if (data.event.name === "processing_start") {
+                        const p = data.event.payload;
+                        showToast(`Processing: ${p.patient}${p.region ? ' (' + p.region + ')' : ''}`);
+                    } else if (data.event.name === "error") {
+                        showToast(`Processing failed for exam`);
+                        // Reload current page so card shows error state
+                        loadPage(currentPage);
                     }
                 }
             };

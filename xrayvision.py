@@ -2818,7 +2818,7 @@ async def websocket_handler(request):
     Returns:
         web.WebSocketResponse: WebSocket response object
     """
-    ws = web.WebSocketResponse()
+    ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
     
     # Add client to the set
@@ -5884,12 +5884,12 @@ async def send_exam_to_openai(exam, max_retries = 3):
         db_set_status(exam['uid'], 'error')
         QUEUE_EVENT.clear()
         logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
-        await broadcast_dashboard_update()
+        await broadcast_dashboard_update(event="error", payload={'uid': exam['uid'], 'reason': 'max_retries'})
         return False
     except Exception as e:
         logging.error(f"Critical error for {exam['uid']}: {e}")
         db_set_status(exam['uid'], 'error')
-        await broadcast_dashboard_update()
+        await broadcast_dashboard_update(event="error", payload={'uid': exam['uid'], 'reason': str(e)})
         return False
 
 
@@ -5991,7 +5991,7 @@ async def relay_to_openai_loop():
             # Update the dashboard
             dashboard['queue_size'] = total
             dashboard['processing'] = extract_patient_initials(exam['patient']['name'])
-            await broadcast_dashboard_update()
+            await broadcast_dashboard_update(event="processing_start", payload={'uid': exam['uid'], 'patient': dashboard['processing'], 'region': exam['exam'].get('region', '')})
             
             # Check the exam status and process accordingly
             exam_status = exam['exam']['status']
@@ -6027,7 +6027,14 @@ async def relay_to_openai_loop():
                 rad_check_success = await check_rad_report_and_update(exam['uid'])        
                 # Notify dashboard of the update only if successful
                 if rad_check_success:
-                    await broadcast_dashboard_update(event="radcheck", payload={'uid': exam['uid']})
+                    ai_report = db_get_ai_report(exam['uid']) or {}
+                    await broadcast_dashboard_update(event="radcheck", payload={
+                        'uid': exam['uid'],
+                        'positive': ai_report.get('positive', -1),
+                        'severity': ai_report.get('severity', -1),
+                        'summary': ai_report.get('summary', ''),
+                        'confidence': ai_report.get('confidence', -1),
+                    })
                 # Set the status to done
                 db_set_status(exam['uid'], "done")
         except Exception as e:

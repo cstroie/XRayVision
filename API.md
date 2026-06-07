@@ -164,10 +164,12 @@ Every frame is a JSON object. All fields are always present; `event` is only inc
 | `event.name` | Triggered by | `event.payload` |
 |---|---|---|
 | `connected` | Client just connected | `{ "address": "127.0.0.1" }` |
+| `processing_start` | Exam dequeued and sent to AI | `{ "uid", "patient": "J.D.", "region": "chest" }` |
 | `new_exam` | AI analysis complete | `{ "uid", "positive", "reviewed", "severity" }` |
+| `error` | Exam processing failed | `{ "uid", "reason": "max_retries" \| "<exception>" }` |
 | `radreview` | Radiologist submitted a review | full exam object (same shape as `/api/exams/{uid}`) |
 | `radreport` | Radiologist report fetched from FHIR | `{ "uid", "rad_report": { ... } }` |
-| `radcheck` | AI cross-check of a rad report complete | `{ "uid" }` |
+| `radcheck` | AI cross-check of a rad report complete | `{ "uid", "positive", "severity", "summary", "confidence" }` |
 | `requeue` | Exam manually re-queued | `{ "uid", "status": "requeue" }` |
 
 Frames without an `event` key are heartbeat/state-sync broadcasts (e.g. after queue size changes or FHIR loop completes).
