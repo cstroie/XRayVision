@@ -6192,7 +6192,6 @@ async def translate_existing_reports():
             FROM rad_reports
             WHERE text IS NOT NULL
             AND (text_en IS NULL OR text_en = '')
-            AND severity > -1
         """
         rows = db_execute_query(query, fetch_mode='all')
 
