@@ -2138,9 +2138,9 @@ async def query_and_retrieve(minutes=60):
                             continue
                         logging.info(f"Found Study {study_instance_uid}")
                         if RETRIEVAL_METHOD.upper() == 'C-GET':
-                            await send_c_get(ae, study_instance_uid)
+                            send_c_get(ae, study_instance_uid)
                         else:
-                            await send_c_move(ae, study_instance_uid)
+                            send_c_move(ae, study_instance_uid)
         except Exception as e:
             logging.error(f"Error during QueryRetrieve: {e}")
         finally:
@@ -2148,7 +2148,7 @@ async def query_and_retrieve(minutes=60):
     else:
         logging.error("Could not establish QueryRetrieve association.")
 
-async def send_c_move(ae, study_instance_uid):
+def send_c_move(ae, study_instance_uid):
     """
     Request a study to be sent from the remote PACS to our DICOM server.
 
@@ -2159,30 +2159,30 @@ async def send_c_move(ae, study_instance_uid):
         ae: Application Entity instance
         study_instance_uid: Unique identifier of the study to retrieve
     """
-    # Create the association
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
     if assoc.is_established:
-        # The retrieval dataset
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
         ds.StudyInstanceUID = study_instance_uid
-        # Iterate responses to actually drive the transfer
-        for status, _ in assoc.send_c_move(
-            ds,
-            AE_TITLE,
-            PatientRootQueryRetrieveInformationModelMove
-        ):
-            if status:
-                logging.debug(f"C-MOVE {study_instance_uid} status: 0x{status.Status:04X}")
-            else:
-                logging.warning(f"C-MOVE {study_instance_uid}: no status returned (connection may have failed)")
-        # Release the association
-        assoc.release()
+        try:
+            for status, _ in assoc.send_c_move(
+                ds,
+                AE_TITLE,
+                PatientRootQueryRetrieveInformationModelMove
+            ):
+                if status:
+                    logging.debug(f"C-MOVE {study_instance_uid} status: 0x{status.Status:04X}")
+                else:
+                    logging.warning(f"C-MOVE {study_instance_uid}: no status returned (connection may have failed)")
+        except Exception as e:
+            logging.error(f"C-MOVE {study_instance_uid} failed: {e}")
+        finally:
+            assoc.release()
     else:
         logging.error("Could not establish C-MOVE association.")
 
 
-async def send_c_get(ae, study_instance_uid):
+def send_c_get(ae, study_instance_uid):
     """
     Request a study to be sent from the remote PACS over the same association.
 
@@ -2193,24 +2193,24 @@ async def send_c_get(ae, study_instance_uid):
         ae: Application Entity instance
         study_instance_uid: Unique identifier of the study to retrieve
     """
-    # Create the association
     assoc = ae.associate(REMOTE_AE_IP, REMOTE_AE_PORT, ae_title=REMOTE_AE_TITLE)
     if assoc.is_established:
-        # The retrieval dataset
         ds = Dataset()
         ds.QueryRetrieveLevel = "STUDY"
         ds.StudyInstanceUID = study_instance_uid
-        # Iterate responses to actually drive the transfer
-        for status, _ in assoc.send_c_get(
-            ds,
-            PatientRootQueryRetrieveInformationModelGet
-        ):
-            if status:
-                logging.debug(f"C-GET {study_instance_uid} status: 0x{status.Status:04X}")
-            else:
-                logging.warning(f"C-GET {study_instance_uid}: no status returned (connection may have failed)")
-        # Release the association
-        assoc.release()
+        try:
+            for status, _ in assoc.send_c_get(
+                ds,
+                PatientRootQueryRetrieveInformationModelGet
+            ):
+                if status:
+                    logging.debug(f"C-GET {study_instance_uid} status: 0x{status.Status:04X}")
+                else:
+                    logging.warning(f"C-GET {study_instance_uid}: no status returned (connection may have failed)")
+        except Exception as e:
+            logging.error(f"C-GET {study_instance_uid} failed: {e}")
+        finally:
+            assoc.release()
     else:
         logging.error("Could not establish C-GET association.")
 
