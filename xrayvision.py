@@ -5893,7 +5893,7 @@ async def fhir_loop():
         # WebSocket broadcast
         await broadcast_dashboard_update()
         
-        # Random delay between 1 and 5 minutes
+        # Random delay between 30 and 120 seconds
         delay = random.randint(30, 120)
         await asyncio.sleep(delay)
 
@@ -5917,11 +5917,8 @@ async def find_service_request(session, exam_uid, patient_id, exam_datetime, exa
     if not srv_reqs:
         logging.warning(f"No service requests found for exam {exam_uid}")
         return None
-    elif len(srv_reqs) > 1:
-        logging.info(f"Multiple close service requests found for exam {exam_uid}, skipping.")
-        return None
 
-    # Get the single request
+    # search_fhir_servicerequests already ensures at most one result
     req = srv_reqs[0]
     if 'id' not in req:
         logging.warning(f"Service request for exam {exam_uid} has no ID, skipping.")
