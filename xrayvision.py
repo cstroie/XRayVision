@@ -4927,7 +4927,7 @@ def identify_imaging_projection(info):
     Returns:
         str: Identified projection ('frontal', 'lateral', 'oblique', or '')
     """
-    desc = info["exam"]["protocol"].lower()
+    desc = (info if isinstance(info, str) else info["exam"]["protocol"]).lower()
     if contains_any_word(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
         projection = "frontal"
     elif contains_any_word(desc, "lat.", "pr."):
