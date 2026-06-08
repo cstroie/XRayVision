@@ -604,12 +604,16 @@ tbody tr:hover {
     }
 }
 
-#trendsChart, #monthlyTrendsChart, #accuracyDriftChart {
+#trendsChart {
+    height: 600px !important;
+}
+
+#monthlyTrendsChart, #accuracyDriftChart {
     height: 300px !important;
 }
 
 #regionChart {
-    height: 200px !important;
+    height: 600px !important;
 }
 
 @media (max-width: 768px) {
