@@ -375,6 +375,31 @@ dashboard = {
 
 
 
+
+
+def handle_error(e, context="", default_return=None, raise_on_error=False):
+    """Unified error handling wrapper.
+
+    Provides consistent error handling across the application with optional
+    exception re-raising capabilities.
+
+    Args:
+        e (Exception): The exception that occurred
+        context (str): Context information about where the error occurred
+        default_return: Default value to return on error
+        raise_on_error (bool): Whether to re-raise the exception
+
+    Returns:
+        The default_return value or re-raises the exception
+    """
+    error_msg = f"Error{f' in {context}' if context else ''}: {e}"
+    logging.error(error_msg)
+
+    if raise_on_error:
+        raise e
+
+    return default_return
+
 # Database operations
 def _db_connect() -> sqlite3.Connection:
     """Open a SQLite connection with consistent per-connection settings.
@@ -690,37 +715,6 @@ def clear_translation_cache():
     if cache_size > 0:
         logging.debug(f"Cleared translation_cache ({cache_size} entries)")
 
-
-async def cleanup_dead_websocket_clients():
-    """
-    Remove dead or closed WebSocket clients from the clients set.
-    
-    This function checks each WebSocket connection and removes those that are
-    closed or in an invalid state to prevent unbounded memory growth.
-    """
-    global websocket_clients
-    dead_clients = []
-    
-    # Try to identify dead clients by attempting basic operations
-    for client in list(websocket_clients):
-        try:
-            # Check if client is in a valid state by checking the protocol
-            # If protocol is None, the connection is closed
-            if client._protocol is None:
-                dead_clients.append(client)
-        except (AttributeError, RuntimeError):
-            # If we can't check status, consider it potentially dead
-            dead_clients.append(client)
-    
-    # Remove dead clients
-    for client in dead_clients:
-        try:
-            websocket_clients.discard(client)
-        except Exception as e:
-            logging.debug(f"Error removing dead WebSocket client: {e}")
-    
-    if dead_clients:
-        logging.debug(f"Cleaned up {len(dead_clients)} dead WebSocket clients")
 
 
 def db_analyze(table_name):
@@ -2166,6 +2160,188 @@ def db_requeue_exam(uid):
         return False
 
 
+def db_get_processing_times_by_region():
+    """Get processing time analysis by region.
+    
+    Returns:
+        list: List of tuples containing (region, avg_processing_time, exam_count)
+    """
+    query = """
+        SELECT 
+            e.region,
+            AVG(CAST(ar.latency AS FLOAT)) as avg_processing_time,
+            COUNT(*) as exam_count
+        FROM exams e
+        LEFT JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status = 'done' 
+        AND ar.latency IS NOT NULL 
+        AND ar.latency >= 0
+        GROUP BY e.region
+        ORDER BY avg_processing_time DESC
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+def db_get_rad_severity_distribution():
+    """Get severity distribution for radiologist reports.
+    
+    Returns:
+        list: List of tuples containing (severity, count)
+    """
+    query = """
+        SELECT 
+            severity,
+            COUNT(*) as count
+        FROM rad_reports
+        WHERE severity >= 0
+        GROUP BY severity
+        ORDER BY severity
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+def db_get_ai_severity_distribution():
+    """Get severity distribution for AI reports.
+    
+    Returns:
+        list: List of tuples containing (severity, count)
+    """
+    query = """
+        SELECT 
+            severity,
+            COUNT(*) as count
+        FROM ai_reports
+        WHERE severity >= 0
+        GROUP BY severity
+        ORDER BY severity
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+def db_get_severity_differences():
+    """Get severity differences between AI and radiologist reports.
+    
+    Returns:
+        list: List of tuples containing (severity_diff, count)
+    """
+    query = """
+        SELECT 
+            CAST(ar.severity AS INTEGER) - CAST(rr.severity AS INTEGER) as severity_diff,
+            COUNT(*) as count
+        FROM exams e
+        JOIN ai_reports ar ON e.uid = ar.uid
+        JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE e.status = 'done'
+        AND ar.severity >= 0
+        AND rr.severity >= 0
+        GROUP BY severity_diff
+        ORDER BY severity_diff
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+def db_get_age_distribution_insights(severity_threshold):
+    """Get patient demographics insights by age group.
+    
+    Args:
+        severity_threshold: Threshold for positive findings
+        
+    Returns:
+        list: List of tuples containing (age_group, total_exams, positive_findings)
+    """
+    query = """
+        SELECT 
+            CASE 
+                WHEN p.birthdate IS NULL THEN 'Unknown'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) < 0 THEN 'Unknown'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 2 THEN '0-2'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 4 THEN '2-4'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 6 THEN '4-6'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 8 THEN '6-8'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 10 THEN '8-10'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 12 THEN '10-12'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 14 THEN '12-14'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 16 THEN '14-16'
+                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 18 THEN '16-18'
+                ELSE '> 18'
+            END as age_group,
+            COUNT(*) as total_exams,
+            SUM(CASE WHEN rr.severity >= ? THEN 1 ELSE 0 END) as positive_findings
+        FROM patients p
+        JOIN exams e ON p.cnp = e.cnp
+        JOIN rad_reports rr ON e.uid = rr.uid
+        WHERE p.birthdate IS NOT NULL
+        GROUP BY age_group
+        HAVING age_group != 'Unknown'
+        ORDER BY 
+            CASE age_group
+                WHEN '0-2' THEN 1
+                WHEN '2-4' THEN 2
+                WHEN '4-6' THEN 3
+                WHEN '6-8' THEN 4
+                WHEN '8-10' THEN 5
+                WHEN '10-12' THEN 6
+                WHEN '12-14' THEN 7
+                WHEN '14-16' THEN 8
+                WHEN '16-18' THEN 9
+                WHEN '> 18' THEN 10
+                ELSE 11
+            END
+    """
+    return db_execute_query(query, (severity_threshold,), fetch_mode='all')
+
+def db_get_hourly_patterns():
+    """Get temporal patterns by hour of day.
+    
+    Returns:
+        list: List of tuples containing (hour, exam_count)
+    """
+    query = """
+        SELECT 
+            CAST(strftime('%H', created) AS INTEGER) as hour,
+            COUNT(*) as exam_count
+        FROM exams
+        WHERE status = 'done'
+        GROUP BY hour
+        ORDER BY hour
+    """
+    return db_execute_query(query, fetch_mode='all')
+
+def db_get_requeue_analysis():
+    """Get re-queue analysis data.
+    
+    Returns:
+        tuple: Tuple containing (total_requeued, avg_latency_improvement) or None
+    """
+    # ai_reports has one row per uid (uid is PK), so count exams that were
+    # reprocessed by checking updated > created on the ai_reports row.
+    query = """
+        SELECT
+            COUNT(*) as total_requeued,
+            AVG(CAST(ar.latency AS FLOAT)) as avg_latency
+        FROM exams e
+        JOIN ai_reports ar ON e.uid = ar.uid
+        WHERE e.status = 'done'
+        AND ar.updated > ar.created
+    """
+    return db_execute_query(query, fetch_mode='one')
+
+def db_get_radiologist_metrics():
+    """Get radiologist consistency metrics.
+    
+    Returns:
+        list: List of tuples containing (radiologist, reports_count, avg_severity, unique_exams)
+    """
+    query = """
+        SELECT 
+            radiologist,
+            COUNT(*) as reports_count,
+            AVG(CAST(severity AS FLOAT)) as avg_severity,
+            COUNT(DISTINCT uid) as unique_exams
+        FROM rad_reports
+        WHERE radiologist IS NOT NULL AND radiologist != ''
+        GROUP BY radiologist
+        HAVING COUNT(*) > 5
+        ORDER BY reports_count DESC
+    """
+    return db_execute_query(query, fetch_mode='all')
+
 # DICOM network operations
 async def query_and_retrieve(minutes=60):
     """
@@ -2567,6 +2743,55 @@ def extract_dicom_metadata(ds):
     return info
 
 
+
+def process_dicom_file(dicom_file, uid):
+    """
+    Process a DICOM file by extracting metadata, converting to PNG, and adding to queue.
+
+    This helper function handles the common logic between dicom_store() and
+    load_existing_dicom_files() to avoid code duplication.
+
+    Args:
+        dicom_file: Path to the DICOM file
+        uid: Unique identifier for the exam
+    """
+    try:
+        # Get the dataset
+        ds = dcmread(dicom_file)
+        # Get some info for queueing
+        try:
+            info = extract_dicom_metadata(ds)
+        except Exception as e:
+            logging.error(f"Error getting info {dicom_file}: {e}")
+            # Remove the exam entry from the database
+            db_execute_query_retry("DELETE FROM exams WHERE uid = ?", (uid,))
+            # Remove the DICOM file
+            try:
+                os.remove(dicom_file)
+                logging.info(f"Removed DICOM file {dicom_file} due to metadata extraction error")
+            except Exception as rm_err:
+                logging.error(f"Failed to remove DICOM file {dicom_file}: {rm_err}")
+            return
+        # Try to convert to PNG
+        png_file = None
+        try:
+            png_file = convert_dicom_to_png(dicom_file)
+        except Exception as e:
+            logging.error(f"Error converting DICOM file {dicom_file}: {e}")
+            db_set_status(uid, "error")
+            return
+        # Check the result
+        if png_file:
+            # Add to processing queue
+            db_add_exam(info)
+            # Notify the queue
+            QUEUE_EVENT.set()
+        else:
+            # Set error status if no PNG was created
+            db_set_status(uid, "error")
+    except Exception as e:
+        logging.error(f"Error processing DICOM file {dicom_file}: {e}")
+        db_set_status(uid, "error")
 def extract_patient_initials(name):
     """
     Extract initials from a patient name.
@@ -2726,6 +2951,1928 @@ def convert_dicom_to_png(dicom_file, max_size = 896):
         raise
 
 
+
+
+# Domain helpers
+
+def validate_romanian_cnp(patient_cnp):
+    """
+    Validate Romanian personal identification number (CNP) format and checksum.
+
+    Romanian personal IDs (CNP) have 13 digits with the following structure:
+    - Position 1: Gender/Sector (1-8 for born 1900-2099, 9 for foreign
+      residents)
+    - Positions 2-3: Year of birth (00-99)
+    - Positions 4-5: Month of birth (01-12)
+    - Positions 6-7: Day of birth (01-31)
+    - Positions 8-9: County code (01-52, 99)
+    - Positions 10-12: Serial number (001-999)
+    - Position 13: Checksum digit
+
+    Args:
+        patient_cnp: Personal identification number as string
+
+    Returns:
+        dict: Dictionary with validation result and parsed information if valid
+              {
+                  'valid': bool,
+                  'birth_date': datetime object (if valid),
+                  'age': int (current age in years, if valid),
+                  'sex': str ('M' or 'F', if valid),
+                  'county': int (county code, if valid)
+              }
+    """
+    # Ensure we have a string and clean it
+    pid = str(patient_cnp).strip()
+    # Check if it's exactly 13 digits
+    if not pid or len(pid) != 13 or not pid.isdigit():
+        return {'valid': False}
+    
+    # Extract components
+    gender_digit = int(pid[0])
+    year = int(pid[1:3])
+    month = int(pid[3:5])
+    day = int(pid[5:7])
+    county = int(pid[7:9])
+    checksum_digit = int(pid[12])
+    
+    # Validate gender digit (1-9)
+    if gender_digit < 1 or gender_digit > 9:
+        return {'valid': False}
+    
+    # Validate date components
+    # Determine century based on gender digit
+    century_map = {1: 1900, 2: 1900, 3: 1800, 4: 1800, 5: 2000, 6: 2000, 7: 2000, 8: 2000, 9: 1900}
+    if gender_digit not in century_map:
+        return {'valid': False}
+    
+    full_year = century_map[gender_digit] + year
+    
+    # Validate month (1-12) and day (1-31) with precise date validation
+    try:
+        birth_date = datetime(full_year, month, day)
+    except ValueError:
+        return {'valid': False}
+    
+    # Validate county code (01-52 excluding 47-50, 70-79, 90-99)
+    valid_counties = set(range(1, 47)) | set(range(51, 53)) | set(range(70, 80)) | set(range(90, 100))
+    if county not in valid_counties:
+        return {'valid': False}
+    
+    # Validate checksum using the official algorithm
+    # Weights for each digit position
+    weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
+    # Calculate weighted sum
+    weighted_sum = sum(int(pid[i]) * weights[i] for i in range(12))
+    # Calculate checksum
+    checksum = weighted_sum % 11
+    if checksum == 10:
+        checksum = 1
+    # Compare with provided checksum digit
+    if checksum != checksum_digit:
+        return {'valid': False}
+    
+    # Calculate current age
+    today = datetime.now()
+    age = today.year - birth_date.year
+    # Adjust if birthday hasn't occurred this year
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        age -= 1
+    
+    # Determine sex
+    sex = 'M' if gender_digit % 2 == 1 else 'F'
+    
+    # Return validation result with parsed information
+    return {
+        'valid': True,
+        'birth_date': birth_date,
+        'age': age,
+        'sex': sex,
+        'county': county
+    }
+
+
+def compute_age_from_cnp(patient_cnp):
+    """
+    Compute patient age based on Romanian personal identification number.
+
+    Romanian personal IDs have the format:
+    - First digit: 1/2 for 1900s, 5/6 for 2000s, etc.
+    - Next 6 digits: YYMMDD (birth date)
+
+    Args:
+        patient_cnp: Personal identification number as string
+
+    Returns:
+        int: Age in years, or -1 if unable to compute
+    """
+    # First validate the Romanian ID format and get parsed information
+    result = validate_romanian_cnp(patient_cnp)
+    if not result['valid']:
+        return -1
+    # Return the computed age
+    return result['age']
+
+
+def contains_any_word(string, *words):
+    """
+    Check if any of the specified words are present in the given string.
+
+    Args:
+        string: String to search in
+        *words: Variable number of words to search for
+
+    Returns:
+        bool: True if any word is found in the string, False otherwise
+    """
+    return any(i in string for i in words)
+
+
+def identify_anatomic_region(info):
+    """
+    Identify the anatomic region and appropriate question based on protocol name.
+
+    Maps DICOM protocol names to anatomic regions and formulates region-specific
+    questions for the AI to analyze. Uses pattern matching to handle variations
+    in naming conventions.
+
+    Args:
+        info: Dictionary containing exam information with protocol name or string with protocol name
+
+    Returns:
+        tuple: (region, question) where region is the identified anatomic region
+               and question is the region-specific query for AI analysis
+    """
+    # Handle both string and dict inputs
+    if isinstance(info, str):
+        desc = info.lower()
+    else:
+        desc = info["exam"]["protocol"].lower()
+
+    # Check each region rule from config
+    for region_key, keywords in REGION_RULES.items():
+        if contains_any_word(desc, *keywords):
+            region = region_key
+            break
+    else:
+        # No keyword matched — store empty string rather than the full protocol string
+        region = ''
+
+    # Get question from config or use fallback
+    question = REGION_QUESTIONS.get(region, "Is there anything abnormal")
+
+    # Return the region and the question
+    return region, question
+
+
+
+def identify_imaging_projection(info):
+    """
+    Identify the imaging projection based on protocol name.
+
+    Determines if the X-ray view is frontal (AP/PA), lateral, or oblique
+    based on keywords in the protocol name.
+
+    Args:
+        info: Dictionary containing exam information with protocol name
+
+    Returns:
+        str: Identified projection ('frontal', 'lateral', 'oblique', or '')
+    """
+    desc = (info if isinstance(info, str) else info["exam"]["protocol"]).lower()
+    if contains_any_word(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
+        projection = "frontal"
+    elif contains_any_word(desc, "lat.", "pr."):
+        projection = "lateral"
+    elif contains_any_word(desc, "oblic"):
+        projection = "oblique"
+    else:
+        # Fallback
+        projection = ""
+    # Return the projection
+    return projection
+
+
+def determine_patient_gender_description(info):
+    """
+    Determine patient gender description based on DICOM sex field.
+
+    Maps DICOM patient sex codes to descriptive terms for use in AI prompts.
+
+    Args:
+        info: Dictionary containing patient information with sex field
+
+    Returns:
+        str: Gender description ('boy', 'girl', or 'child')
+    """
+    patient_sex = info["patient"].get("sex", "").lower()
+    if "m" in patient_sex:
+        gender = "boy"
+    elif "f" in patient_sex:
+        gender = "girl"
+    else:
+        # Fallback
+        gender = "child"
+    # Return the gender
+    return gender
+
+
+
+
+# FHIR integration
+
+def format_patient_name_for_fhir(dicom_name):
+    """
+    Format DICOM patient name as "last_name first_name" for FHIR search.
+    
+    Args:
+        dicom_name: Patient name in DICOM format (Last^First^Middle)
+        
+    Returns:
+        str: Formatted patient name as "last_name first_name"
+    """
+    if not dicom_name or not isinstance(dicom_name, str):
+        return ""
+    
+    # Convert DICOM name format (Last^First^Middle) to "last_name first_name"
+    if '^' in dicom_name:
+        name_parts = dicom_name.split('^')
+        # Extract last name (first part) and first name (second part)
+        last_name = name_parts[0].strip() if len(name_parts) > 0 else ""
+        first_name = name_parts[1].strip() if len(name_parts) > 1 else ""
+        middle_name = name_parts[2].strip() if len(name_parts) > 2 else ""
+        
+        # Format as "last_name first_name middle_name" if the parts exist
+        return f"{last_name} {first_name} {middle_name}".strip()
+    else:
+        return dicom_name.strip()
+
+
+async def get_fhir_patient(session, cnp, patient_name=None):
+    """
+    Search for a patient in FHIR system by CNP, and if not found, by name.
+
+    Args:
+        session: aiohttp ClientSession instance
+        cnp: Patient CNP
+        patient_name: Patient full name (optional)
+
+    Returns:
+        dict or None: Patient data from FHIR if successful, None otherwise
+    """
+    logging.info(f"Starting FHIR patient search for CNP: {cnp}")
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+        
+        # First, try searching by CNP
+        url = f"{FHIR_URL}/fhir/Patient"
+        params = {'q': cnp}
+        
+        logging.debug(f"Sending FHIR patient search by CNP request to {url} with params {params}")
+        async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            logging.debug(f"Received FHIR patient search by CNP response with status {resp.status}")
+            if resp.status == 200:
+                data = await resp.json()
+                logging.debug(f"FHIR patient search by CNP returned resourceType: {data.get('resourceType')}")
+                if data.get('resourceType') == 'Patient':
+                    # Single patient returned
+                    logging.info(f"Found single patient by CNP {cnp}")
+                    return data
+                elif data.get('resourceType') == 'Bundle' and 'entry' in data:
+                    # Multiple patients returned in a bundle
+                    patients = []
+                    for entry in data['entry']:
+                        if 'resource' in entry and entry['resource'].get('resourceType') == 'Patient':
+                            patients.append(entry['resource'])
+                    if patients:
+                        logging.info(f"Found {len(patients)} patients in bundle for CNP {cnp}")
+                        # Validate CNP before proceeding
+                        cnp_result = validate_romanian_cnp(cnp)
+                        if not cnp_result['valid']:
+                            logging.warning(f"Invalid CNP {cnp}, skipping patient selection")
+                            return None
+                        # Log warning about multiple patients
+                        logging.info(f"Multiple patients found for CNP {cnp}, selecting the one with the greatest ID")
+                        # Sort patients by ID (assuming IDs are numeric or comparable)
+                        # and select the one with the greatest ID
+                        patients.sort(key=lambda p: p.get('id', ''), reverse=True)
+                        logging.info(f"Selected patient with ID {patients[0].get('id')} for CNP {cnp}")
+                        return patients[0]
+                    else:
+                        logging.warning(f"FHIR patient search error: no valid patients found in bundle for CNP {cnp}")
+                elif data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.debug(f"FHIR patient search returned OperationOutcome for CNP {cnp}: {error_details}")
+                    # Check if all issues are just informational - if so, we should still try name search
+                    all_info = all(issue.get('severity', '').lower() == 'information' for issue in issues)
+                    if not all_info:
+                        # If there are non-informational issues, don't proceed to name search
+                        logging.info(f"Non-informational issues found for CNP {cnp}, not proceeding to name search")
+                        return None
+                    else:
+                        logging.info(f"Only informational issues found for CNP {cnp}, will proceed to name search")
+                else:
+                    logging.error(f"FHIR patient search error: unexpected response format for CNP {cnp}")
+            else:
+                logging.warning(f"FHIR patient search by CNP failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR patient search by CNP error: {e}")
+    
+    # If CNP search failed or returned only informational messages and patient_name is provided, try searching by name
+    if patient_name:
+        logging.info(f"Proceeding to name search for patient: {patient_name}")
+        try:
+            # Format patient name as "last_name first_name" for FHIR search if it's in DICOM format
+            if '^' in patient_name:
+                formatted_name = format_patient_name_for_fhir(patient_name)
+            else:
+                formatted_name = patient_name.strip()
+            
+            if formatted_name:
+                logging.info(f"Retrying FHIR patient search by name: {formatted_name}")
+                params = {'q': formatted_name}
+                
+                logging.debug(f"Sending FHIR patient search by name request to {url} with params {params}")
+                async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    logging.debug(f"Received FHIR patient search by name response with status {resp.status}")
+                    if resp.status == 200:
+                        data = await resp.json()
+                        logging.debug(f"FHIR patient search by name returned resourceType: {data.get('resourceType')}")
+                        if data.get('resourceType') == 'Patient':
+                            # Single patient returned
+                            logging.info(f"Found single patient by name '{formatted_name}'")
+                            return data
+                        elif data.get('resourceType') == 'Bundle' and 'entry' in data:
+                            # Multiple patients returned in a bundle
+                            # Log warning about multiple patients
+                            logging.warning(f"Multiple patients found for name {formatted_name}, selecting no one")
+                        elif data.get('resourceType') == 'OperationOutcome':
+                            # Handle OperationOutcome responses (typically errors)
+                            issues = data.get('issue', [])
+                            error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                            logging.warning(f"FHIR patient search returned OperationOutcome for name '{formatted_name}': {error_details}")
+                        else:
+                            logging.error(f"FHIR patient search by name error: unexpected response format for name '{formatted_name}'")
+                    else:
+                        logging.warning(f"FHIR patient search by name failed with status {resp.status}")
+            else:
+                logging.warning("Patient name is empty, skipping name search")
+        except Exception as e:
+            logging.error(f"FHIR patient search by name error: {e}")
+    else:
+        logging.info("No patient name provided, skipping name search")
+    
+    # If both searches failed, return None
+    logging.info(f"FHIR patient search completed for CNP {cnp}, no patient found")
+    return None
+
+async def search_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region):
+    """
+    Search for service requests for a patient in FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        patient_id: Patient ID from HIS
+        exam_datetime: Exam datetime to search around
+        exam_region: Exam region to filter by
+        exam_type: Exam type to filter by (default: 'radio')
+
+    Returns:
+        list: List of service requests from FHIR (exactly one study) or empty list
+    """
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+        
+        url = f"{FHIR_URL}/fhir/ServiceRequest"
+        params = {
+            'patient': patient_id,
+            'dt': exam_datetime
+        }
+        if exam_type:
+            params['type'] = exam_type
+        if exam_region:
+            params['region'] = exam_region
+        
+        # Try without full=yes parameter
+        async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                if data.get('resourceType') == 'Bundle' and 'entry' in data:
+                    srv_reqs = []
+                    for entry in data['entry']:
+                        if 'resource' in entry and entry['resource'].get('resourceType') == 'ServiceRequest':
+                            # Only add resources that have an 'id' field
+                            if 'id' in entry['resource']:
+                                srv_reqs.append(entry['resource'])
+                            else:
+                                logging.warning("FHIR service request resource missing 'id' field")
+                    # We need exactly one study
+                    if len(srv_reqs) == 1:
+                        return srv_reqs
+                    elif len(srv_reqs) > 1:
+                        logging.info(f"FHIR service requests search returned {len(srv_reqs)} service requests, expected exactly one")
+                    # Return empty list if no service requests or more than one
+                    return []
+                elif data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.debug(f"FHIR service requests search returned OperationOutcome: {error_details}")
+                    return []
+                else:
+                    logging.error(f"FHIR service requests search error: unexpected response format")
+                    return []
+            else:
+                logging.debug(f"FHIR service requests search failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR service requests search error: {e}")
+    return []
+
+async def get_fhir_servicerequest(session, request_id):
+    """
+    Get a service request from FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        request_id: Service request ID
+
+    Returns:
+        dict or None: Service request from FHIR if successful, None otherwise
+    """
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+
+        url = f"{FHIR_URL}/fhir/ServiceRequest/{request_id}"
+
+        async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                # Check if response is an OperationOutcome (error)
+                if data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.warning(f"FHIR service request returned OperationOutcome: {error_details}")
+                    return None
+                # Ensure the resource type is ServiceRequest
+                elif data.get('resourceType') == 'ServiceRequest':
+                    return data
+                else:
+                    logging.warning(f"FHIR service request has incorrect resource type: {data.get('resourceType')}")
+            else:
+                logging.warning(f"FHIR service request failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR service request error: {e}")
+    return None
+
+async def get_fhir_diagnosticreport(session, report_id):
+    """
+    Get a diagnostic report from FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        report_id: Report ID
+
+    Returns:
+        dict or None: Diagnostic report from FHIR if successful, None otherwise
+    """
+    try:
+        # Use basic authentication
+        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
+
+        url = f"{FHIR_URL}/fhir/DiagnosticReport/{report_id}"
+
+        async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                # Check if response is an OperationOutcome (error)
+                if data.get('resourceType') == 'OperationOutcome':
+                    # Handle OperationOutcome responses (typically errors)
+                    issues = data.get('issue', [])
+                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
+                    logging.warning(f"FHIR diagnostic report returned OperationOutcome: {error_details}")
+                    return None
+                # Ensure the resource type is DiagnosticReport
+                elif data.get('resourceType') == 'DiagnosticReport':
+                    return data
+                else:
+                    logging.warning(f"FHIR diagnostic report has incorrect resource type: {data.get('resourceType')}")
+            else:
+                logging.warning(f"FHIR diagnostic report failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"FHIR diagnostic report error: {e}")
+    return None
+
+async def find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type='radio', exam_region=''):
+    """
+    Find service request for an exam in FHIR system.
+
+    Args:
+        session: aiohttp ClientSession instance
+        exam_uid: Exam unique identifier
+        patient_id: Patient ID in HIS
+        exam_datetime: Exam datetime
+        exam_region: Exam region
+        exam_type: Exam type (default: 'radio')
+
+    Returns:
+        dict or None: Study resource if found, None otherwise
+    """
+    # Search for service requests
+    srv_reqs = await search_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region)
+    if not srv_reqs:
+        logging.debug(f"No service requests found for exam {exam_uid}")
+        return None
+
+    # search_fhir_servicerequests already ensures at most one result
+    req = srv_reqs[0]
+    if 'id' not in req:
+        logging.warning(f"Service request for exam {exam_uid} has no ID, skipping.")
+        return None
+    
+    # Return the service request
+    return req
+
+async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region = ""):
+    """
+    Extract report text and radiologist name from FHIR diagnostic report.
+
+    This function handles FHIR diagnostic reports that may contain multiple presented forms
+    and selects the one that matches the expected exam region and type. It also extracts metadata
+    like the radiologist name.
+
+    Args:
+        report (dict): FHIR diagnostic report resource containing presented forms and metadata
+        exam_uid (str): Exam unique identifier for logging and error tracking
+        exam_type (str, optional): Expected exam type to match in presented forms. Defaults to "radio"
+        exam_region (str, optional): Expected anatomic region to match in presented forms. Defaults to ""
+
+    Returns:
+        tuple: (report_text, radiologist) where:
+            - report_text (str): Extracted report text content, or None if extraction fails
+            - radiologist (str): Radiologist name from resultsInterpreter, or empty string if not found
+            Returns (None, None) if extraction fails
+    """
+    # Handle multiple presentedForm items by finding the one with the matching region and type
+    report_text = None
+    presented_form = None
+
+    if not isinstance(report.get('presentedForm'), list) or not report['presentedForm']:
+        logging.warning(f"FHIR DiagnosticReport for exam {exam_uid} has no presentedForm")
+        return None, None
+
+    if len(report['presentedForm']) == 1:
+        # Single presented form - use it directly
+        presented_form = report['presentedForm'][0]
+    else:
+        # Multiple presented forms - find the one matching both the exam region and type
+        logging.info(f"Found {len(report['presentedForm'])} items in presentedForm for '{exam_type}' exam {exam_uid}, looking for region '{exam_region}'")
+        for form in report['presentedForm']:
+            type_match = form.get('type', '').lower() == exam_type.lower()
+            region_match = form.get('region', '').lower() == exam_region.lower()
+            if region_match and type_match:
+                presented_form = form
+                break
+        
+        # If still no matching form found, log and return None
+        if not presented_form:
+            logging.warning(f"No presentedForm found with region '{exam_region}' for exam {exam_uid}")
+            return None, None
+    
+    # Extract the report text from the selected presented form
+    report_text = presented_form.get('data', '')
+    if not isinstance(report_text, str):
+        logging.warning(f"FHIR presentedForm data is not a string for exam {exam_uid}")
+        return None, None
+    report_text = report_text.strip()
+    if not report_text:
+        logging.warning(f"No data found in presentedForm for exam {exam_uid}")
+        return None, None
+        
+    # Extract radiologist name from resultsInterpreter if available
+    radiologist = ''  # Default value
+    try:
+        if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
+            interpreter = report['resultsInterpreter'][0]
+            if 'display' in interpreter:
+                radiologist = interpreter['display']
+    except Exception as e:
+        logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
+
+    # Return the extracted report text and radiologist name
+    return report_text, radiologist
+
+def translate_exam_type_to_fhir(exam_type):
+    """
+    Translate database exam type to FHIR-compatible values.
+    
+    Args:
+        exam_type (str): Exam type from database (Modality)
+        
+    Returns:
+        str: FHIR-compatible exam type
+    """
+    translation_map = {
+        'CR': 'radio',
+        'DX': 'radio',
+        'CT': 'ct',
+        'MR': 'irm',
+        'US': 'eco',
+        'RF': 'rads'
+    }
+    return translation_map.get(exam_type.upper(), 'radio')
+
+async def process_single_exam_without_rad_report(session, exam, patient_id):
+    """
+    Process a single exam that doesn't have a radiologist report yet.
+
+    This function retrieves the radiologist report for a specific exam from the FHIR system
+    and prepares it for LLM analysis. It performs the following steps:
+    1. Checks if service request ID is already in database
+    2. If not found, finds the corresponding service request in FHIR
+    3. Retrieves the diagnostic report
+    4. Extracts report data (text, radiologist name, justification)
+    5. Updates the local database with the report information
+    6. Sets the exam status to 'check' to trigger LLM processing
+
+    Args:
+        session (aiohttp.ClientSession): Active HTTP session for FHIR API calls
+        exam (dict): Dictionary containing exam information including uid, created timestamp, and region
+        patient_id (str): Patient ID in the Hospital Information System (HIS)
+    """
+    # Check if HIS integration is enabled
+    if not ENABLE_HIS:
+        return
+        
+    exam_uid = exam['uid']
+    exam_datetime = exam['created']
+    exam_type = translate_exam_type_to_fhir(exam.get('type') or 'radio')
+    exam_region = exam.get('region', '')
+    # Translate internal region to HIS/FHIR region name if a mapping exists
+    fhir_region = REGION_FHIR_MAP.get(exam_region, exam_region)
+
+    # If the exam region is not in our supported regions, try to identify it again from the report text
+    if exam_region not in REGIONS:
+        # Try to identify the region from the report text
+        identified_region, _ = identify_anatomic_region(exam.get('protocol', ''))
+        if identified_region in REGIONS:
+            logging.info(f"Re-identified region for exam {exam_uid}: {identified_region}")
+            exam_region = identified_region
+            # Update the region in the exams table
+            db_update('exams', 'uid = ?', (exam_uid,), region=exam_region)
+        else:
+            logging.warning(f"Could not identify valid region for exam {exam_uid} from report text")
+
+    # Check if we already have the service request ID in the database
+    rad_report = db_get_rad_report(exam_uid)
+    srv_req = None
+
+    if rad_report and rad_report.get('id'):
+        try:
+            # Convert to int for comparison to avoid string vs int comparison errors
+            service_id = int(rad_report['id'])
+            if service_id > 0:
+                # We already have the service request ID, use it to get the service request
+                srv_req = await get_fhir_servicerequest(session, service_id)
+                if srv_req:
+                    logging.info(f"Retrieved service request ID {srv_req['id']} for exam {exam_uid}")
+                else:
+                    logging.warning(f"Failed to retrieve service request ID {service_id} for exam {exam_uid}")
+        except (ValueError, TypeError):
+            # If conversion fails, treat as if no valid ID exists
+            pass
+
+    # Find service request in FHIR if not already found (use HIS region name)
+    if not srv_req:
+        srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, fhir_region)
+
+    # If no service request found, log and return
+    if not srv_req or 'id' not in srv_req:
+        # Check if exam is older than 1 month
+        try:
+            exam_date = datetime.strptime(exam_datetime, "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            logging.warning(f"Cannot parse exam datetime '{exam_datetime}' for exam {exam_uid}, treating as recent")
+            return
+        one_month_ago = datetime.now() - timedelta(days=30)
+        is_old_exam = exam_date < one_month_ago
+
+        # Only insert/update rad report if exam is older than 1 month
+        if is_old_exam:
+            # If we don't have a record yet, insert a negative ID to mark as not found
+            if rad_report:
+                # Update existing record with negative ID
+                db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
+                logging.info(f"Updated report for exam {exam_uid} to mark service request as not found")
+            else:
+                # Insert a negative service request ID into our database to mark as not found
+                db_insert('rad_reports', uid=exam_uid, id=-1)
+                logging.info(f"Service request missing for exam {exam_uid}")
+        else:
+            logging.info(f"Service request missing for recent exam {exam_uid}, skipping rad report creation")
+
+        # Return if no service request found
+        return
+    
+    # Extract justification from supportingInfo if available
+    justification = ''
+    try:
+        # First try supportingInfo
+        if 'supportingInfo' in srv_req and isinstance(srv_req['supportingInfo'], list) and len(srv_req['supportingInfo']) > 0:
+            supporting_info = srv_req['supportingInfo'][0]
+            if isinstance(supporting_info, dict) and 'display' in supporting_info and isinstance(supporting_info['display'], str):
+                justification = supporting_info['display']
+                logging.debug(f"Extracted justification from supportingInfo: {justification}")
+
+        # If no justification found, try reason array
+        if not justification and 'reason' in srv_req and isinstance(srv_req['reason'], list) and len(srv_req['reason']) > 0:
+            reason = srv_req['reason'][0]
+            if isinstance(reason, dict) and 'display' in reason and isinstance(reason['display'], str):
+                justification = reason['display']
+                logging.debug(f"Extracted justification from reason: {justification}")
+
+        # If still no justification, log what we found in the service request
+        if not justification:
+            logging.debug(f"No justification found in service request {srv_req['id']}. Available fields: {list(srv_req.keys())}")
+            if 'supportingInfo' in srv_req:
+                logging.debug(f"supportingInfo content: {srv_req['supportingInfo']}")
+            if 'reason' in srv_req:
+                logging.debug(f"reason content: {srv_req['reason']}")
+    except Exception as e:
+        logging.warning(f"Error extracting justification from service request: {e}")
+        logging.debug(f"Service request structure: {srv_req}")
+    
+    # Get diagnostic report first
+    report = await get_fhir_diagnosticreport(session, srv_req['id'])
+    if not report or 'presentedForm' not in report or not report['presentedForm']:
+        logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
+        return
+
+    # Extract report data
+    report_text, radiologist = await extract_report_data(report, exam_uid, exam_type=exam_type, exam_region=fhir_region)
+    if not report_text:
+        return
+
+    # Log the retrieved report
+    logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
+    
+    # Insert or update the radiologist report in our database with all fields
+    if rad_report:
+        # Update existing record
+        db_update('rad_reports', 'uid = ?', (exam_uid,),
+            id=srv_req['id'],
+            text=report_text,
+            radiologist=radiologist,
+            justification=justification,
+            type=exam_type,
+            model=MODEL_NAME)
+    else:
+        # Insert new record
+        db_insert('rad_reports',
+            uid=exam_uid,
+            id=srv_req['id'],
+            text=report_text,
+            radiologist=radiologist,
+            summary=None,
+            type=exam_type,
+            justification=justification,
+            model=MODEL_NAME)
+    logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid} with justification: {justification}")
+
+    # Set the exam status to 'check' for LLM processing in queue
+    db_set_status(exam_uid, "check")
+    # Notify the queue
+    QUEUE_EVENT.set()
+
+async def get_patient_id_from_fhir(session, patient_cnp, patient_name=None):
+    """
+    Get patient ID from FHIR system by CNP, and if not found, by name.
+
+    Args:
+        session: aiohttp ClientSession instance
+        patient_cnp: Patient CNP
+        patient_name: Patient full name (optional)
+
+    Returns:
+        str or None: Patient ID from FHIR if successful, None otherwise
+    """
+    fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
+    if fhir_patient and 'id' in fhir_patient:
+        patient_id = fhir_patient['id']
+        # Update patient ID in database
+        db_update_patient_id(patient_cnp, patient_id)
+        return patient_id
+    return None
+
+
+async def process_exams_without_rad_reports(session):
+    """
+    Process exams that don't have radiologist reports yet.
+
+    This function identifies exams without radiologist reports, finds the
+    corresponding patient in HIS, and retrieves the radiologist report.
+    """
+    # Get exams for a patient without radiologist reports
+    result = db_get_exams_without_rad_report()
+    if not result or not result.get('exams'):
+        return
+    
+    # Extract necessary information from the first exam
+    patient_cnp = result['patient']['cnp']
+    patient_id = result['patient']['id']
+    exams = result['exams']
+    
+    # If patient ID is not known, search for it in FHIR
+    patient_name = result['patient']['name']
+    if not patient_id:
+        if not validate_romanian_cnp(patient_cnp).get('valid'):
+            logging.warning(f"Invalid CNP '{patient_cnp}' for patient '{patient_name}', marking exams as unresolvable")
+            for exam in exams:
+                exam_uid = exam['uid']
+                existing = db_select_one('rad_reports', exam_uid)
+                if existing:
+                    db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
+                else:
+                    db_insert('rad_reports', uid=exam_uid, id=-1)
+            return
+        patient_id = await get_patient_id_from_fhir(session, patient_cnp, patient_name)
+    # If still no patient ID, only mark unresolvable if the exams are old enough
+    if not patient_id:
+        one_week_ago = datetime.now() - timedelta(weeks=1)
+        recent = any(
+            datetime.strptime(e['created'][:19], '%Y-%m-%d %H:%M:%S') > one_week_ago
+            for e in exams if e.get('created')
+        )
+        if recent:
+            logging.debug(f"Could not find FHIR patient for CNP {patient_cnp}, exam is recent — will retry later")
+            return
+        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp} or name '{patient_name}', marking exams as unresolvable")
+        for exam in exams:
+            exam_uid = exam['uid']
+            existing = db_select_one('rad_reports', exam_uid)
+            if existing:
+                db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
+            else:
+                db_insert('rad_reports', uid=exam_uid, id=-1)
+        return
+    
+    # Process each exam for this patient
+    for exam in exams:
+        await process_single_exam_without_rad_report(session, exam, patient_id)
+
+
+
+# AI pipeline
+
+async def check_report(report_text):
+    """Analyze a free-text radiology report for pathological findings.
+    Tracks checking timing statistics.
+    """
+    try:
+        if not report_text:
+            logging.warning("Report check request failed: no report text provided")
+            return {'error': 'No report text provided'}
+
+        logging.debug(f"Report check request received with report length: {len(report_text.split())} words")
+
+        # Add space after punctuation marks to properly separate phrases
+        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
+
+        # Find acronyms in the report text
+        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
+        found_acronyms = acronym_pattern.findall(processed_report_text)
+        # Filter to only acronyms that are in MEDICAL_ACRONYMS
+        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
+        # Create acronym list for the prompt
+        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
+
+        # Add acronym list to the prompt if any acronyms were found
+        SYSTEM_PROMPT = PROMPTS['CHK_PROMPT'].strip()
+        if used_acronyms:
+            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
+            logging.debug(f"Added acronym list to check prompt:\n{acronym_list}")
+
+        # Prepare the request headers
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+
+        # Prepare the JSON data
+        payload = {
+            "model": MODEL_NAME,
+            "timings_per_token": True,
+            "cache_prompt": True,
+            "stream": False,
+            "keep_alive": 1800,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": processed_report_text}
+                    ]
+                }
+            ]
+        }
+
+        logging.debug(f"Sending report to AI API with model: {MODEL_NAME}")
+
+        # Start timing
+        start_time = asyncio.get_running_loop().time()
+        async with aiohttp.ClientSession() as session:
+            result = await send_to_openai(session, headers, payload)
+            # Calculate timing statistics
+            global timings
+            end_time = asyncio.get_running_loop().time()
+            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+            if timings['checking'] > 0:
+                timings['checking'] = int((3 * timings['checking'] + processing_time) / 4)
+            else:
+                timings['checking'] = processing_time
+
+            if not result:
+                logging.error("Failed to get response from AI")
+                return {'error': 'Failed to get response from AI'}
+
+            response_text = result["choices"][0]["message"]["content"].strip()
+            logging.debug(f"Raw AI check response: {response_text}")
+
+            # Clean up markdown code fences if present
+            response_text = re.findall(r'```json\s*({.*?})\s*```', response_text, re.DOTALL)
+            if response_text:
+                response_text = response_text[-1]  # Use the last matched JSON block
+
+            try:
+                # Try to parse the response as JSON
+                parsed_response = json.loads(response_text) if response_text else None
+                logging.debug(f"AI responded: {parsed_response}")
+
+                # Handle case where AI returns an array instead of single object
+                if isinstance(parsed_response, list):
+                    if len(parsed_response) == 0:
+                        raise ValueError("Empty array response from AI")
+                    # Take the first valid entry from the array
+                    parsed_response = parsed_response[0]
+                    logging.debug(f"Extracted first entry from array: {parsed_response}")
+
+                # Validate required fields
+                if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
+                    raise ValueError("Missing required fields in AI response")
+
+                # Validate pathologic field
+                if parsed_response["pathologic"] not in ["yes", "no"]:
+                    raise ValueError("Invalid pathologic value in AI response")
+
+                # Validate severity field
+                if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
+                    raise ValueError("Invalid severity value in AI response")
+
+                # Validate summary field
+                if not isinstance(parsed_response["summary"], str):
+                    raise ValueError("Invalid summary value in AI response")
+                else:
+                    parsed_response["summary"] = parsed_response["summary"].strip().lower()
+
+                logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {'pathologic' if parsed_response['pathologic'] == 'yes' else 'non-pathologic'}: {parsed_response['summary']}")
+                return parsed_response
+            except json.JSONDecodeError as e:
+                # If JSON parsing fails, try to extract JSON from the response text
+                # This handles cases where the AI returns both text and JSON
+                logging.debug(f"Initial JSON parsing failed, trying to extract JSON from response: {response_text}")
+
+                # Try to find JSON in the response text
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+                if json_match:
+                    try:
+                        parsed_response = json.loads(json_match.group(0))
+                        logging.debug(f"Successfully extracted JSON from response: {parsed_response}")
+                        return parsed_response
+                    except json.JSONDecodeError as json_e:
+                        logging.error(f"Failed to parse extracted JSON: {json_e}")
+                        logging.error(f"Extracted JSON: {json_match.group(0)}")
+                        return {'error': 'Failed to parse AI response', 'response': response_text}
+                else:
+                    logging.error(f"Failed to parse AI response as JSON: {response_text}")
+                    return {'error': 'Failed to parse AI response', 'response': response_text}
+            except ValueError as e:
+                logging.error(f"Invalid AI response format: {e} ({response_text})")
+                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
+    except Exception as e:
+        logging.error(f"Error processing report check request: {e}")
+        return {'error': 'Internal server error'}
+
+
+async def check_ai_report_and_update(uid):
+    """Send AI report text to CHECK prompt and update database with severity/summary.
+
+    Takes an AI report from the database, sends it to the LLM for analysis using
+    the CHECK prompt, and updates the database with the extracted severity score
+    and summary.
+
+    Args:
+        uid: Exam unique identifier
+
+    Returns:
+        bool: True if successfully processed and updated, False otherwise
+    """
+    try:
+        # Get the AI report from database
+        ai_report = db_get_ai_report(uid)
+        if not ai_report or not ai_report.get('text'):
+            logging.warning(f"No AI report text found for exam {uid}")
+            return False
+            
+        # Extract the report text
+        findings = ai_report['text']
+        impression = ai_report.get('summary', None)
+        if impression:
+            report_text = f"FINDINGS: {findings}\n\nIMPRESSION: {impression}"
+        else:
+            report_text = findings
+        
+        # Summarize the AI report
+        logging.info(f"Summarizing AI report for exam {uid}")
+        analysis_result = await check_report(report_text)
+        
+        # Check if analysis was successful
+        if 'error' in analysis_result:
+            logging.error(f"AI check failed for exam {uid}: {analysis_result['error']}")
+            return False
+        
+        # Update the AI report in database with severity and summary
+        db_update('ai_reports', 'uid = ?', (uid,),
+                    positive=1 if analysis_result['pathologic'] == 'yes' else 0,
+                    severity=analysis_result['severity'],
+                    summary=analysis_result['summary'])
+
+        logging.info(f"Updated AI report for exam {uid} with severity {analysis_result['severity']} and summary '{analysis_result['summary']}'")
+        return True
+        
+    except Exception as e:
+        logging.error(f"Error processing CHECK prompt for exam {uid}: {e}")
+        return False
+
+
+async def translate_report(report_text):
+    """Translate a Romanian radiology report to English using the LLM.
+    Tracks translation timing statistics.
+    Uses caching to avoid re-translating identical reports.
+    """
+    try:
+        if not report_text:
+            logging.warning("Translation request failed: no report text provided")
+            return None
+
+        logging.debug(f"Translation request received: {' '.join(report_text.split()[:10])}...")
+
+        # Check cache first
+        report_hash = hash(report_text)
+        if report_hash in _translation_cache:
+            logging.debug(f"Translation cache hit for report (hash: {report_hash})")
+            return _translation_cache[report_hash]
+
+        # Add space after each dot to clearly demarcate sentences
+        report_text = re.sub(r'([.])(?=\S)', r'\1 ', report_text)
+
+        # Find acronyms in the report text
+        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
+        found_acronyms = acronym_pattern.findall(report_text)
+        # Filter to only acronyms that are in MEDICAL_ACRONYMS
+        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
+        # Create acronym list for the prompt
+        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
+
+        # Add acronym list to the prompt if any acronyms were found
+        SYSTEM_PROMPT = PROMPTS['TRN_PROMPT'].strip()
+        if used_acronyms:
+            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
+            logging.debug(f"Added acronym list to translation prompt:\n{acronym_list}")
+
+        # Prepare the request headers
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+
+        # Prepare the JSON data
+        payload = {
+            "model": MODEL_NAME,
+            "timings_per_token": True,
+            "cache_prompt": True,
+            "stream": False,
+            "keep_alive": 1800,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": report_text}
+                    ]
+                }
+            ]
+        }
+
+        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
+
+        # Start timing
+        start_time = asyncio.get_running_loop().time()
+        async with aiohttp.ClientSession() as session:
+            result = await send_to_openai(session, headers, payload)
+            # Calculate timing statistics
+            global timings
+            end_time = asyncio.get_running_loop().time()
+            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+            if timings['translation'] > 0:
+                timings['translation'] = int((3 * timings['translation'] + processing_time) / 4)
+            else:
+                timings['translation'] = processing_time
+
+            if not result:
+                logging.error("Failed to get response from AI service for translation")
+                return None
+
+            response_text = result["choices"][0]["message"]["content"].strip()
+            logging.debug(f"Raw AI translation response: {response_text}")
+
+            # Clean up markdown code fences if present
+            response_text = re.findall(r'```text\s*([^`]*?)\s*```', response_text, re.DOTALL)
+            if response_text:
+                response_text = response_text[-1]  # Use the last matched TEXT block
+
+            # Validate the translation before returning
+            if not response_text:
+                logging.warning("Empty translation response received")
+                return None
+
+            # Cache the result before returning
+            _translation_cache[report_hash] = response_text
+            # Limit cache size to 500 entries to prevent unbounded growth
+            if len(_translation_cache) > 500:
+                # Remove oldest entry (FIFO)
+                oldest_key = next(iter(_translation_cache))
+                del _translation_cache[oldest_key]
+                logging.debug(f"Translation cache size limit reached, removed oldest entry")
+
+            logging.info(f"Translation: {' '.join(response_text.split()[:10])}...")
+            return response_text
+    except Exception as e:
+        logging.error(f"Error processing translation request: {e}")
+        return None
+
+
+def expand_medical_acronyms(text):
+    """
+    Expand medical acronyms in the text using the MEDICAL_ACRONYMS dictionary.
+
+    This function searches for medical acronyms in the text and replaces them
+    with their full English translations to help with validation and readability.
+
+    Args:
+        text: Text containing potential medical acronyms
+
+    Returns:
+        tuple: (expanded_text, found_acronyms) where expanded_text is the text with
+               medical acronyms expanded and found_acronyms is a list of acronyms found
+    """
+    if not text or not isinstance(text, str):
+        return text, []
+
+    expanded_text = text
+    found_acronyms = []
+
+    # Create a sorted list of acronyms by length (longest first) to avoid partial matches
+    sorted_acronyms = sorted(MEDICAL_ACRONYMS.keys(), key=len, reverse=True)
+
+    # Search and replace acronyms in the text
+    for acronym in sorted_acronyms:
+        # Use word boundaries to avoid partial matches
+        pattern = r'\b' + re.escape(acronym) + r'\b'
+        translation = MEDICAL_ACRONYMS[acronym]
+        # Check if acronym exists in text (case sensitive)
+        if re.search(pattern, expanded_text):
+            found_acronyms.append(acronym)
+            expanded_text = re.sub(pattern, translation, expanded_text)
+    # Return the expanded text and list of found acronyms
+    return expanded_text, found_acronyms
+
+def validate_translation(source_text, translated_text):
+    """
+    Validate a translation before saving it to the database.
+
+    Performs several validation checks to ensure the translation is valid:
+    1. Not empty or None
+    2. Not identical to source text
+    3. Minimum length requirement
+    4. No placeholder/error text patterns
+    5. Medical acronyms are properly expanded
+
+    Args:
+        source_text: Original text in source language
+        translated_text: Translated text to validate
+
+    Returns:
+        tuple: (bool, str) where bool indicates validity and str contains error message if invalid or expanded translation if valid
+    """
+    if not translated_text or not translated_text.strip():
+        return False, "Translation is empty or None"
+
+    # Check if translation is identical to source (no translation performed)
+    if translated_text.strip() == source_text.strip():
+        return False, "Translation is identical to source text - no translation performed"
+
+    # Check if translation is too short (less than 10 characters)
+    if len(translated_text.strip()) < 10:
+        return False, f"Translation is too short ({len(translated_text)} characters)"
+
+    # Check if translation contains AI refusal/error boilerplate.
+    # Use specific multi-word phrases only — single words like "error", "unable",
+    # "failed", "sorry" appear legitimately in medical English reports.
+    placeholder_patterns = [
+        r"\b(no translation available)\b",
+        r"\b(could not translate)\b",
+        r"\b(translation failed)\b",
+        r"\b(i am unable to)\b",
+        r"\b(i cannot translate)\b",
+        r"\b(i('m| am) sorry)\b",
+    ]
+
+    for pattern in placeholder_patterns:
+        if re.search(pattern, translated_text, re.IGNORECASE):
+            return False, f"Translation contains error text: {translated_text}"
+
+    # Expand medical acronyms in the translated text for better validation
+    expanded_translation, found_acronyms = expand_medical_acronyms(translated_text)
+
+    # Check if any medical acronyms were found but not properly translated
+    # Look for common Romanian acronym patterns that should have been translated
+    romanian_acronym_pattern = r'\b[A-Z]{2,}\b'  # 2+ uppercase letters
+    untranslated_acronyms = re.findall(romanian_acronym_pattern, expanded_translation)
+
+    # Filter out acronyms that were properly translated (found in our list)
+    untranslated_acronyms = [acro for acro in untranslated_acronyms if acro not in MEDICAL_ACRONYMS]
+
+    if untranslated_acronyms:
+        logging.debug(f"Found medical acronyms in translation: {', '.join(untranslated_acronyms)}")
+
+    # Return valid and expanded translation
+    return True, expanded_translation
+
+async def check_rad_report_and_update(uid):
+    """Send radiologist report text to CHECK prompt and update database with severity/summary.
+
+    Takes a radiologist report from the database, sends it to the LLM for analysis using
+    the CHECK prompt, and updates the database with the extracted severity score
+    and summary. Also translates the report from Romanian to English.
+
+    Args:
+        uid: Exam unique identifier
+
+    Returns:
+        bool: True if successfully processed and updated, False otherwise
+    """
+    try:
+        # Get the radiologist report from database
+        rad_report = db_get_rad_report(uid)
+        if not rad_report or not rad_report.get('text'):
+            logging.warning(f"No radiologist report text found for exam {uid}")
+            return False
+
+        # Extract the report text
+        report_text = rad_report['text']
+
+        # Translate the report from Romanian to English (skip if AI not yet reachable)
+        if not active_openai_url:
+            logging.debug(f"Skipping translation for exam {uid}: AI service not reachable")
+            return False
+        logging.info(f"Translating radiologist report for exam {uid}")
+        translation = await translate_report(report_text)
+        if translation:
+            # Validate the translation before using it
+            is_valid, message = validate_translation(report_text, translation)
+            if not is_valid:
+                logging.warning(f"Translation validation failed for exam {uid}: {message}")
+                translation = None
+            else:
+                logging.info(f"Translation successful for exam {uid}: {' '.join(message.split()[:10])}...")
+                translation = message  # Use the expanded translation
+        else:
+            logging.warning(f"Translation failed for exam {uid}")
+
+        # Summarize the radiologist report
+        logging.info(f"Summarizing radiologist report for exam {uid}")
+        start_time = asyncio.get_running_loop().time()
+        analysis_result = await check_report(report_text)
+        end_time = asyncio.get_running_loop().time()
+        processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+
+        # Check if analysis was successful
+        if 'error' in analysis_result:
+            logging.error(f"Check failed for exam {uid}: {analysis_result['error']}")
+            return False
+
+        # Extract values from analysis result
+        try:
+            # Validate that all required fields are present
+            if 'pathologic' not in analysis_result or 'severity' not in analysis_result or 'summary' not in analysis_result:
+                logging.error(f"Check response missing required fields for exam {uid}: {list(analysis_result.keys())}")
+                return False
+            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
+            severity = analysis_result['severity']
+            summary = analysis_result['summary'].lower()
+        except Exception as e:
+            logging.error(f"Could not extract analysis results for exam {uid}: {e}")
+            return False
+
+        # Update the radiologist report in database with severity, summary, latency, and translation
+        update_fields = {
+            'positive': positive,
+            'severity': severity,
+            'summary': summary,
+            'model': MODEL_NAME,
+            'latency': int(processing_time)
+        }
+
+        # Add translation if successful and validated
+        if translation:
+            update_fields['text_en'] = translation
+
+        # Update the database
+        db_update('rad_reports', 'uid = ?', (uid,), **update_fields)
+        logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {processing_time}ms")
+        if translation:
+            logging.info(f"Added English translation for exam {uid}")
+        return True
+
+    except Exception as e:
+        logging.error(f"Error processing CHECK prompt for exam {uid}: {e}")
+        return False
+
+async def detailed_analysis_report(report_text):
+    """Perform detailed three-pass analysis of a radiology report.
+    Tracks analysis timing statistics.
+    """
+    try:
+        if not report_text:
+            logging.warning("Detailed analysis request failed: no report text provided")
+            return {'error': 'No report text provided'}
+
+        logging.debug(f"Detailed analysis request received ({len(report_text.split())} words)")
+
+        # Add space after punctuation marks to properly separate phrases
+        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
+
+        # Find acronyms in the report text
+        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
+        found_acronyms = acronym_pattern.findall(report_text)
+        # Filter to only acronyms that are in MEDICAL_ACRONYMS
+        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
+        # Create acronym list for the prompt
+        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
+
+        # Add acronym list to the prompt if any acronyms were found
+        SYSTEM_PROMPT = PROMPTS['ANA_PROMPT'].strip()
+        if used_acronyms:
+            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
+            logging.debug(f"Added acronym list to detailed analysis prompt:\n{acronym_list}")
+
+        # Prepare the request headers
+        headers = {
+            'Authorization': f'Bearer {OPENAI_API_KEY}',
+            'Content-Type': 'application/json',
+        }
+
+        # Prepare the JSON data
+        payload = {
+            "model": MODEL_NAME,
+            "timings_per_token": True,
+            "cache_prompt": True,
+            "stream": False,
+            "keep_alive": 1800,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": processed_report_text}
+                    ]
+                }
+            ]
+        }
+
+        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for detailed analysis")
+
+        # Start timing
+        start_time = asyncio.get_running_loop().time()
+        async with aiohttp.ClientSession() as session:
+            result = await send_to_openai(session, headers, payload)
+            # Calculate timing statistics
+            global timings
+            end_time = asyncio.get_running_loop().time()
+            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+            if timings['analysis'] > 0:
+                timings['analysis'] = int((3 * timings['analysis'] + processing_time) / 4)
+            else:
+                timings['analysis'] = processing_time
+
+            if not result:
+                logging.error("Failed to get response from AI service")
+                return {'error': 'Failed to get response from AI service'}
+
+            response_text = result["choices"][0]["message"]["content"].strip()
+            logging.debug(f"Raw AI detailed analysis response: {response_text}")
+
+            # Log the response text for debugging before cleaning
+            logging.debug(f"AI response before cleaning: {repr(response_text)}")
+
+            # Clean up markdown code fences if present
+            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
+            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
+
+            # Log the response text after cleaning
+            logging.debug(f"AI response after cleaning: {repr(response_text)}")
+
+            try:
+                parsed_response = json.loads(response_text)
+                logging.debug(f"AI detailed analysis completed")
+                logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
+
+                # Handle case where AI returns an array instead of single object
+                if isinstance(parsed_response, list):
+                    if len(parsed_response) == 0:
+                        raise ValueError("Empty array response from AI")
+                    # Take the first valid entry from the array
+                    parsed_response = parsed_response[0]
+                    logging.debug(f"Extracted first entry from array: {parsed_response}")
+                    logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
+
+                return parsed_response
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse AI response as JSON: {response_text}")
+                logging.error(f"JSON decode error: {str(e)}")
+                logging.error(f"Response length: {len(response_text)}")
+                return {'error': 'Failed to parse AI response', 'response': response_text}
+            except ValueError as e:
+                logging.error(f"Invalid AI response format: {e} ({response_text})")
+                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
+    except Exception as e:
+        logging.error(f"Error processing detailed analysis request: {e}")
+        logging.exception("Full traceback:")
+        return {'error': 'Internal server error'}
+
+
+async def send_to_openai(session, headers, payload):
+    """
+    Send a request to the currently active AI API endpoint.
+
+    Attempts to send a POST request to the active AI endpoint with the
+    provided headers and payload. Handles HTTP errors and exceptions.
+
+    Args:
+        session: aiohttp ClientSession instance
+        headers: HTTP headers for the request
+        payload: JSON payload containing the request data
+
+    Returns:
+        dict or None: JSON response from API if successful, None otherwise
+    """
+    if not active_openai_url:
+        logging.error("No active AI URL configured")
+        return None
+        
+    try:
+        async with session.post(active_openai_url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as resp:
+            if resp.status == 200:
+                return await resp.json()
+            logging.warning(f"{active_openai_url} failed with status {resp.status}")
+    except Exception as e:
+        logging.error(f"{active_openai_url} request error: {e}")
+    # Failed
+    return None
+
+
+async def update_patient_info_from_fhir(exam):
+    """
+    Try to get additional patient information from FHIR before processing.
+    
+    Args:
+        exam: Dictionary containing exam information and metadata
+        
+    Returns:
+        None
+    """
+    # Check if HIS integration is enabled
+    if not ENABLE_HIS:
+        return
+        
+    patient_cnp = exam['patient']['cnp']
+    patient_name = exam['patient']['name']
+    patient_birthdate = exam['patient']['birthdate']
+    if patient_cnp and (not exam['patient']['id'] or not patient_birthdate or patient_birthdate == -1):
+        async with aiohttp.ClientSession() as session:
+            # Get patient information from FHIR (first by CNP, then by name if CNP fails)
+            fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
+            if fhir_patient:
+                # Update patient ID if found
+                if 'id' in fhir_patient:
+                    exam['patient']['id'] = fhir_patient['id']
+                    # Update in database
+                    db_update_patient_id(patient_cnp, fhir_patient['id'])
+                
+                # Update patient birthdate if not already known
+                if (not patient_birthdate or patient_birthdate == -1) and 'birthDate' in fhir_patient:
+                    try:
+                        birthdate = fhir_patient['birthDate']
+                        # Validate the format (should be YYYY-MM-DD)
+                        if len(birthdate) == 10 and birthdate[4] == '-' and birthdate[7] == '-':
+                            exam['patient']['birthdate'] = birthdate
+                            # Calculate age from birthdate
+                            birth_date = datetime.strptime(birthdate, "%Y-%m-%d")
+                            today = datetime.now()
+                            age = today.year - birth_date.year
+                            if (today.month, today.day) < (birth_date.month, birth_date.day):
+                                age -= 1
+                            exam['patient']['age'] = age
+                            # Update in database
+                            db_update('patients', 'cnp = ?', (patient_cnp,), birthdate=birthdate)
+                    except Exception as e:
+                        logging.error(f"Error parsing birthdate from FHIR for patient {patient_cnp}: {e}")
+
+
+def prepare_exam_data(exam):
+    """
+    Prepare exam data for AI processing by identifying region, projection, etc.
+    
+    Args:
+        exam: Dictionary containing exam information and metadata
+        
+    Returns:
+        tuple: (region, question, subject, anatomy, image_bytes) or (None, None, None, None, None) if exam should be ignored
+    """
+    # Read the PNG file
+    with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
+        image_bytes = f.read()
+    # Identify the region
+    region, question = identify_anatomic_region(exam)
+    # Filter on specific region
+    if not region in REGIONS:
+        logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
+        db_set_status(exam['uid'], 'ignore')
+        return None, None, None, None, None
+    # Identify the projection, gender and age
+    projection = identify_imaging_projection(exam)
+    gender = determine_patient_gender_description(exam)
+    age = exam["patient"]["age"]
+    if age > 1:
+        txtAge = f"{age} years old"
+    elif age > 0:
+        txtAge = f"{age} year old"
+    elif age == 0:
+        txtAge = "newborn"
+    else:
+        txtAge = ""
+    # Update exam info
+    exam['exam'].update({'region': region, 'projection': projection})
+    # Get the subject of the study and the studied region
+    subject = " ".join([txtAge, gender])
+    if region:
+        anatomy = " ".join([projection, region])
+    else:
+        anatomy = ""
+        
+    return region, question, subject, anatomy.strip(), image_bytes
+
+
+def create_exam_prompt(exam, region, question, subject, anatomy):
+    """
+    Create a deterministic user prompt for radiology AI inference.
+
+    Args:
+        exam: dict with exam metadata and reports
+        region: anatomic region key
+        question: clinical question
+        subject: patient description
+        anatomy: anatomy description
+
+    Returns:
+        str: formatted AI prompt
+    """
+
+    # Determine whether this is a review or a new AI report
+    has_ai_report = (
+        'ai' in exam.get('report', {})
+        and exam['report']['ai'].get('text')
+    )
+
+    # Fetch prior reports only for new AI reports
+    previous_reports = []
+    if not has_ai_report:
+        previous_reports = db_get_previous_reports(
+            exam['patient']['cnp'],
+            region,
+            months=3
+        ) or []
+
+    # Build the prompt sections
+    prompt_lines = []
+
+    # Clinical information (if present)
+    justification = exam.get('report', {}).get('rad', {}).get('justification')
+    if justification:
+        prompt_lines.extend([
+            "CLINICAL INFORMATION",
+            justification.strip(),
+            ""
+        ])
+
+    # Prior studies (limit to 3, clearly delimited)
+    if previous_reports:
+        prompt_lines.append("PRIOR STUDIES")
+        for report, date in previous_reports[:3]:
+            prompt_lines.append(f"- {date}: {report}")
+        prompt_lines.append("")
+
+    # Core task (single, unambiguous instruction)
+    prompt_lines.extend([
+        "TASK",
+        PROMPTS['USR_PROMPT'].format(
+            question=question,
+            anatomy=anatomy,
+            subject=subject
+        ).strip()
+    ])
+
+    # Region-specific reporting checklist
+    template_items = REGION_TEMPLATES.get(region, [])
+    if template_items:
+        prompt_lines.append("")
+        prompt_lines.append("ASSESS IN ORDER")
+        for item in template_items:
+            prompt_lines.append(f"- {item}")
+
+    # Comparison instruction only if priors exist
+    if previous_reports:
+        prompt_lines.append(
+            "When relevant, describe interval change compared to prior studies "
+            "(new, stable, improved, or resolved findings)."
+        )
+
+    # Create final prompt
+    return "\n".join(prompt_lines)
+
+def prepare_ai_request_data(prompt, image_bytes):
+    """
+    Prepare the request data for sending to AI API.
+    
+    Args:
+        prompt: Formatted prompt for AI
+        image_bytes: Image data as bytes
+        
+    Returns:
+        tuple: (headers, data) for the AI API request
+    """
+    # Base64 encode the PNG to comply with OpenAI Vision API
+    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+    image_url = f"data:image/png;base64,{image_b64}"
+    # Prepare the request headers
+    headers = {
+        'Authorization': f'Bearer {OPENAI_API_KEY}',
+        'Content-Type': 'application/json',
+    }
+    # Prepare the JSON data
+    data = {
+        "model": MODEL_NAME,
+        "timings_per_token": True,
+        "min_p": 0.05,
+        "top_k": 40,
+        "top_p": 0.95,
+        "temperature": 0.6,
+        "cache_prompt": True,
+        "stream": False,
+        "keep_alive": 1800,
+        "messages": [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": PROMPTS['REP_PROMPT'].strip()}]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                ]
+            }
+        ]
+    }
+    
+    return headers, data
+
+
+async def send_exam_to_openai(exam, max_retries = 3):
+    """
+    Send an exam's PNG image to the AI API for analysis.
+
+    This is the core AI processing function that handles the complete workflow:
+    1. Updates patient information from FHIR system
+    2. Prepares exam data (region, projection, gender, age)
+    3. Filters exams by supported regions
+    4. Creates AI prompts with clinical context and prior reports
+    5. Encodes images for AI analysis
+    6. Sends requests with exponential backoff retries
+    7. Parses and validates AI responses
+    8. Stores results in the database
+    9. Sends notifications for positive findings
+    10. Updates dashboard with processing status
+
+    The function implements robust error handling with automatic retries and
+    proper status updates in the database for both success and failure cases.
+
+    Args:
+        exam (dict): Dictionary containing exam information and metadata including:
+            - uid: Unique exam identifier
+            - patient: Patient information (name, cnp, age, sex)
+            - exam: Exam details (protocol, created timestamp, study/series UIDs)
+            - report: Previous report data if reprocessing
+        max_retries (int): Maximum number of retry attempts (default: 3)
+
+    Returns:
+        bool: True if successfully processed, False otherwise
+
+    Processing Flow:
+        1. FHIR Integration: Update patient info from hospital system
+        2. Data Preparation: Extract region, projection, subject description
+        3. Region Filtering: Only process exams from supported anatomic regions
+        4. Prompt Engineering: Create context-rich prompts with clinical info
+        5. Image Encoding: Convert PNG to base64 for AI API transmission
+        6. Retry Logic: Exponential backoff (2s, 4s, 8s delays) on failures
+        7. Response Parsing: Validate and extract AI-generated findings
+        8. Database Storage: Save results with processing timing metrics
+        9. Notification: Alert for positive findings via ntfy.sh
+        10. Dashboard Update: Broadcast processing completion status
+        11. Error Handling: Update status to 'error' on failure and broadcast update
+    """
+    try:
+        # Try to get additional patient and exam information from FHIR before processing
+        await update_patient_info_from_fhir(exam)
+                            
+        # Prepare exam data (file read + image metadata — keep off event loop)
+        region, question, subject, anatomy, image_bytes = await asyncio.to_thread(prepare_exam_data, exam)
+        if region is None:  # Exam should be ignored
+            return False
+            
+        # Create the prompt
+        prompt = create_exam_prompt(exam, region, question, subject, anatomy)
+        
+        logging.debug(f"Prompt: {prompt}")
+        logging.info(f"Processing {exam['uid']} with {region} x-ray.")
+            
+        # Prepare request data
+        headers, data = prepare_ai_request_data(prompt, image_bytes)
+        
+        prior_ai_report = (exam.get('report') or {}).get('ai') or {}
+        prior_ai_text = prior_ai_report.get('text') if isinstance(prior_ai_report, dict) else None
+        # Strip old JSON wrapper format {"short":..., "report":...} if present
+        if prior_ai_text:
+            try:
+                parsed = json.loads(prior_ai_text)
+                if isinstance(parsed, dict) and 'report' in parsed:
+                    prior_ai_text = parsed['report']
+            except (json.JSONDecodeError, TypeError):
+                pass
+        # Discard if too short or contains prompt artefacts
+        if prior_ai_text and (len(prior_ai_text) < 30 or any(k in prior_ai_text for k in ('ROLE', 'TASK', 'ASSESS IN ORDER', 'OUTPUT CONSTRAINTS'))):
+            prior_ai_text = None
+        if prior_ai_text:
+            logging.info(f"Previous report: {prior_ai_text}")
+            data['messages'].append({'role': 'assistant', 'content': prior_ai_text})
+            data['messages'].append({'role': 'user', 'content': PROMPTS['REV_PROMPT'].strip()})
+    
+        # Debug log the request data
+            
+        # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
+        attempt = 1
+        async with aiohttp.ClientSession() as session:
+            while attempt <= max_retries:
+                try:
+                    # Start timing
+                    start_time = asyncio.get_running_loop().time()
+                    result = await send_to_openai(session, headers, data)
+
+                    # Calculate timing statistics
+                    global timings
+                    end_time = asyncio.get_running_loop().time()
+                    processing_time = int((end_time - start_time) * 1000)  # In milliseconds
+                    if timings['examination'] > 0:
+                        timings['examination'] = int((3 * timings['examination'] + processing_time) / 4)
+                    else:
+                        timings['examination'] = processing_time
+
+                    # Check for valid response
+                    if not result:
+                        break
+                    response_text = result["choices"][0]["message"]["content"]
+                    # Extract the actual model name from the API response
+                    response_model = result.get("model", MODEL_NAME)
+                    
+                    # Process AI response - extract report text
+                    report = response_text.strip()
+                    if not report:
+                        logging.error(f"Empty AI response for exam {exam['uid']}")
+                        raise ValueError("Empty AI response")
+
+                    # Log a snippet of the report
+                    logging.info(f"AI report for {exam['uid']}: {' '.join(report.split()[:10])}...")
+                    
+                    # Handle reports with FINDINGS/IMPRESSION structure
+                    findings = None
+                    impression = None
+                    
+                    # Use case-insensitive regex to find the sections
+                    findings_match = re.search(r'FINDINGS:(.*?)(IMPRESSION:|$)', report, re.DOTALL)
+                    impression_match = re.search(r'IMPRESSION:(.*)', report, re.DOTALL)
+
+                    
+                    if findings_match and impression_match:
+                        findings = findings_match.group(1).strip()
+                        impression = impression_match.group(1).strip()
+                        logging.debug(f"Split report into findings ({len(findings.split())} words) and impression ({len(impression.split())} words)")
+                        # If impression is longer than 3 words, set to None for check_ai_report_and_update to handle
+                        if impression and len(impression.split()) > 3:
+                            logging.debug("Impression is too long, will be set by check_ai_report_and_update")
+                            impression = None
+                    elif findings_match:
+                        findings = findings_match.group(1).strip()
+                        impression = None     # Will be set later by check_ai_report_and_update
+                        logging.debug("Extracted findings, no impression found")
+                    else:
+                        findings = report     # Fallback to full report for findings
+                        impression = None     # Will be set later by check_ai_report_and_update
+                        logging.debug("Using full report as findings")
+
+                    # First add the report with minimal values
+                    db_insert('ai_reports',
+                        uid=exam['uid'],
+                        text=findings,
+                        summary=impression,
+                        model=response_model,
+                        latency=int(processing_time))
+
+                    # Now analyze the report and get proper values
+                    await check_ai_report_and_update(exam['uid'])
+                    
+                    # Get the updated report to check positivity for notifications
+                    updated_report = db_get_ai_report(exam['uid'])
+                    # Get severity value for dashboard update
+                    severity = updated_report.get('severity', -1) if updated_report else -1
+                    # Determine positivity for dashboard update by comparing severity with threshold
+                    is_positive = severity >= SEVERITY_THRESHOLD
+                    # Notify the dashboard frontend to reload first page
+                    ai_report = (exam.get('report') or {}).get('ai') or {}
+                    reviewed = ai_report.get('reviewed', False) if isinstance(ai_report, dict) else False
+                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': reviewed, 'severity': severity})
+                    if is_positive:
+                        # Send notification for positive finding
+                        try:
+                            await send_ntfy_notification(exam['uid'], report, exam)
+                        except Exception as e:
+                            logging.error(f"Failed to send ntfy notification: {e}")
+                    # Success
+                    return True
+
+                except Exception as e:
+                    logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
+                    # Exponential backoff
+                    await asyncio.sleep(2 ** attempt)
+                    attempt += 1
+                
+        # Failure after max_retries
+        db_set_status(exam['uid'], 'error')
+        QUEUE_EVENT.clear()
+        logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
+        await broadcast_dashboard_update(event="error", payload={'uid': exam['uid'], 'reason': 'max_retries'})
+        return False
+    except Exception as e:
+        logging.error(f"Critical error for {exam['uid']}: {e}")
+        db_set_status(exam['uid'], 'error')
+        await broadcast_dashboard_update(event="error", payload={'uid': exam['uid'], 'reason': str(e)})
+        return False
+
+
+# Threads
 # WebSocket and WebServer operations
 async def serve_dashboard_page(request):
     """Serve the main dashboard HTML page.
@@ -3303,187 +5450,207 @@ async def diagnostics_stats_handler(request):
         return web.json_response({}, status = 500)
 
 
-def db_get_processing_times_by_region():
-    """Get processing time analysis by region.
-    
-    Returns:
-        list: List of tuples containing (region, avg_processing_time, exam_count)
-    """
-    query = """
-        SELECT 
-            e.region,
-            AVG(CAST(ar.latency AS FLOAT)) as avg_processing_time,
-            COUNT(*) as exam_count
-        FROM exams e
-        LEFT JOIN ai_reports ar ON e.uid = ar.uid
-        WHERE e.status = 'done' 
-        AND ar.latency IS NOT NULL 
-        AND ar.latency >= 0
-        GROUP BY e.region
-        ORDER BY avg_processing_time DESC
-    """
-    return db_execute_query(query, fetch_mode='all')
 
-def db_get_rad_severity_distribution():
-    """Get severity distribution for radiologist reports.
-    
-    Returns:
-        list: List of tuples containing (severity, count)
-    """
-    query = """
-        SELECT 
-            severity,
-            COUNT(*) as count
-        FROM rad_reports
-        WHERE severity >= 0
-        GROUP BY severity
-        ORDER BY severity
-    """
-    return db_execute_query(query, fetch_mode='all')
 
-def db_get_ai_severity_distribution():
-    """Get severity distribution for AI reports.
+async def cleanup_dead_websocket_clients():
+    """
+    Remove dead or closed WebSocket clients from the clients set.
     
-    Returns:
-        list: List of tuples containing (severity, count)
+    This function checks each WebSocket connection and removes those that are
+    closed or in an invalid state to prevent unbounded memory growth.
     """
-    query = """
-        SELECT 
-            severity,
-            COUNT(*) as count
-        FROM ai_reports
-        WHERE severity >= 0
-        GROUP BY severity
-        ORDER BY severity
-    """
-    return db_execute_query(query, fetch_mode='all')
+    global websocket_clients
+    dead_clients = []
+    
+    # Try to identify dead clients by attempting basic operations
+    for client in list(websocket_clients):
+        try:
+            # Check if client is in a valid state by checking the protocol
+            # If protocol is None, the connection is closed
+            if client._protocol is None:
+                dead_clients.append(client)
+        except (AttributeError, RuntimeError):
+            # If we can't check status, consider it potentially dead
+            dead_clients.append(client)
+    
+    # Remove dead clients
+    for client in dead_clients:
+        try:
+            websocket_clients.discard(client)
+        except Exception as e:
+            logging.debug(f"Error removing dead WebSocket client: {e}")
+    
+    if dead_clients:
+        logging.debug(f"Cleaned up {len(dead_clients)} dead WebSocket clients")
 
-def db_get_severity_differences():
-    """Get severity differences between AI and radiologist reports.
-    
-    Returns:
-        list: List of tuples containing (severity_diff, count)
-    """
-    query = """
-        SELECT 
-            CAST(ar.severity AS INTEGER) - CAST(rr.severity AS INTEGER) as severity_diff,
-            COUNT(*) as count
-        FROM exams e
-        JOIN ai_reports ar ON e.uid = ar.uid
-        JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE e.status = 'done'
-        AND ar.severity >= 0
-        AND rr.severity >= 0
-        GROUP BY severity_diff
-        ORDER BY severity_diff
-    """
-    return db_execute_query(query, fetch_mode='all')
+# Per-IP request timestamps for rate limiting: {ip: [timestamps]}
+_rate_limit_store: dict = {}
+# Heavy AI endpoints get a stricter limit
+_RATE_LIMIT_HEAVY = {'/api/check', '/api/analyse', '/api/translate'}
+_RATE_LIMIT_HEAVY_MAX = 10    # requests per minute
+_RATE_LIMIT_DEFAULT_MAX = 60  # requests per minute
 
-def db_get_age_distribution_insights(severity_threshold):
-    """Get patient demographics insights by age group.
-    
+@web.middleware
+async def rate_limit_middleware(request, handler):
+    """Sliding-window per-IP rate limiter for API endpoints."""
+    if not request.path.startswith('/api/'):
+        return await handler(request)
+    ip = request.remote
+    now = asyncio.get_running_loop().time()
+    window = 60.0
+    limit = _RATE_LIMIT_HEAVY_MAX if request.path in _RATE_LIMIT_HEAVY else _RATE_LIMIT_DEFAULT_MAX
+    timestamps = _rate_limit_store.get(ip, [])
+    # Drop entries older than the window
+    timestamps = [t for t in timestamps if now - t < window]
+    if len(timestamps) >= limit:
+        logging.warning(f"Rate limit exceeded for {ip} on {request.path}")
+        return web.json_response({"error": "Too many requests"}, status=429)
+    timestamps.append(now)
+    _rate_limit_store[ip] = timestamps
+    # Evict IPs with no activity in the last window to prevent unbounded growth
+    stale = [k for k, v in _rate_limit_store.items() if not v or now - v[-1] >= window]
+    for k in stale:
+        del _rate_limit_store[k]
+    return await handler(request)
+
+
+@web.middleware
+async def auth_middleware(request, handler):
+    """Basic authentication middleware for API endpoints.
+
+    Implements HTTP Basic authentication for all API endpoints except
+    static files and OPTIONS requests. Validates credentials against
+    configured users and stores user role in request.
+
     Args:
-        severity_threshold: Threshold for positive findings
-        
-    Returns:
-        list: List of tuples containing (age_group, total_exams, positive_findings)
-    """
-    query = """
-        SELECT 
-            CASE 
-                WHEN p.birthdate IS NULL THEN 'Unknown'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) < 0 THEN 'Unknown'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 2 THEN '0-2'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 4 THEN '2-4'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 6 THEN '4-6'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 8 THEN '6-8'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 10 THEN '8-10'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 12 THEN '10-12'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 14 THEN '12-14'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 16 THEN '14-16'
-                WHEN CAST((julianday(e.created) - julianday(p.birthdate)) / 365.25 AS INTEGER) <= 18 THEN '16-18'
-                ELSE '> 18'
-            END as age_group,
-            COUNT(*) as total_exams,
-            SUM(CASE WHEN rr.severity >= ? THEN 1 ELSE 0 END) as positive_findings
-        FROM patients p
-        JOIN exams e ON p.cnp = e.cnp
-        JOIN rad_reports rr ON e.uid = rr.uid
-        WHERE p.birthdate IS NOT NULL
-        GROUP BY age_group
-        HAVING age_group != 'Unknown'
-        ORDER BY 
-            CASE age_group
-                WHEN '0-2' THEN 1
-                WHEN '2-4' THEN 2
-                WHEN '4-6' THEN 3
-                WHEN '6-8' THEN 4
-                WHEN '8-10' THEN 5
-                WHEN '10-12' THEN 6
-                WHEN '12-14' THEN 7
-                WHEN '14-16' THEN 8
-                WHEN '16-18' THEN 9
-                WHEN '> 18' THEN 10
-                ELSE 11
-            END
-    """
-    return db_execute_query(query, (severity_threshold,), fetch_mode='all')
+        request: aiohttp request object
+        handler: Request handler function
 
-def db_get_hourly_patterns():
-    """Get temporal patterns by hour of day.
-    
     Returns:
-        list: List of tuples containing (hour, exam_count)
+        Response from the handler if authenticated, or HTTP 401 if not
     """
-    query = """
-        SELECT 
-            CAST(strftime('%H', created) AS INTEGER) as hour,
-            COUNT(*) as exam_count
-        FROM exams
-        WHERE status = 'done'
-        GROUP BY hour
-        ORDER BY hour
-    """
-    return db_execute_query(query, fetch_mode='all')
+    # Skip auth for static files and OPTIONS requests
+    if request.path.startswith('/static/') or request.path.startswith('/images/') or request.method == 'OPTIONS':
+        return await handler(request)
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Basic '):
+        raise web.HTTPUnauthorized(
+            text = "401: Authentication required",
+            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
+    try:
+        credentials = base64.b64decode(auth_header[6:]).decode('utf-8')
+        username, password = credentials.split(':', 1)
+        user_info = USERS.get(username)
+        if not user_info or user_info['password'] != password:
+            audit_logger.warning(f"AUTH_FAIL user={username} ip={request.remote} path={request.path}")
+            raise ValueError("Invalid authentication")
+        # Store user role and username in request for later use
+        request.user_role = user_info['role']
+        request.username = username
+        # Only log AUTH_OK for page navigation, not for every API/WebSocket poll
+        if not request.path.startswith('/api/') and request.path not in ('/ws', '/favicon.ico'):
+            audit_logger.info(f"AUTH_OK user={username} role={user_info['role']} ip={request.remote} path={request.path}")
+    except UnicodeDecodeError:
+        audit_logger.warning(f"AUTH_FAIL user=<malformed> ip={request.remote} path={request.path}")
+        raise web.HTTPUnauthorized(
+            text = "401: Invalid authentication",
+            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
+    except ValueError:
+        raise web.HTTPUnauthorized(
+            text = "401: Invalid authentication",
+            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
+    return await handler(request)
 
-def db_get_requeue_analysis():
-    """Get re-queue analysis data.
-    
-    Returns:
-        tuple: Tuple containing (total_requeued, avg_latency_improvement) or None
-    """
-    # ai_reports has one row per uid (uid is PK), so count exams that were
-    # reprocessed by checking updated > created on the ai_reports row.
-    query = """
-        SELECT
-            COUNT(*) as total_requeued,
-            AVG(CAST(ar.latency AS FLOAT)) as avg_latency
-        FROM exams e
-        JOIN ai_reports ar ON e.uid = ar.uid
-        WHERE e.status = 'done'
-        AND ar.updated > ar.created
-    """
-    return db_execute_query(query, fetch_mode='one')
 
-def db_get_radiologist_metrics():
-    """Get radiologist consistency metrics.
-    
-    Returns:
-        list: List of tuples containing (radiologist, reports_count, avg_severity, unique_exams)
+async def broadcast_dashboard_update(event = None, payload = None, client = None):
+    """Broadcast dashboard updates to all connected WebSocket clients.
+
+    Sends real-time updates to dashboard clients including queue status,
+    processing information, statistics, and AI health status.
+
+    Args:
+        event: Optional event name for specific update types
+        payload: Optional data payload for the event
+        client: Optional specific client to send update to (instead of all)
     """
-    query = """
-        SELECT 
-            radiologist,
-            COUNT(*) as reports_count,
-            AVG(CAST(severity AS FLOAT)) as avg_severity,
-            COUNT(DISTINCT uid) as unique_exams
-        FROM rad_reports
-        WHERE radiologist IS NOT NULL AND radiologist != ''
-        GROUP BY radiologist
-        HAVING COUNT(*) > 5
-        ORDER BY reports_count DESC
-    """
-    return db_execute_query(query, fetch_mode='all')
+    # Check if there are any clients
+    if not (websocket_clients or client):
+        return
+    # Update the queue sizes
+    dashboard['queue_size'] = db_count('exams', where_clause="status IN (?, ?)", where_params=('queued', 'requeue'))
+    dashboard['check_queue_size'] = db_count('exams', where_clause="status = ?", where_params=('check',))
+    # Get error statistics
+    error_stats = db_get_error_stats()
+    dashboard['error_count'] = error_stats['error']
+    dashboard['ignore_count'] = error_stats['ignore']
+    # Get the count of successfully processed exams in the last week
+    dashboard['success_count'] = db_get_weekly_processed_count()
+    # Create a list of clients
+    if client:
+        clients = [client,]
+    else:
+        clients = websocket_clients.copy()
+    # Create the json object
+    data = {}
+    if event:
+        data['event'] = {'name': event, 'payload': payload}
+    data['dashboard'] = dashboard
+    data['openai'] = {'url': active_openai_url,
+                      'health': {
+                        'pri': health_status.get(OPENAI_URL_PRIMARY,  False),
+                        'sec': health_status.get(OPENAI_URL_SECONDARY, False)
+                       }
+                     }
+    data['timings'] = timings
+    if NO_QUERY:
+        data['next_query'] = 'Disabled'
+    elif next_query:
+        data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
+    # Send the update to all clients
+    for client in clients:
+        # Send the update to the client
+        try:
+            await client.send_json(data)
+        except Exception as e:
+            logging.debug(f"Error sending update to WebSocket client: {e}")
+            # Remove client that failed to receive message
+            websocket_clients.discard(client)
+
+
+# Notification operations
+async def send_ntfy_notification(uid, report, info):
+    """Send notification to ntfy.sh with image and report"""
+    if not ENABLE_NTFY:
+        logging.debug("NTFY notifications are disabled")
+        return
+
+    try:
+        # Create headers and message body
+        message = f"Positive finding in {info['exam']['region']} study\nPatient: {info['patient']['name']}\nReport: {report}"
+        headers = {
+            "Title": "XRayVision Alert - Positive Finding",
+            "Tags": "warning,skull",
+            "Priority": "4",
+        }
+        # Attach image URL only if a public base URL is configured
+        if NTFY_IMAGE_BASE_URL:
+            headers["Attach"] = f"{NTFY_IMAGE_BASE_URL.rstrip('/')}/images/{uid}.png"
+
+        # Post the notification
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                NTFY_URL,
+                data=message,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    logging.debug("Successfully sent ntfy notification")
+                else:
+                    logging.warning(f"Notification failed with status {resp.status}: {await resp.text()}")
+    except Exception as e:
+        logging.error(f"Failed to send ntfy notification: {e}")
+
 
 async def insights_handler(request):
     """Provide advanced insights and correlations from the database.
@@ -4129,613 +6296,6 @@ async def get_report_handler(request):
         logging.error(f"Error checking radiologist report: {e}")
         return web.json_response({'status': 'error', 'message': str(e)}, status=500)
 
-
-async def check_report(report_text):
-    """Analyze a free-text radiology report for pathological findings.
-    Tracks checking timing statistics.
-    """
-    try:
-        if not report_text:
-            logging.warning("Report check request failed: no report text provided")
-            return {'error': 'No report text provided'}
-
-        logging.debug(f"Report check request received with report length: {len(report_text.split())} words")
-
-        # Add space after punctuation marks to properly separate phrases
-        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
-
-        # Find acronyms in the report text
-        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
-        found_acronyms = acronym_pattern.findall(processed_report_text)
-        # Filter to only acronyms that are in MEDICAL_ACRONYMS
-        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
-        # Create acronym list for the prompt
-        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
-
-        # Add acronym list to the prompt if any acronyms were found
-        SYSTEM_PROMPT = PROMPTS['CHK_PROMPT'].strip()
-        if used_acronyms:
-            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
-            logging.debug(f"Added acronym list to check prompt:\n{acronym_list}")
-
-        # Prepare the request headers
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
-
-        # Prepare the JSON data
-        payload = {
-            "model": MODEL_NAME,
-            "timings_per_token": True,
-            "cache_prompt": True,
-            "stream": False,
-            "keep_alive": 1800,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": processed_report_text}
-                    ]
-                }
-            ]
-        }
-
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME}")
-
-        # Start timing
-        start_time = asyncio.get_running_loop().time()
-        async with aiohttp.ClientSession() as session:
-            result = await send_to_openai(session, headers, payload)
-            # Calculate timing statistics
-            global timings
-            end_time = asyncio.get_running_loop().time()
-            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
-            if timings['checking'] > 0:
-                timings['checking'] = int((3 * timings['checking'] + processing_time) / 4)
-            else:
-                timings['checking'] = processing_time
-
-            if not result:
-                logging.error("Failed to get response from AI")
-                return {'error': 'Failed to get response from AI'}
-
-            response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI check response: {response_text}")
-
-            # Clean up markdown code fences if present
-            response_text = re.findall(r'```json\s*({.*?})\s*```', response_text, re.DOTALL)
-            if response_text:
-                response_text = response_text[-1]  # Use the last matched JSON block
-
-            try:
-                # Try to parse the response as JSON
-                parsed_response = json.loads(response_text) if response_text else None
-                logging.debug(f"AI responded: {parsed_response}")
-
-                # Handle case where AI returns an array instead of single object
-                if isinstance(parsed_response, list):
-                    if len(parsed_response) == 0:
-                        raise ValueError("Empty array response from AI")
-                    # Take the first valid entry from the array
-                    parsed_response = parsed_response[0]
-                    logging.debug(f"Extracted first entry from array: {parsed_response}")
-
-                # Validate required fields
-                if "pathologic" not in parsed_response or "severity" not in parsed_response or "summary" not in parsed_response:
-                    raise ValueError("Missing required fields in AI response")
-
-                # Validate pathologic field
-                if parsed_response["pathologic"] not in ["yes", "no"]:
-                    raise ValueError("Invalid pathologic value in AI response")
-
-                # Validate severity field
-                if not isinstance(parsed_response["severity"], int) or parsed_response["severity"] < 0 or parsed_response["severity"] > 10:
-                    raise ValueError("Invalid severity value in AI response")
-
-                # Validate summary field
-                if not isinstance(parsed_response["summary"], str):
-                    raise ValueError("Invalid summary value in AI response")
-                else:
-                    parsed_response["summary"] = parsed_response["summary"].strip().lower()
-
-                logging.debug(f"AI analysis completed: severity {parsed_response['severity']}, {'pathologic' if parsed_response['pathologic'] == 'yes' else 'non-pathologic'}: {parsed_response['summary']}")
-                return parsed_response
-            except json.JSONDecodeError as e:
-                # If JSON parsing fails, try to extract JSON from the response text
-                # This handles cases where the AI returns both text and JSON
-                logging.debug(f"Initial JSON parsing failed, trying to extract JSON from response: {response_text}")
-
-                # Try to find JSON in the response text
-                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
-                if json_match:
-                    try:
-                        parsed_response = json.loads(json_match.group(0))
-                        logging.debug(f"Successfully extracted JSON from response: {parsed_response}")
-                        return parsed_response
-                    except json.JSONDecodeError as json_e:
-                        logging.error(f"Failed to parse extracted JSON: {json_e}")
-                        logging.error(f"Extracted JSON: {json_match.group(0)}")
-                        return {'error': 'Failed to parse AI response', 'response': response_text}
-                else:
-                    logging.error(f"Failed to parse AI response as JSON: {response_text}")
-                    return {'error': 'Failed to parse AI response', 'response': response_text}
-            except ValueError as e:
-                logging.error(f"Invalid AI response format: {e} ({response_text})")
-                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
-    except Exception as e:
-        logging.error(f"Error processing report check request: {e}")
-        return {'error': 'Internal server error'}
-
-
-async def check_ai_report_and_update(uid):
-    """Send AI report text to CHECK prompt and update database with severity/summary.
-
-    Takes an AI report from the database, sends it to the LLM for analysis using
-    the CHECK prompt, and updates the database with the extracted severity score
-    and summary.
-
-    Args:
-        uid: Exam unique identifier
-
-    Returns:
-        bool: True if successfully processed and updated, False otherwise
-    """
-    try:
-        # Get the AI report from database
-        ai_report = db_get_ai_report(uid)
-        if not ai_report or not ai_report.get('text'):
-            logging.warning(f"No AI report text found for exam {uid}")
-            return False
-            
-        # Extract the report text
-        findings = ai_report['text']
-        impression = ai_report.get('summary', None)
-        if impression:
-            report_text = f"FINDINGS: {findings}\n\nIMPRESSION: {impression}"
-        else:
-            report_text = findings
-        
-        # Summarize the AI report
-        logging.info(f"Summarizing AI report for exam {uid}")
-        analysis_result = await check_report(report_text)
-        
-        # Check if analysis was successful
-        if 'error' in analysis_result:
-            logging.error(f"AI check failed for exam {uid}: {analysis_result['error']}")
-            return False
-        
-        # Update the AI report in database with severity and summary
-        db_update('ai_reports', 'uid = ?', (uid,),
-                    positive=1 if analysis_result['pathologic'] == 'yes' else 0,
-                    severity=analysis_result['severity'],
-                    summary=analysis_result['summary'])
-
-        logging.info(f"Updated AI report for exam {uid} with severity {analysis_result['severity']} and summary '{analysis_result['summary']}'")
-        return True
-        
-    except Exception as e:
-        logging.error(f"Error processing CHECK prompt for exam {uid}: {e}")
-        return False
-
-
-async def translate_report(report_text):
-    """Translate a Romanian radiology report to English using the LLM.
-    Tracks translation timing statistics.
-    Uses caching to avoid re-translating identical reports.
-    """
-    try:
-        if not report_text:
-            logging.warning("Translation request failed: no report text provided")
-            return None
-
-        logging.debug(f"Translation request received: {' '.join(report_text.split()[:10])}...")
-
-        # Check cache first
-        report_hash = hash(report_text)
-        if report_hash in _translation_cache:
-            logging.debug(f"Translation cache hit for report (hash: {report_hash})")
-            return _translation_cache[report_hash]
-
-        # Add space after each dot to clearly demarcate sentences
-        report_text = re.sub(r'([.])(?=\S)', r'\1 ', report_text)
-
-        # Find acronyms in the report text
-        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
-        found_acronyms = acronym_pattern.findall(report_text)
-        # Filter to only acronyms that are in MEDICAL_ACRONYMS
-        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
-        # Create acronym list for the prompt
-        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
-
-        # Add acronym list to the prompt if any acronyms were found
-        SYSTEM_PROMPT = PROMPTS['TRN_PROMPT'].strip()
-        if used_acronyms:
-            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
-            logging.debug(f"Added acronym list to translation prompt:\n{acronym_list}")
-
-        # Prepare the request headers
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
-
-        # Prepare the JSON data
-        payload = {
-            "model": MODEL_NAME,
-            "timings_per_token": True,
-            "cache_prompt": True,
-            "stream": False,
-            "keep_alive": 1800,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": report_text}
-                    ]
-                }
-            ]
-        }
-
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
-
-        # Start timing
-        start_time = asyncio.get_running_loop().time()
-        async with aiohttp.ClientSession() as session:
-            result = await send_to_openai(session, headers, payload)
-            # Calculate timing statistics
-            global timings
-            end_time = asyncio.get_running_loop().time()
-            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
-            if timings['translation'] > 0:
-                timings['translation'] = int((3 * timings['translation'] + processing_time) / 4)
-            else:
-                timings['translation'] = processing_time
-
-            if not result:
-                logging.error("Failed to get response from AI service for translation")
-                return None
-
-            response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI translation response: {response_text}")
-
-            # Clean up markdown code fences if present
-            response_text = re.findall(r'```text\s*([^`]*?)\s*```', response_text, re.DOTALL)
-            if response_text:
-                response_text = response_text[-1]  # Use the last matched TEXT block
-
-            # Validate the translation before returning
-            if not response_text:
-                logging.warning("Empty translation response received")
-                return None
-
-            # Cache the result before returning
-            _translation_cache[report_hash] = response_text
-            # Limit cache size to 500 entries to prevent unbounded growth
-            if len(_translation_cache) > 500:
-                # Remove oldest entry (FIFO)
-                oldest_key = next(iter(_translation_cache))
-                del _translation_cache[oldest_key]
-                logging.debug(f"Translation cache size limit reached, removed oldest entry")
-
-            logging.info(f"Translation: {' '.join(response_text.split()[:10])}...")
-            return response_text
-    except Exception as e:
-        logging.error(f"Error processing translation request: {e}")
-        return None
-
-
-def expand_medical_acronyms(text):
-    """
-    Expand medical acronyms in the text using the MEDICAL_ACRONYMS dictionary.
-
-    This function searches for medical acronyms in the text and replaces them
-    with their full English translations to help with validation and readability.
-
-    Args:
-        text: Text containing potential medical acronyms
-
-    Returns:
-        tuple: (expanded_text, found_acronyms) where expanded_text is the text with
-               medical acronyms expanded and found_acronyms is a list of acronyms found
-    """
-    if not text or not isinstance(text, str):
-        return text, []
-
-    expanded_text = text
-    found_acronyms = []
-
-    # Create a sorted list of acronyms by length (longest first) to avoid partial matches
-    sorted_acronyms = sorted(MEDICAL_ACRONYMS.keys(), key=len, reverse=True)
-
-    # Search and replace acronyms in the text
-    for acronym in sorted_acronyms:
-        # Use word boundaries to avoid partial matches
-        pattern = r'\b' + re.escape(acronym) + r'\b'
-        translation = MEDICAL_ACRONYMS[acronym]
-        # Check if acronym exists in text (case sensitive)
-        if re.search(pattern, expanded_text):
-            found_acronyms.append(acronym)
-            expanded_text = re.sub(pattern, translation, expanded_text)
-    # Return the expanded text and list of found acronyms
-    return expanded_text, found_acronyms
-
-def validate_translation(source_text, translated_text):
-    """
-    Validate a translation before saving it to the database.
-
-    Performs several validation checks to ensure the translation is valid:
-    1. Not empty or None
-    2. Not identical to source text
-    3. Minimum length requirement
-    4. No placeholder/error text patterns
-    5. Medical acronyms are properly expanded
-
-    Args:
-        source_text: Original text in source language
-        translated_text: Translated text to validate
-
-    Returns:
-        tuple: (bool, str) where bool indicates validity and str contains error message if invalid or expanded translation if valid
-    """
-    if not translated_text or not translated_text.strip():
-        return False, "Translation is empty or None"
-
-    # Check if translation is identical to source (no translation performed)
-    if translated_text.strip() == source_text.strip():
-        return False, "Translation is identical to source text - no translation performed"
-
-    # Check if translation is too short (less than 10 characters)
-    if len(translated_text.strip()) < 10:
-        return False, f"Translation is too short ({len(translated_text)} characters)"
-
-    # Check if translation contains AI refusal/error boilerplate.
-    # Use specific multi-word phrases only — single words like "error", "unable",
-    # "failed", "sorry" appear legitimately in medical English reports.
-    placeholder_patterns = [
-        r"\b(no translation available)\b",
-        r"\b(could not translate)\b",
-        r"\b(translation failed)\b",
-        r"\b(i am unable to)\b",
-        r"\b(i cannot translate)\b",
-        r"\b(i('m| am) sorry)\b",
-    ]
-
-    for pattern in placeholder_patterns:
-        if re.search(pattern, translated_text, re.IGNORECASE):
-            return False, f"Translation contains error text: {translated_text}"
-
-    # Expand medical acronyms in the translated text for better validation
-    expanded_translation, found_acronyms = expand_medical_acronyms(translated_text)
-
-    # Check if any medical acronyms were found but not properly translated
-    # Look for common Romanian acronym patterns that should have been translated
-    romanian_acronym_pattern = r'\b[A-Z]{2,}\b'  # 2+ uppercase letters
-    untranslated_acronyms = re.findall(romanian_acronym_pattern, expanded_translation)
-
-    # Filter out acronyms that were properly translated (found in our list)
-    untranslated_acronyms = [acro for acro in untranslated_acronyms if acro not in MEDICAL_ACRONYMS]
-
-    if untranslated_acronyms:
-        logging.debug(f"Found medical acronyms in translation: {', '.join(untranslated_acronyms)}")
-
-    # Return valid and expanded translation
-    return True, expanded_translation
-
-async def check_rad_report_and_update(uid):
-    """Send radiologist report text to CHECK prompt and update database with severity/summary.
-
-    Takes a radiologist report from the database, sends it to the LLM for analysis using
-    the CHECK prompt, and updates the database with the extracted severity score
-    and summary. Also translates the report from Romanian to English.
-
-    Args:
-        uid: Exam unique identifier
-
-    Returns:
-        bool: True if successfully processed and updated, False otherwise
-    """
-    try:
-        # Get the radiologist report from database
-        rad_report = db_get_rad_report(uid)
-        if not rad_report or not rad_report.get('text'):
-            logging.warning(f"No radiologist report text found for exam {uid}")
-            return False
-
-        # Extract the report text
-        report_text = rad_report['text']
-
-        # Translate the report from Romanian to English (skip if AI not yet reachable)
-        if not active_openai_url:
-            logging.debug(f"Skipping translation for exam {uid}: AI service not reachable")
-            return False
-        logging.info(f"Translating radiologist report for exam {uid}")
-        translation = await translate_report(report_text)
-        if translation:
-            # Validate the translation before using it
-            is_valid, message = validate_translation(report_text, translation)
-            if not is_valid:
-                logging.warning(f"Translation validation failed for exam {uid}: {message}")
-                translation = None
-            else:
-                logging.info(f"Translation successful for exam {uid}: {' '.join(message.split()[:10])}...")
-                translation = message  # Use the expanded translation
-        else:
-            logging.warning(f"Translation failed for exam {uid}")
-
-        # Summarize the radiologist report
-        logging.info(f"Summarizing radiologist report for exam {uid}")
-        start_time = asyncio.get_running_loop().time()
-        analysis_result = await check_report(report_text)
-        end_time = asyncio.get_running_loop().time()
-        processing_time = int((end_time - start_time) * 1000)  # In milliseconds
-
-        # Check if analysis was successful
-        if 'error' in analysis_result:
-            logging.error(f"Check failed for exam {uid}: {analysis_result['error']}")
-            return False
-
-        # Extract values from analysis result
-        try:
-            # Validate that all required fields are present
-            if 'pathologic' not in analysis_result or 'severity' not in analysis_result or 'summary' not in analysis_result:
-                logging.error(f"Check response missing required fields for exam {uid}: {list(analysis_result.keys())}")
-                return False
-            positive = 1 if analysis_result['pathologic'] == 'yes' else 0
-            severity = analysis_result['severity']
-            summary = analysis_result['summary'].lower()
-        except Exception as e:
-            logging.error(f"Could not extract analysis results for exam {uid}: {e}")
-            return False
-
-        # Update the radiologist report in database with severity, summary, latency, and translation
-        update_fields = {
-            'positive': positive,
-            'severity': severity,
-            'summary': summary,
-            'model': MODEL_NAME,
-            'latency': int(processing_time)
-        }
-
-        # Add translation if successful and validated
-        if translation:
-            update_fields['text_en'] = translation
-
-        # Update the database
-        db_update('rad_reports', 'uid = ?', (uid,), **update_fields)
-        logging.info(f"Updated radiologist report for exam {uid} with severity {severity}, summary '{summary}', latency {processing_time}ms")
-        if translation:
-            logging.info(f"Added English translation for exam {uid}")
-        return True
-
-    except Exception as e:
-        logging.error(f"Error processing CHECK prompt for exam {uid}: {e}")
-        return False
-
-async def detailed_analysis_report(report_text):
-    """Perform detailed three-pass analysis of a radiology report.
-    Tracks analysis timing statistics.
-    """
-    try:
-        if not report_text:
-            logging.warning("Detailed analysis request failed: no report text provided")
-            return {'error': 'No report text provided'}
-
-        logging.debug(f"Detailed analysis request received ({len(report_text.split())} words)")
-
-        # Add space after punctuation marks to properly separate phrases
-        processed_report_text = re.sub(r'([.!?])(?=\S)', r'\1 ', report_text)
-
-        # Find acronyms in the report text
-        acronym_pattern = re.compile(r'\b[A-Z]{2,}\b')
-        found_acronyms = acronym_pattern.findall(report_text)
-        # Filter to only acronyms that are in MEDICAL_ACRONYMS
-        used_acronyms = [acro for acro in found_acronyms if acro in MEDICAL_ACRONYMS]
-        # Create acronym list for the prompt
-        acronym_list = "\n".join([f"- {acronym}: {MEDICAL_ACRONYMS[acronym]}" for acronym in used_acronyms])
-
-        # Add acronym list to the prompt if any acronyms were found
-        SYSTEM_PROMPT = PROMPTS['ANA_PROMPT'].strip()
-        if used_acronyms:
-            SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
-            logging.debug(f"Added acronym list to detailed analysis prompt:\n{acronym_list}")
-
-        # Prepare the request headers
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
-
-        # Prepare the JSON data
-        payload = {
-            "model": MODEL_NAME,
-            "timings_per_token": True,
-            "cache_prompt": True,
-            "stream": False,
-            "keep_alive": 1800,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": SYSTEM_PROMPT}]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": processed_report_text}
-                    ]
-                }
-            ]
-        }
-
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for detailed analysis")
-
-        # Start timing
-        start_time = asyncio.get_running_loop().time()
-        async with aiohttp.ClientSession() as session:
-            result = await send_to_openai(session, headers, payload)
-            # Calculate timing statistics
-            global timings
-            end_time = asyncio.get_running_loop().time()
-            processing_time = int((end_time - start_time) * 1000)  # In milliseconds
-            if timings['analysis'] > 0:
-                timings['analysis'] = int((3 * timings['analysis'] + processing_time) / 4)
-            else:
-                timings['analysis'] = processing_time
-
-            if not result:
-                logging.error("Failed to get response from AI service")
-                return {'error': 'Failed to get response from AI service'}
-
-            response_text = result["choices"][0]["message"]["content"].strip()
-            logging.debug(f"Raw AI detailed analysis response: {response_text}")
-
-            # Log the response text for debugging before cleaning
-            logging.debug(f"AI response before cleaning: {repr(response_text)}")
-
-            # Clean up markdown code fences if present
-            response_text = re.sub(r"^```(?:json)?\s*", "", response_text, flags=re.IGNORECASE | re.MULTILINE)
-            response_text = re.sub(r"\s*```$", "", response_text, flags=re.MULTILINE)
-
-            # Log the response text after cleaning
-            logging.debug(f"AI response after cleaning: {repr(response_text)}")
-
-            try:
-                parsed_response = json.loads(response_text)
-                logging.debug(f"AI detailed analysis completed")
-                logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
-
-                # Handle case where AI returns an array instead of single object
-                if isinstance(parsed_response, list):
-                    if len(parsed_response) == 0:
-                        raise ValueError("Empty array response from AI")
-                    # Take the first valid entry from the array
-                    parsed_response = parsed_response[0]
-                    logging.debug(f"Extracted first entry from array: {parsed_response}")
-                    logging.debug(f"Parsed response keys: {list(parsed_response.keys())}")
-
-                return parsed_response
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse AI response as JSON: {response_text}")
-                logging.error(f"JSON decode error: {str(e)}")
-                logging.error(f"Response length: {len(response_text)}")
-                return {'error': 'Failed to parse AI response', 'response': response_text}
-            except ValueError as e:
-                logging.error(f"Invalid AI response format: {e} ({response_text})")
-                return {'error': f'Invalid AI response format: {str(e)}', 'response': response_text}
-    except Exception as e:
-        logging.error(f"Error processing detailed analysis request: {e}")
-        logging.exception("Full traceback:")
-        return {'error': 'Internal server error'}
-
-
 async def check_report_handler(request):
     """Analyze a free-text radiology report for pathological findings.
 
@@ -4820,1123 +6380,6 @@ async def translate_handler(request):
         return web.json_response({'error': 'Internal server error'}, status=500)
 
 
-# Per-IP request timestamps for rate limiting: {ip: [timestamps]}
-_rate_limit_store: dict = {}
-# Heavy AI endpoints get a stricter limit
-_RATE_LIMIT_HEAVY = {'/api/check', '/api/analyse', '/api/translate'}
-_RATE_LIMIT_HEAVY_MAX = 10    # requests per minute
-_RATE_LIMIT_DEFAULT_MAX = 60  # requests per minute
-
-@web.middleware
-async def rate_limit_middleware(request, handler):
-    """Sliding-window per-IP rate limiter for API endpoints."""
-    if not request.path.startswith('/api/'):
-        return await handler(request)
-    ip = request.remote
-    now = asyncio.get_running_loop().time()
-    window = 60.0
-    limit = _RATE_LIMIT_HEAVY_MAX if request.path in _RATE_LIMIT_HEAVY else _RATE_LIMIT_DEFAULT_MAX
-    timestamps = _rate_limit_store.get(ip, [])
-    # Drop entries older than the window
-    timestamps = [t for t in timestamps if now - t < window]
-    if len(timestamps) >= limit:
-        logging.warning(f"Rate limit exceeded for {ip} on {request.path}")
-        return web.json_response({"error": "Too many requests"}, status=429)
-    timestamps.append(now)
-    _rate_limit_store[ip] = timestamps
-    # Evict IPs with no activity in the last window to prevent unbounded growth
-    stale = [k for k, v in _rate_limit_store.items() if not v or now - v[-1] >= window]
-    for k in stale:
-        del _rate_limit_store[k]
-    return await handler(request)
-
-
-@web.middleware
-async def auth_middleware(request, handler):
-    """Basic authentication middleware for API endpoints.
-
-    Implements HTTP Basic authentication for all API endpoints except
-    static files and OPTIONS requests. Validates credentials against
-    configured users and stores user role in request.
-
-    Args:
-        request: aiohttp request object
-        handler: Request handler function
-
-    Returns:
-        Response from the handler if authenticated, or HTTP 401 if not
-    """
-    # Skip auth for static files and OPTIONS requests
-    if request.path.startswith('/static/') or request.path.startswith('/images/') or request.method == 'OPTIONS':
-        return await handler(request)
-    auth_header = request.headers.get('Authorization', '')
-    if not auth_header.startswith('Basic '):
-        raise web.HTTPUnauthorized(
-            text = "401: Authentication required",
-            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
-    try:
-        credentials = base64.b64decode(auth_header[6:]).decode('utf-8')
-        username, password = credentials.split(':', 1)
-        user_info = USERS.get(username)
-        if not user_info or user_info['password'] != password:
-            audit_logger.warning(f"AUTH_FAIL user={username} ip={request.remote} path={request.path}")
-            raise ValueError("Invalid authentication")
-        # Store user role and username in request for later use
-        request.user_role = user_info['role']
-        request.username = username
-        # Only log AUTH_OK for page navigation, not for every API/WebSocket poll
-        if not request.path.startswith('/api/') and request.path not in ('/ws', '/favicon.ico'):
-            audit_logger.info(f"AUTH_OK user={username} role={user_info['role']} ip={request.remote} path={request.path}")
-    except UnicodeDecodeError:
-        audit_logger.warning(f"AUTH_FAIL user=<malformed> ip={request.remote} path={request.path}")
-        raise web.HTTPUnauthorized(
-            text = "401: Invalid authentication",
-            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
-    except ValueError:
-        raise web.HTTPUnauthorized(
-            text = "401: Invalid authentication",
-            headers = {'WWW-Authenticate': 'Basic realm="XRayVision"'})
-    return await handler(request)
-
-
-async def broadcast_dashboard_update(event = None, payload = None, client = None):
-    """Broadcast dashboard updates to all connected WebSocket clients.
-
-    Sends real-time updates to dashboard clients including queue status,
-    processing information, statistics, and AI health status.
-
-    Args:
-        event: Optional event name for specific update types
-        payload: Optional data payload for the event
-        client: Optional specific client to send update to (instead of all)
-    """
-    # Check if there are any clients
-    if not (websocket_clients or client):
-        return
-    # Update the queue sizes
-    dashboard['queue_size'] = db_count('exams', where_clause="status IN (?, ?)", where_params=('queued', 'requeue'))
-    dashboard['check_queue_size'] = db_count('exams', where_clause="status = ?", where_params=('check',))
-    # Get error statistics
-    error_stats = db_get_error_stats()
-    dashboard['error_count'] = error_stats['error']
-    dashboard['ignore_count'] = error_stats['ignore']
-    # Get the count of successfully processed exams in the last week
-    dashboard['success_count'] = db_get_weekly_processed_count()
-    # Create a list of clients
-    if client:
-        clients = [client,]
-    else:
-        clients = websocket_clients.copy()
-    # Create the json object
-    data = {}
-    if event:
-        data['event'] = {'name': event, 'payload': payload}
-    data['dashboard'] = dashboard
-    data['openai'] = {'url': active_openai_url,
-                      'health': {
-                        'pri': health_status.get(OPENAI_URL_PRIMARY,  False),
-                        'sec': health_status.get(OPENAI_URL_SECONDARY, False)
-                       }
-                     }
-    data['timings'] = timings
-    if NO_QUERY:
-        data['next_query'] = 'Disabled'
-    elif next_query:
-        data['next_query'] = next_query.strftime('%Y-%m-%d %H:%M:%S')
-    # Send the update to all clients
-    for client in clients:
-        # Send the update to the client
-        try:
-            await client.send_json(data)
-        except Exception as e:
-            logging.debug(f"Error sending update to WebSocket client: {e}")
-            # Remove client that failed to receive message
-            websocket_clients.discard(client)
-
-
-# Notification operations
-async def send_ntfy_notification(uid, report, info):
-    """Send notification to ntfy.sh with image and report"""
-    if not ENABLE_NTFY:
-        logging.debug("NTFY notifications are disabled")
-        return
-
-    try:
-        # Create headers and message body
-        message = f"Positive finding in {info['exam']['region']} study\nPatient: {info['patient']['name']}\nReport: {report}"
-        headers = {
-            "Title": "XRayVision Alert - Positive Finding",
-            "Tags": "warning,skull",
-            "Priority": "4",
-        }
-        # Attach image URL only if a public base URL is configured
-        if NTFY_IMAGE_BASE_URL:
-            headers["Attach"] = f"{NTFY_IMAGE_BASE_URL.rstrip('/')}/images/{uid}.png"
-
-        # Post the notification
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                NTFY_URL,
-                data=message,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                if resp.status == 200:
-                    logging.debug("Successfully sent ntfy notification")
-                else:
-                    logging.warning(f"Notification failed with status {resp.status}: {await resp.text()}")
-    except Exception as e:
-        logging.error(f"Failed to send ntfy notification: {e}")
-
-
-# API operations
-def validate_romanian_cnp(patient_cnp):
-    """
-    Validate Romanian personal identification number (CNP) format and checksum.
-
-    Romanian personal IDs (CNP) have 13 digits with the following structure:
-    - Position 1: Gender/Sector (1-8 for born 1900-2099, 9 for foreign
-      residents)
-    - Positions 2-3: Year of birth (00-99)
-    - Positions 4-5: Month of birth (01-12)
-    - Positions 6-7: Day of birth (01-31)
-    - Positions 8-9: County code (01-52, 99)
-    - Positions 10-12: Serial number (001-999)
-    - Position 13: Checksum digit
-
-    Args:
-        patient_cnp: Personal identification number as string
-
-    Returns:
-        dict: Dictionary with validation result and parsed information if valid
-              {
-                  'valid': bool,
-                  'birth_date': datetime object (if valid),
-                  'age': int (current age in years, if valid),
-                  'sex': str ('M' or 'F', if valid),
-                  'county': int (county code, if valid)
-              }
-    """
-    # Ensure we have a string and clean it
-    pid = str(patient_cnp).strip()
-    # Check if it's exactly 13 digits
-    if not pid or len(pid) != 13 or not pid.isdigit():
-        return {'valid': False}
-    
-    # Extract components
-    gender_digit = int(pid[0])
-    year = int(pid[1:3])
-    month = int(pid[3:5])
-    day = int(pid[5:7])
-    county = int(pid[7:9])
-    checksum_digit = int(pid[12])
-    
-    # Validate gender digit (1-9)
-    if gender_digit < 1 or gender_digit > 9:
-        return {'valid': False}
-    
-    # Validate date components
-    # Determine century based on gender digit
-    century_map = {1: 1900, 2: 1900, 3: 1800, 4: 1800, 5: 2000, 6: 2000, 7: 2000, 8: 2000, 9: 1900}
-    if gender_digit not in century_map:
-        return {'valid': False}
-    
-    full_year = century_map[gender_digit] + year
-    
-    # Validate month (1-12) and day (1-31) with precise date validation
-    try:
-        birth_date = datetime(full_year, month, day)
-    except ValueError:
-        return {'valid': False}
-    
-    # Validate county code (01-52 excluding 47-50, 70-79, 90-99)
-    valid_counties = set(range(1, 47)) | set(range(51, 53)) | set(range(70, 80)) | set(range(90, 100))
-    if county not in valid_counties:
-        return {'valid': False}
-    
-    # Validate checksum using the official algorithm
-    # Weights for each digit position
-    weights = [2, 7, 9, 1, 4, 6, 3, 5, 8, 2, 7, 9]
-    # Calculate weighted sum
-    weighted_sum = sum(int(pid[i]) * weights[i] for i in range(12))
-    # Calculate checksum
-    checksum = weighted_sum % 11
-    if checksum == 10:
-        checksum = 1
-    # Compare with provided checksum digit
-    if checksum != checksum_digit:
-        return {'valid': False}
-    
-    # Calculate current age
-    today = datetime.now()
-    age = today.year - birth_date.year
-    # Adjust if birthday hasn't occurred this year
-    if (today.month, today.day) < (birth_date.month, birth_date.day):
-        age -= 1
-    
-    # Determine sex
-    sex = 'M' if gender_digit % 2 == 1 else 'F'
-    
-    # Return validation result with parsed information
-    return {
-        'valid': True,
-        'birth_date': birth_date,
-        'age': age,
-        'sex': sex,
-        'county': county
-    }
-
-
-def compute_age_from_cnp(patient_cnp):
-    """
-    Compute patient age based on Romanian personal identification number.
-
-    Romanian personal IDs have the format:
-    - First digit: 1/2 for 1900s, 5/6 for 2000s, etc.
-    - Next 6 digits: YYMMDD (birth date)
-
-    Args:
-        patient_cnp: Personal identification number as string
-
-    Returns:
-        int: Age in years, or -1 if unable to compute
-    """
-    # First validate the Romanian ID format and get parsed information
-    result = validate_romanian_cnp(patient_cnp)
-    if not result['valid']:
-        return -1
-    # Return the computed age
-    return result['age']
-
-
-def contains_any_word(string, *words):
-    """
-    Check if any of the specified words are present in the given string.
-
-    Args:
-        string: String to search in
-        *words: Variable number of words to search for
-
-    Returns:
-        bool: True if any word is found in the string, False otherwise
-    """
-    return any(i in string for i in words)
-
-
-def identify_anatomic_region(info):
-    """
-    Identify the anatomic region and appropriate question based on protocol name.
-
-    Maps DICOM protocol names to anatomic regions and formulates region-specific
-    questions for the AI to analyze. Uses pattern matching to handle variations
-    in naming conventions.
-
-    Args:
-        info: Dictionary containing exam information with protocol name or string with protocol name
-
-    Returns:
-        tuple: (region, question) where region is the identified anatomic region
-               and question is the region-specific query for AI analysis
-    """
-    # Handle both string and dict inputs
-    if isinstance(info, str):
-        desc = info.lower()
-    else:
-        desc = info["exam"]["protocol"].lower()
-
-    # Check each region rule from config
-    for region_key, keywords in REGION_RULES.items():
-        if contains_any_word(desc, *keywords):
-            region = region_key
-            break
-    else:
-        # No keyword matched — store empty string rather than the full protocol string
-        region = ''
-
-    # Get question from config or use fallback
-    question = REGION_QUESTIONS.get(region, "Is there anything abnormal")
-
-    # Return the region and the question
-    return region, question
-
-
-
-def identify_imaging_projection(info):
-    """
-    Identify the imaging projection based on protocol name.
-
-    Determines if the X-ray view is frontal (AP/PA), lateral, or oblique
-    based on keywords in the protocol name.
-
-    Args:
-        info: Dictionary containing exam information with protocol name
-
-    Returns:
-        str: Identified projection ('frontal', 'lateral', 'oblique', or '')
-    """
-    desc = (info if isinstance(info, str) else info["exam"]["protocol"]).lower()
-    if contains_any_word(desc, "a.p.", "p.a.", "d.v.", "v.d.", "d.p"):
-        projection = "frontal"
-    elif contains_any_word(desc, "lat.", "pr."):
-        projection = "lateral"
-    elif contains_any_word(desc, "oblic"):
-        projection = "oblique"
-    else:
-        # Fallback
-        projection = ""
-    # Return the projection
-    return projection
-
-
-def determine_patient_gender_description(info):
-    """
-    Determine patient gender description based on DICOM sex field.
-
-    Maps DICOM patient sex codes to descriptive terms for use in AI prompts.
-
-    Args:
-        info: Dictionary containing patient information with sex field
-
-    Returns:
-        str: Gender description ('boy', 'girl', or 'child')
-    """
-    patient_sex = info["patient"].get("sex", "").lower()
-    if "m" in patient_sex:
-        gender = "boy"
-    elif "f" in patient_sex:
-        gender = "girl"
-    else:
-        # Fallback
-        gender = "child"
-    # Return the gender
-    return gender
-
-
-def format_patient_name_for_fhir(dicom_name):
-    """
-    Format DICOM patient name as "last_name first_name" for FHIR search.
-    
-    Args:
-        dicom_name: Patient name in DICOM format (Last^First^Middle)
-        
-    Returns:
-        str: Formatted patient name as "last_name first_name"
-    """
-    if not dicom_name or not isinstance(dicom_name, str):
-        return ""
-    
-    # Convert DICOM name format (Last^First^Middle) to "last_name first_name"
-    if '^' in dicom_name:
-        name_parts = dicom_name.split('^')
-        # Extract last name (first part) and first name (second part)
-        last_name = name_parts[0].strip() if len(name_parts) > 0 else ""
-        first_name = name_parts[1].strip() if len(name_parts) > 1 else ""
-        middle_name = name_parts[2].strip() if len(name_parts) > 2 else ""
-        
-        # Format as "last_name first_name middle_name" if the parts exist
-        return f"{last_name} {first_name} {middle_name}".strip()
-    else:
-        return dicom_name.strip()
-
-
-async def get_fhir_patient(session, cnp, patient_name=None):
-    """
-    Search for a patient in FHIR system by CNP, and if not found, by name.
-
-    Args:
-        session: aiohttp ClientSession instance
-        cnp: Patient CNP
-        patient_name: Patient full name (optional)
-
-    Returns:
-        dict or None: Patient data from FHIR if successful, None otherwise
-    """
-    logging.info(f"Starting FHIR patient search for CNP: {cnp}")
-    try:
-        # Use basic authentication
-        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
-        
-        # First, try searching by CNP
-        url = f"{FHIR_URL}/fhir/Patient"
-        params = {'q': cnp}
-        
-        logging.debug(f"Sending FHIR patient search by CNP request to {url} with params {params}")
-        async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            logging.debug(f"Received FHIR patient search by CNP response with status {resp.status}")
-            if resp.status == 200:
-                data = await resp.json()
-                logging.debug(f"FHIR patient search by CNP returned resourceType: {data.get('resourceType')}")
-                if data.get('resourceType') == 'Patient':
-                    # Single patient returned
-                    logging.info(f"Found single patient by CNP {cnp}")
-                    return data
-                elif data.get('resourceType') == 'Bundle' and 'entry' in data:
-                    # Multiple patients returned in a bundle
-                    patients = []
-                    for entry in data['entry']:
-                        if 'resource' in entry and entry['resource'].get('resourceType') == 'Patient':
-                            patients.append(entry['resource'])
-                    if patients:
-                        logging.info(f"Found {len(patients)} patients in bundle for CNP {cnp}")
-                        # Validate CNP before proceeding
-                        cnp_result = validate_romanian_cnp(cnp)
-                        if not cnp_result['valid']:
-                            logging.warning(f"Invalid CNP {cnp}, skipping patient selection")
-                            return None
-                        # Log warning about multiple patients
-                        logging.info(f"Multiple patients found for CNP {cnp}, selecting the one with the greatest ID")
-                        # Sort patients by ID (assuming IDs are numeric or comparable)
-                        # and select the one with the greatest ID
-                        patients.sort(key=lambda p: p.get('id', ''), reverse=True)
-                        logging.info(f"Selected patient with ID {patients[0].get('id')} for CNP {cnp}")
-                        return patients[0]
-                    else:
-                        logging.warning(f"FHIR patient search error: no valid patients found in bundle for CNP {cnp}")
-                elif data.get('resourceType') == 'OperationOutcome':
-                    # Handle OperationOutcome responses (typically errors)
-                    issues = data.get('issue', [])
-                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
-                    logging.debug(f"FHIR patient search returned OperationOutcome for CNP {cnp}: {error_details}")
-                    # Check if all issues are just informational - if so, we should still try name search
-                    all_info = all(issue.get('severity', '').lower() == 'information' for issue in issues)
-                    if not all_info:
-                        # If there are non-informational issues, don't proceed to name search
-                        logging.info(f"Non-informational issues found for CNP {cnp}, not proceeding to name search")
-                        return None
-                    else:
-                        logging.info(f"Only informational issues found for CNP {cnp}, will proceed to name search")
-                else:
-                    logging.error(f"FHIR patient search error: unexpected response format for CNP {cnp}")
-            else:
-                logging.warning(f"FHIR patient search by CNP failed with status {resp.status}")
-    except Exception as e:
-        logging.error(f"FHIR patient search by CNP error: {e}")
-    
-    # If CNP search failed or returned only informational messages and patient_name is provided, try searching by name
-    if patient_name:
-        logging.info(f"Proceeding to name search for patient: {patient_name}")
-        try:
-            # Format patient name as "last_name first_name" for FHIR search if it's in DICOM format
-            if '^' in patient_name:
-                formatted_name = format_patient_name_for_fhir(patient_name)
-            else:
-                formatted_name = patient_name.strip()
-            
-            if formatted_name:
-                logging.info(f"Retrying FHIR patient search by name: {formatted_name}")
-                params = {'q': formatted_name}
-                
-                logging.debug(f"Sending FHIR patient search by name request to {url} with params {params}")
-                async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-                    logging.debug(f"Received FHIR patient search by name response with status {resp.status}")
-                    if resp.status == 200:
-                        data = await resp.json()
-                        logging.debug(f"FHIR patient search by name returned resourceType: {data.get('resourceType')}")
-                        if data.get('resourceType') == 'Patient':
-                            # Single patient returned
-                            logging.info(f"Found single patient by name '{formatted_name}'")
-                            return data
-                        elif data.get('resourceType') == 'Bundle' and 'entry' in data:
-                            # Multiple patients returned in a bundle
-                            # Log warning about multiple patients
-                            logging.warning(f"Multiple patients found for name {formatted_name}, selecting no one")
-                        elif data.get('resourceType') == 'OperationOutcome':
-                            # Handle OperationOutcome responses (typically errors)
-                            issues = data.get('issue', [])
-                            error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
-                            logging.warning(f"FHIR patient search returned OperationOutcome for name '{formatted_name}': {error_details}")
-                        else:
-                            logging.error(f"FHIR patient search by name error: unexpected response format for name '{formatted_name}'")
-                    else:
-                        logging.warning(f"FHIR patient search by name failed with status {resp.status}")
-            else:
-                logging.warning("Patient name is empty, skipping name search")
-        except Exception as e:
-            logging.error(f"FHIR patient search by name error: {e}")
-    else:
-        logging.info("No patient name provided, skipping name search")
-    
-    # If both searches failed, return None
-    logging.info(f"FHIR patient search completed for CNP {cnp}, no patient found")
-    return None
-
-async def search_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region):
-    """
-    Search for service requests for a patient in FHIR system.
-
-    Args:
-        session: aiohttp ClientSession instance
-        patient_id: Patient ID from HIS
-        exam_datetime: Exam datetime to search around
-        exam_region: Exam region to filter by
-        exam_type: Exam type to filter by (default: 'radio')
-
-    Returns:
-        list: List of service requests from FHIR (exactly one study) or empty list
-    """
-    try:
-        # Use basic authentication
-        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
-        
-        url = f"{FHIR_URL}/fhir/ServiceRequest"
-        params = {
-            'patient': patient_id,
-            'dt': exam_datetime
-        }
-        if exam_type:
-            params['type'] = exam_type
-        if exam_region:
-            params['region'] = exam_region
-        
-        # Try without full=yes parameter
-        async with session.get(url, auth=auth, params=params, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                if data.get('resourceType') == 'Bundle' and 'entry' in data:
-                    srv_reqs = []
-                    for entry in data['entry']:
-                        if 'resource' in entry and entry['resource'].get('resourceType') == 'ServiceRequest':
-                            # Only add resources that have an 'id' field
-                            if 'id' in entry['resource']:
-                                srv_reqs.append(entry['resource'])
-                            else:
-                                logging.warning("FHIR service request resource missing 'id' field")
-                    # We need exactly one study
-                    if len(srv_reqs) == 1:
-                        return srv_reqs
-                    elif len(srv_reqs) > 1:
-                        logging.info(f"FHIR service requests search returned {len(srv_reqs)} service requests, expected exactly one")
-                    # Return empty list if no service requests or more than one
-                    return []
-                elif data.get('resourceType') == 'OperationOutcome':
-                    # Handle OperationOutcome responses (typically errors)
-                    issues = data.get('issue', [])
-                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
-                    logging.debug(f"FHIR service requests search returned OperationOutcome: {error_details}")
-                    return []
-                else:
-                    logging.error(f"FHIR service requests search error: unexpected response format")
-                    return []
-            else:
-                logging.debug(f"FHIR service requests search failed with status {resp.status}")
-    except Exception as e:
-        logging.error(f"FHIR service requests search error: {e}")
-    return []
-
-async def get_fhir_servicerequest(session, request_id):
-    """
-    Get a service request from FHIR system.
-
-    Args:
-        session: aiohttp ClientSession instance
-        request_id: Service request ID
-
-    Returns:
-        dict or None: Service request from FHIR if successful, None otherwise
-    """
-    try:
-        # Use basic authentication
-        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
-
-        url = f"{FHIR_URL}/fhir/ServiceRequest/{request_id}"
-
-        async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                # Check if response is an OperationOutcome (error)
-                if data.get('resourceType') == 'OperationOutcome':
-                    # Handle OperationOutcome responses (typically errors)
-                    issues = data.get('issue', [])
-                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
-                    logging.warning(f"FHIR service request returned OperationOutcome: {error_details}")
-                    return None
-                # Ensure the resource type is ServiceRequest
-                elif data.get('resourceType') == 'ServiceRequest':
-                    return data
-                else:
-                    logging.warning(f"FHIR service request has incorrect resource type: {data.get('resourceType')}")
-            else:
-                logging.warning(f"FHIR service request failed with status {resp.status}")
-    except Exception as e:
-        logging.error(f"FHIR service request error: {e}")
-    return None
-
-async def get_fhir_diagnosticreport(session, report_id):
-    """
-    Get a diagnostic report from FHIR system.
-
-    Args:
-        session: aiohttp ClientSession instance
-        report_id: Report ID
-
-    Returns:
-        dict or None: Diagnostic report from FHIR if successful, None otherwise
-    """
-    try:
-        # Use basic authentication
-        auth = aiohttp.BasicAuth(FHIR_USERNAME, FHIR_PASSWORD)
-
-        url = f"{FHIR_URL}/fhir/DiagnosticReport/{report_id}"
-
-        async with session.get(url, auth=auth, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                # Check if response is an OperationOutcome (error)
-                if data.get('resourceType') == 'OperationOutcome':
-                    # Handle OperationOutcome responses (typically errors)
-                    issues = data.get('issue', [])
-                    error_details = '; '.join([f"{issue.get('severity', 'unknown')}: {issue.get('diagnostics', issue.get('details', {}).get('text', 'no details'))}" for issue in issues])
-                    logging.warning(f"FHIR diagnostic report returned OperationOutcome: {error_details}")
-                    return None
-                # Ensure the resource type is DiagnosticReport
-                elif data.get('resourceType') == 'DiagnosticReport':
-                    return data
-                else:
-                    logging.warning(f"FHIR diagnostic report has incorrect resource type: {data.get('resourceType')}")
-            else:
-                logging.warning(f"FHIR diagnostic report failed with status {resp.status}")
-    except Exception as e:
-        logging.error(f"FHIR diagnostic report error: {e}")
-    return None
-
-async def send_to_openai(session, headers, payload):
-    """
-    Send a request to the currently active AI API endpoint.
-
-    Attempts to send a POST request to the active AI endpoint with the
-    provided headers and payload. Handles HTTP errors and exceptions.
-
-    Args:
-        session: aiohttp ClientSession instance
-        headers: HTTP headers for the request
-        payload: JSON payload containing the request data
-
-    Returns:
-        dict or None: JSON response from API if successful, None otherwise
-    """
-    if not active_openai_url:
-        logging.error("No active AI URL configured")
-        return None
-        
-    try:
-        async with session.post(active_openai_url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as resp:
-            if resp.status == 200:
-                return await resp.json()
-            logging.warning(f"{active_openai_url} failed with status {resp.status}")
-    except Exception as e:
-        logging.error(f"{active_openai_url} request error: {e}")
-    # Failed
-    return None
-
-
-async def update_patient_info_from_fhir(exam):
-    """
-    Try to get additional patient information from FHIR before processing.
-    
-    Args:
-        exam: Dictionary containing exam information and metadata
-        
-    Returns:
-        None
-    """
-    # Check if HIS integration is enabled
-    if not ENABLE_HIS:
-        return
-        
-    patient_cnp = exam['patient']['cnp']
-    patient_name = exam['patient']['name']
-    patient_birthdate = exam['patient']['birthdate']
-    if patient_cnp and (not exam['patient']['id'] or not patient_birthdate or patient_birthdate == -1):
-        async with aiohttp.ClientSession() as session:
-            # Get patient information from FHIR (first by CNP, then by name if CNP fails)
-            fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
-            if fhir_patient:
-                # Update patient ID if found
-                if 'id' in fhir_patient:
-                    exam['patient']['id'] = fhir_patient['id']
-                    # Update in database
-                    db_update_patient_id(patient_cnp, fhir_patient['id'])
-                
-                # Update patient birthdate if not already known
-                if (not patient_birthdate or patient_birthdate == -1) and 'birthDate' in fhir_patient:
-                    try:
-                        birthdate = fhir_patient['birthDate']
-                        # Validate the format (should be YYYY-MM-DD)
-                        if len(birthdate) == 10 and birthdate[4] == '-' and birthdate[7] == '-':
-                            exam['patient']['birthdate'] = birthdate
-                            # Calculate age from birthdate
-                            birth_date = datetime.strptime(birthdate, "%Y-%m-%d")
-                            today = datetime.now()
-                            age = today.year - birth_date.year
-                            if (today.month, today.day) < (birth_date.month, birth_date.day):
-                                age -= 1
-                            exam['patient']['age'] = age
-                            # Update in database
-                            db_update('patients', 'cnp = ?', (patient_cnp,), birthdate=birthdate)
-                    except Exception as e:
-                        logging.error(f"Error parsing birthdate from FHIR for patient {patient_cnp}: {e}")
-
-
-def prepare_exam_data(exam):
-    """
-    Prepare exam data for AI processing by identifying region, projection, etc.
-    
-    Args:
-        exam: Dictionary containing exam information and metadata
-        
-    Returns:
-        tuple: (region, question, subject, anatomy, image_bytes) or (None, None, None, None, None) if exam should be ignored
-    """
-    # Read the PNG file
-    with open(os.path.join(IMAGES_DIR, f"{exam['uid']}.png"), 'rb') as f:
-        image_bytes = f.read()
-    # Identify the region
-    region, question = identify_anatomic_region(exam)
-    # Filter on specific region
-    if not region in REGIONS:
-        logging.info(f"Ignoring {exam['uid']} with {region} x-ray.")
-        db_set_status(exam['uid'], 'ignore')
-        return None, None, None, None, None
-    # Identify the projection, gender and age
-    projection = identify_imaging_projection(exam)
-    gender = determine_patient_gender_description(exam)
-    age = exam["patient"]["age"]
-    if age > 1:
-        txtAge = f"{age} years old"
-    elif age > 0:
-        txtAge = f"{age} year old"
-    elif age == 0:
-        txtAge = "newborn"
-    else:
-        txtAge = ""
-    # Update exam info
-    exam['exam'].update({'region': region, 'projection': projection})
-    # Get the subject of the study and the studied region
-    subject = " ".join([txtAge, gender])
-    if region:
-        anatomy = " ".join([projection, region])
-    else:
-        anatomy = ""
-        
-    return region, question, subject, anatomy.strip(), image_bytes
-
-
-def create_exam_prompt(exam, region, question, subject, anatomy):
-    """
-    Create a deterministic user prompt for radiology AI inference.
-
-    Args:
-        exam: dict with exam metadata and reports
-        region: anatomic region key
-        question: clinical question
-        subject: patient description
-        anatomy: anatomy description
-
-    Returns:
-        str: formatted AI prompt
-    """
-
-    # Determine whether this is a review or a new AI report
-    has_ai_report = (
-        'ai' in exam.get('report', {})
-        and exam['report']['ai'].get('text')
-    )
-
-    # Fetch prior reports only for new AI reports
-    previous_reports = []
-    if not has_ai_report:
-        previous_reports = db_get_previous_reports(
-            exam['patient']['cnp'],
-            region,
-            months=3
-        ) or []
-
-    # Build the prompt sections
-    prompt_lines = []
-
-    # Clinical information (if present)
-    justification = exam.get('report', {}).get('rad', {}).get('justification')
-    if justification:
-        prompt_lines.extend([
-            "CLINICAL INFORMATION",
-            justification.strip(),
-            ""
-        ])
-
-    # Prior studies (limit to 3, clearly delimited)
-    if previous_reports:
-        prompt_lines.append("PRIOR STUDIES")
-        for report, date in previous_reports[:3]:
-            prompt_lines.append(f"- {date}: {report}")
-        prompt_lines.append("")
-
-    # Core task (single, unambiguous instruction)
-    prompt_lines.extend([
-        "TASK",
-        PROMPTS['USR_PROMPT'].format(
-            question=question,
-            anatomy=anatomy,
-            subject=subject
-        ).strip()
-    ])
-
-    # Region-specific reporting checklist
-    template_items = REGION_TEMPLATES.get(region, [])
-    if template_items:
-        prompt_lines.append("")
-        prompt_lines.append("ASSESS IN ORDER")
-        for item in template_items:
-            prompt_lines.append(f"- {item}")
-
-    # Comparison instruction only if priors exist
-    if previous_reports:
-        prompt_lines.append(
-            "When relevant, describe interval change compared to prior studies "
-            "(new, stable, improved, or resolved findings)."
-        )
-
-    # Create final prompt
-    return "\n".join(prompt_lines)
-
-def prepare_ai_request_data(prompt, image_bytes):
-    """
-    Prepare the request data for sending to AI API.
-    
-    Args:
-        prompt: Formatted prompt for AI
-        image_bytes: Image data as bytes
-        
-    Returns:
-        tuple: (headers, data) for the AI API request
-    """
-    # Base64 encode the PNG to comply with OpenAI Vision API
-    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-    image_url = f"data:image/png;base64,{image_b64}"
-    # Prepare the request headers
-    headers = {
-        'Authorization': f'Bearer {OPENAI_API_KEY}',
-        'Content-Type': 'application/json',
-    }
-    # Prepare the JSON data
-    data = {
-        "model": MODEL_NAME,
-        "timings_per_token": True,
-        "min_p": 0.05,
-        "top_k": 40,
-        "top_p": 0.95,
-        "temperature": 0.6,
-        "cache_prompt": True,
-        "stream": False,
-        "keep_alive": 1800,
-        "messages": [
-            {
-                "role": "system",
-                "content": [{"type": "text", "text": PROMPTS['REP_PROMPT'].strip()}]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_url}}
-                ]
-            }
-        ]
-    }
-    
-    return headers, data
-
-
-async def send_exam_to_openai(exam, max_retries = 3):
-    """
-    Send an exam's PNG image to the AI API for analysis.
-
-    This is the core AI processing function that handles the complete workflow:
-    1. Updates patient information from FHIR system
-    2. Prepares exam data (region, projection, gender, age)
-    3. Filters exams by supported regions
-    4. Creates AI prompts with clinical context and prior reports
-    5. Encodes images for AI analysis
-    6. Sends requests with exponential backoff retries
-    7. Parses and validates AI responses
-    8. Stores results in the database
-    9. Sends notifications for positive findings
-    10. Updates dashboard with processing status
-
-    The function implements robust error handling with automatic retries and
-    proper status updates in the database for both success and failure cases.
-
-    Args:
-        exam (dict): Dictionary containing exam information and metadata including:
-            - uid: Unique exam identifier
-            - patient: Patient information (name, cnp, age, sex)
-            - exam: Exam details (protocol, created timestamp, study/series UIDs)
-            - report: Previous report data if reprocessing
-        max_retries (int): Maximum number of retry attempts (default: 3)
-
-    Returns:
-        bool: True if successfully processed, False otherwise
-
-    Processing Flow:
-        1. FHIR Integration: Update patient info from hospital system
-        2. Data Preparation: Extract region, projection, subject description
-        3. Region Filtering: Only process exams from supported anatomic regions
-        4. Prompt Engineering: Create context-rich prompts with clinical info
-        5. Image Encoding: Convert PNG to base64 for AI API transmission
-        6. Retry Logic: Exponential backoff (2s, 4s, 8s delays) on failures
-        7. Response Parsing: Validate and extract AI-generated findings
-        8. Database Storage: Save results with processing timing metrics
-        9. Notification: Alert for positive findings via ntfy.sh
-        10. Dashboard Update: Broadcast processing completion status
-        11. Error Handling: Update status to 'error' on failure and broadcast update
-    """
-    try:
-        # Try to get additional patient and exam information from FHIR before processing
-        await update_patient_info_from_fhir(exam)
-                            
-        # Prepare exam data (file read + image metadata — keep off event loop)
-        region, question, subject, anatomy, image_bytes = await asyncio.to_thread(prepare_exam_data, exam)
-        if region is None:  # Exam should be ignored
-            return False
-            
-        # Create the prompt
-        prompt = create_exam_prompt(exam, region, question, subject, anatomy)
-        
-        logging.debug(f"Prompt: {prompt}")
-        logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-            
-        # Prepare request data
-        headers, data = prepare_ai_request_data(prompt, image_bytes)
-        
-        prior_ai_report = (exam.get('report') or {}).get('ai') or {}
-        prior_ai_text = prior_ai_report.get('text') if isinstance(prior_ai_report, dict) else None
-        # Strip old JSON wrapper format {"short":..., "report":...} if present
-        if prior_ai_text:
-            try:
-                parsed = json.loads(prior_ai_text)
-                if isinstance(parsed, dict) and 'report' in parsed:
-                    prior_ai_text = parsed['report']
-            except (json.JSONDecodeError, TypeError):
-                pass
-        # Discard if too short or contains prompt artefacts
-        if prior_ai_text and (len(prior_ai_text) < 30 or any(k in prior_ai_text for k in ('ROLE', 'TASK', 'ASSESS IN ORDER', 'OUTPUT CONSTRAINTS'))):
-            prior_ai_text = None
-        if prior_ai_text:
-            logging.info(f"Previous report: {prior_ai_text}")
-            data['messages'].append({'role': 'assistant', 'content': prior_ai_text})
-            data['messages'].append({'role': 'user', 'content': PROMPTS['REV_PROMPT'].strip()})
-    
-        # Debug log the request data
-            
-        # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
-        attempt = 1
-        async with aiohttp.ClientSession() as session:
-            while attempt <= max_retries:
-                try:
-                    # Start timing
-                    start_time = asyncio.get_running_loop().time()
-                    result = await send_to_openai(session, headers, data)
-
-                    # Calculate timing statistics
-                    global timings
-                    end_time = asyncio.get_running_loop().time()
-                    processing_time = int((end_time - start_time) * 1000)  # In milliseconds
-                    if timings['examination'] > 0:
-                        timings['examination'] = int((3 * timings['examination'] + processing_time) / 4)
-                    else:
-                        timings['examination'] = processing_time
-
-                    # Check for valid response
-                    if not result:
-                        break
-                    response_text = result["choices"][0]["message"]["content"]
-                    # Extract the actual model name from the API response
-                    response_model = result.get("model", MODEL_NAME)
-                    
-                    # Process AI response - extract report text
-                    report = response_text.strip()
-                    if not report:
-                        logging.error(f"Empty AI response for exam {exam['uid']}")
-                        raise ValueError("Empty AI response")
-
-                    # Log a snippet of the report
-                    logging.info(f"AI report for {exam['uid']}: {' '.join(report.split()[:10])}...")
-                    
-                    # Handle reports with FINDINGS/IMPRESSION structure
-                    findings = None
-                    impression = None
-                    
-                    # Use case-insensitive regex to find the sections
-                    findings_match = re.search(r'FINDINGS:(.*?)(IMPRESSION:|$)', report, re.DOTALL)
-                    impression_match = re.search(r'IMPRESSION:(.*)', report, re.DOTALL)
-
-                    
-                    if findings_match and impression_match:
-                        findings = findings_match.group(1).strip()
-                        impression = impression_match.group(1).strip()
-                        logging.debug(f"Split report into findings ({len(findings.split())} words) and impression ({len(impression.split())} words)")
-                        # If impression is longer than 3 words, set to None for check_ai_report_and_update to handle
-                        if impression and len(impression.split()) > 3:
-                            logging.debug("Impression is too long, will be set by check_ai_report_and_update")
-                            impression = None
-                    elif findings_match:
-                        findings = findings_match.group(1).strip()
-                        impression = None     # Will be set later by check_ai_report_and_update
-                        logging.debug("Extracted findings, no impression found")
-                    else:
-                        findings = report     # Fallback to full report for findings
-                        impression = None     # Will be set later by check_ai_report_and_update
-                        logging.debug("Using full report as findings")
-
-                    # First add the report with minimal values
-                    db_insert('ai_reports',
-                        uid=exam['uid'],
-                        text=findings,
-                        summary=impression,
-                        model=response_model,
-                        latency=int(processing_time))
-
-                    # Now analyze the report and get proper values
-                    await check_ai_report_and_update(exam['uid'])
-                    
-                    # Get the updated report to check positivity for notifications
-                    updated_report = db_get_ai_report(exam['uid'])
-                    # Get severity value for dashboard update
-                    severity = updated_report.get('severity', -1) if updated_report else -1
-                    # Determine positivity for dashboard update by comparing severity with threshold
-                    is_positive = severity >= SEVERITY_THRESHOLD
-                    # Notify the dashboard frontend to reload first page
-                    ai_report = (exam.get('report') or {}).get('ai') or {}
-                    reviewed = ai_report.get('reviewed', False) if isinstance(ai_report, dict) else False
-                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': reviewed, 'severity': severity})
-                    if is_positive:
-                        # Send notification for positive finding
-                        try:
-                            await send_ntfy_notification(exam['uid'], report, exam)
-                        except Exception as e:
-                            logging.error(f"Failed to send ntfy notification: {e}")
-                    # Success
-                    return True
-
-                except Exception as e:
-                    logging.warning(f"Error uploading {exam['uid']} (attempt {attempt}): {e}")
-                    # Exponential backoff
-                    await asyncio.sleep(2 ** attempt)
-                    attempt += 1
-                
-        # Failure after max_retries
-        db_set_status(exam['uid'], 'error')
-        QUEUE_EVENT.clear()
-        logging.error(f"Failed to process {exam['uid']} after {attempt} attempts.")
-        await broadcast_dashboard_update(event="error", payload={'uid': exam['uid'], 'reason': 'max_retries'})
-        return False
-    except Exception as e:
-        logging.error(f"Critical error for {exam['uid']}: {e}")
-        db_set_status(exam['uid'], 'error')
-        await broadcast_dashboard_update(event="error", payload={'uid': exam['uid'], 'reason': str(e)})
-        return False
-
-
-# Threads
 async def start_dashboard():
     """
     Start the dashboard web server with all routes and middleware.
@@ -5996,6 +6439,10 @@ async def start_dashboard():
     await site.start()
     logging.info(f"Dashboard available at http://localhost:{DASHBOARD_PORT}")
 
+
+
+
+# Background loops
 
 async def relay_to_openai_loop():
     """
@@ -6163,363 +6610,6 @@ async def fhir_loop():
         # Random delay between 30 and 120 seconds
         delay = random.randint(30, 120)
         await asyncio.sleep(delay)
-
-async def find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type='radio', exam_region=''):
-    """
-    Find service request for an exam in FHIR system.
-
-    Args:
-        session: aiohttp ClientSession instance
-        exam_uid: Exam unique identifier
-        patient_id: Patient ID in HIS
-        exam_datetime: Exam datetime
-        exam_region: Exam region
-        exam_type: Exam type (default: 'radio')
-
-    Returns:
-        dict or None: Study resource if found, None otherwise
-    """
-    # Search for service requests
-    srv_reqs = await search_fhir_servicerequests(session, patient_id, exam_datetime, exam_type, exam_region)
-    if not srv_reqs:
-        logging.debug(f"No service requests found for exam {exam_uid}")
-        return None
-
-    # search_fhir_servicerequests already ensures at most one result
-    req = srv_reqs[0]
-    if 'id' not in req:
-        logging.warning(f"Service request for exam {exam_uid} has no ID, skipping.")
-        return None
-    
-    # Return the service request
-    return req
-
-async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region = ""):
-    """
-    Extract report text and radiologist name from FHIR diagnostic report.
-
-    This function handles FHIR diagnostic reports that may contain multiple presented forms
-    and selects the one that matches the expected exam region and type. It also extracts metadata
-    like the radiologist name.
-
-    Args:
-        report (dict): FHIR diagnostic report resource containing presented forms and metadata
-        exam_uid (str): Exam unique identifier for logging and error tracking
-        exam_type (str, optional): Expected exam type to match in presented forms. Defaults to "radio"
-        exam_region (str, optional): Expected anatomic region to match in presented forms. Defaults to ""
-
-    Returns:
-        tuple: (report_text, radiologist) where:
-            - report_text (str): Extracted report text content, or None if extraction fails
-            - radiologist (str): Radiologist name from resultsInterpreter, or empty string if not found
-            Returns (None, None) if extraction fails
-    """
-    # Handle multiple presentedForm items by finding the one with the matching region and type
-    report_text = None
-    presented_form = None
-
-    if not isinstance(report.get('presentedForm'), list) or not report['presentedForm']:
-        logging.warning(f"FHIR DiagnosticReport for exam {exam_uid} has no presentedForm")
-        return None, None
-
-    if len(report['presentedForm']) == 1:
-        # Single presented form - use it directly
-        presented_form = report['presentedForm'][0]
-    else:
-        # Multiple presented forms - find the one matching both the exam region and type
-        logging.info(f"Found {len(report['presentedForm'])} items in presentedForm for '{exam_type}' exam {exam_uid}, looking for region '{exam_region}'")
-        for form in report['presentedForm']:
-            type_match = form.get('type', '').lower() == exam_type.lower()
-            region_match = form.get('region', '').lower() == exam_region.lower()
-            if region_match and type_match:
-                presented_form = form
-                break
-        
-        # If still no matching form found, log and return None
-        if not presented_form:
-            logging.warning(f"No presentedForm found with region '{exam_region}' for exam {exam_uid}")
-            return None, None
-    
-    # Extract the report text from the selected presented form
-    report_text = presented_form.get('data', '')
-    if not isinstance(report_text, str):
-        logging.warning(f"FHIR presentedForm data is not a string for exam {exam_uid}")
-        return None, None
-    report_text = report_text.strip()
-    if not report_text:
-        logging.warning(f"No data found in presentedForm for exam {exam_uid}")
-        return None, None
-        
-    # Extract radiologist name from resultsInterpreter if available
-    radiologist = ''  # Default value
-    try:
-        if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
-            interpreter = report['resultsInterpreter'][0]
-            if 'display' in interpreter:
-                radiologist = interpreter['display']
-    except Exception as e:
-        logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
-
-    # Return the extracted report text and radiologist name
-    return report_text, radiologist
-
-def translate_exam_type_to_fhir(exam_type):
-    """
-    Translate database exam type to FHIR-compatible values.
-    
-    Args:
-        exam_type (str): Exam type from database (Modality)
-        
-    Returns:
-        str: FHIR-compatible exam type
-    """
-    translation_map = {
-        'CR': 'radio',
-        'DX': 'radio',
-        'CT': 'ct',
-        'MR': 'irm',
-        'US': 'eco',
-        'RF': 'rads'
-    }
-    return translation_map.get(exam_type.upper(), 'radio')
-
-async def process_single_exam_without_rad_report(session, exam, patient_id):
-    """
-    Process a single exam that doesn't have a radiologist report yet.
-
-    This function retrieves the radiologist report for a specific exam from the FHIR system
-    and prepares it for LLM analysis. It performs the following steps:
-    1. Checks if service request ID is already in database
-    2. If not found, finds the corresponding service request in FHIR
-    3. Retrieves the diagnostic report
-    4. Extracts report data (text, radiologist name, justification)
-    5. Updates the local database with the report information
-    6. Sets the exam status to 'check' to trigger LLM processing
-
-    Args:
-        session (aiohttp.ClientSession): Active HTTP session for FHIR API calls
-        exam (dict): Dictionary containing exam information including uid, created timestamp, and region
-        patient_id (str): Patient ID in the Hospital Information System (HIS)
-    """
-    # Check if HIS integration is enabled
-    if not ENABLE_HIS:
-        return
-        
-    exam_uid = exam['uid']
-    exam_datetime = exam['created']
-    exam_type = translate_exam_type_to_fhir(exam.get('type') or 'radio')
-    exam_region = exam.get('region', '')
-    # Translate internal region to HIS/FHIR region name if a mapping exists
-    fhir_region = REGION_FHIR_MAP.get(exam_region, exam_region)
-
-    # If the exam region is not in our supported regions, try to identify it again from the report text
-    if exam_region not in REGIONS:
-        # Try to identify the region from the report text
-        identified_region, _ = identify_anatomic_region(exam.get('protocol', ''))
-        if identified_region in REGIONS:
-            logging.info(f"Re-identified region for exam {exam_uid}: {identified_region}")
-            exam_region = identified_region
-            # Update the region in the exams table
-            db_update('exams', 'uid = ?', (exam_uid,), region=exam_region)
-        else:
-            logging.warning(f"Could not identify valid region for exam {exam_uid} from report text")
-
-    # Check if we already have the service request ID in the database
-    rad_report = db_get_rad_report(exam_uid)
-    srv_req = None
-
-    if rad_report and rad_report.get('id'):
-        try:
-            # Convert to int for comparison to avoid string vs int comparison errors
-            service_id = int(rad_report['id'])
-            if service_id > 0:
-                # We already have the service request ID, use it to get the service request
-                srv_req = await get_fhir_servicerequest(session, service_id)
-                if srv_req:
-                    logging.info(f"Retrieved service request ID {srv_req['id']} for exam {exam_uid}")
-                else:
-                    logging.warning(f"Failed to retrieve service request ID {service_id} for exam {exam_uid}")
-        except (ValueError, TypeError):
-            # If conversion fails, treat as if no valid ID exists
-            pass
-
-    # Find service request in FHIR if not already found (use HIS region name)
-    if not srv_req:
-        srv_req = await find_service_request(session, exam_uid, patient_id, exam_datetime, exam_type, fhir_region)
-
-    # If no service request found, log and return
-    if not srv_req or 'id' not in srv_req:
-        # Check if exam is older than 1 month
-        try:
-            exam_date = datetime.strptime(exam_datetime, "%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            logging.warning(f"Cannot parse exam datetime '{exam_datetime}' for exam {exam_uid}, treating as recent")
-            return
-        one_month_ago = datetime.now() - timedelta(days=30)
-        is_old_exam = exam_date < one_month_ago
-
-        # Only insert/update rad report if exam is older than 1 month
-        if is_old_exam:
-            # If we don't have a record yet, insert a negative ID to mark as not found
-            if rad_report:
-                # Update existing record with negative ID
-                db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
-                logging.info(f"Updated report for exam {exam_uid} to mark service request as not found")
-            else:
-                # Insert a negative service request ID into our database to mark as not found
-                db_insert('rad_reports', uid=exam_uid, id=-1)
-                logging.info(f"Service request missing for exam {exam_uid}")
-        else:
-            logging.info(f"Service request missing for recent exam {exam_uid}, skipping rad report creation")
-
-        # Return if no service request found
-        return
-    
-    # Extract justification from supportingInfo if available
-    justification = ''
-    try:
-        # First try supportingInfo
-        if 'supportingInfo' in srv_req and isinstance(srv_req['supportingInfo'], list) and len(srv_req['supportingInfo']) > 0:
-            supporting_info = srv_req['supportingInfo'][0]
-            if isinstance(supporting_info, dict) and 'display' in supporting_info and isinstance(supporting_info['display'], str):
-                justification = supporting_info['display']
-                logging.debug(f"Extracted justification from supportingInfo: {justification}")
-
-        # If no justification found, try reason array
-        if not justification and 'reason' in srv_req and isinstance(srv_req['reason'], list) and len(srv_req['reason']) > 0:
-            reason = srv_req['reason'][0]
-            if isinstance(reason, dict) and 'display' in reason and isinstance(reason['display'], str):
-                justification = reason['display']
-                logging.debug(f"Extracted justification from reason: {justification}")
-
-        # If still no justification, log what we found in the service request
-        if not justification:
-            logging.debug(f"No justification found in service request {srv_req['id']}. Available fields: {list(srv_req.keys())}")
-            if 'supportingInfo' in srv_req:
-                logging.debug(f"supportingInfo content: {srv_req['supportingInfo']}")
-            if 'reason' in srv_req:
-                logging.debug(f"reason content: {srv_req['reason']}")
-    except Exception as e:
-        logging.warning(f"Error extracting justification from service request: {e}")
-        logging.debug(f"Service request structure: {srv_req}")
-    
-    # Get diagnostic report first
-    report = await get_fhir_diagnosticreport(session, srv_req['id'])
-    if not report or 'presentedForm' not in report or not report['presentedForm']:
-        logging.debug(f"No presentedForm found in diagnostic report for exam {exam_uid}")
-        return
-
-    # Extract report data
-    report_text, radiologist = await extract_report_data(report, exam_uid, exam_type=exam_type, exam_region=fhir_region)
-    if not report_text:
-        return
-
-    # Log the retrieved report
-    logging.debug(f"Retrieved radiologist report for exam {exam_uid}: {' '.join(report_text.split()[:10])}...")
-    
-    # Insert or update the radiologist report in our database with all fields
-    if rad_report:
-        # Update existing record
-        db_update('rad_reports', 'uid = ?', (exam_uid,),
-            id=srv_req['id'],
-            text=report_text,
-            radiologist=radiologist,
-            justification=justification,
-            type=exam_type,
-            model=MODEL_NAME)
-    else:
-        # Insert new record
-        db_insert('rad_reports',
-            uid=exam_uid,
-            id=srv_req['id'],
-            text=report_text,
-            radiologist=radiologist,
-            summary=None,
-            type=exam_type,
-            justification=justification,
-            model=MODEL_NAME)
-    logging.debug(f"Saving the service request id {srv_req['id']} for {exam_type} exam {exam_uid} with justification: {justification}")
-
-    # Set the exam status to 'check' for LLM processing in queue
-    db_set_status(exam_uid, "check")
-    # Notify the queue
-    QUEUE_EVENT.set()
-
-async def get_patient_id_from_fhir(session, patient_cnp, patient_name=None):
-    """
-    Get patient ID from FHIR system by CNP, and if not found, by name.
-
-    Args:
-        session: aiohttp ClientSession instance
-        patient_cnp: Patient CNP
-        patient_name: Patient full name (optional)
-
-    Returns:
-        str or None: Patient ID from FHIR if successful, None otherwise
-    """
-    fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
-    if fhir_patient and 'id' in fhir_patient:
-        patient_id = fhir_patient['id']
-        # Update patient ID in database
-        db_update_patient_id(patient_cnp, patient_id)
-        return patient_id
-    return None
-
-
-async def process_exams_without_rad_reports(session):
-    """
-    Process exams that don't have radiologist reports yet.
-
-    This function identifies exams without radiologist reports, finds the
-    corresponding patient in HIS, and retrieves the radiologist report.
-    """
-    # Get exams for a patient without radiologist reports
-    result = db_get_exams_without_rad_report()
-    if not result or not result.get('exams'):
-        return
-    
-    # Extract necessary information from the first exam
-    patient_cnp = result['patient']['cnp']
-    patient_id = result['patient']['id']
-    exams = result['exams']
-    
-    # If patient ID is not known, search for it in FHIR
-    patient_name = result['patient']['name']
-    if not patient_id:
-        if not validate_romanian_cnp(patient_cnp).get('valid'):
-            logging.warning(f"Invalid CNP '{patient_cnp}' for patient '{patient_name}', marking exams as unresolvable")
-            for exam in exams:
-                exam_uid = exam['uid']
-                existing = db_select_one('rad_reports', exam_uid)
-                if existing:
-                    db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
-                else:
-                    db_insert('rad_reports', uid=exam_uid, id=-1)
-            return
-        patient_id = await get_patient_id_from_fhir(session, patient_cnp, patient_name)
-    # If still no patient ID, only mark unresolvable if the exams are old enough
-    if not patient_id:
-        one_week_ago = datetime.now() - timedelta(weeks=1)
-        recent = any(
-            datetime.strptime(e['created'][:19], '%Y-%m-%d %H:%M:%S') > one_week_ago
-            for e in exams if e.get('created')
-        )
-        if recent:
-            logging.debug(f"Could not find FHIR patient for CNP {patient_cnp}, exam is recent — will retry later")
-            return
-        logging.warning(f"Could not find FHIR patient for CNP {patient_cnp} or name '{patient_name}', marking exams as unresolvable")
-        for exam in exams:
-            exam_uid = exam['uid']
-            existing = db_select_one('rad_reports', exam_uid)
-            if existing:
-                db_update('rad_reports', 'uid = ?', (exam_uid,), id=-1)
-            else:
-                db_insert('rad_reports', uid=exam_uid, id=-1)
-        return
-    
-    # Process each exam for this patient
-    for exam in exams:
-        await process_single_exam_without_rad_report(session, exam, patient_id)
 
 async def query_retrieve_loop():
     """
@@ -6697,78 +6787,6 @@ async def stop_servers():
         except Exception as e:
             logging.error(f"Error stopping web server: {e}")
 
-
-def process_dicom_file(dicom_file, uid):
-    """
-    Process a DICOM file by extracting metadata, converting to PNG, and adding to queue.
-
-    This helper function handles the common logic between dicom_store() and
-    load_existing_dicom_files() to avoid code duplication.
-
-    Args:
-        dicom_file: Path to the DICOM file
-        uid: Unique identifier for the exam
-    """
-    try:
-        # Get the dataset
-        ds = dcmread(dicom_file)
-        # Get some info for queueing
-        try:
-            info = extract_dicom_metadata(ds)
-        except Exception as e:
-            logging.error(f"Error getting info {dicom_file}: {e}")
-            # Remove the exam entry from the database
-            db_execute_query_retry("DELETE FROM exams WHERE uid = ?", (uid,))
-            # Remove the DICOM file
-            try:
-                os.remove(dicom_file)
-                logging.info(f"Removed DICOM file {dicom_file} due to metadata extraction error")
-            except Exception as rm_err:
-                logging.error(f"Failed to remove DICOM file {dicom_file}: {rm_err}")
-            return
-        # Try to convert to PNG
-        png_file = None
-        try:
-            png_file = convert_dicom_to_png(dicom_file)
-        except Exception as e:
-            logging.error(f"Error converting DICOM file {dicom_file}: {e}")
-            db_set_status(uid, "error")
-            return
-        # Check the result
-        if png_file:
-            # Add to processing queue
-            db_add_exam(info)
-            # Notify the queue
-            QUEUE_EVENT.set()
-        else:
-            # Set error status if no PNG was created
-            db_set_status(uid, "error")
-    except Exception as e:
-        logging.error(f"Error processing DICOM file {dicom_file}: {e}")
-        db_set_status(uid, "error")
-
-def handle_error(e, context="", default_return=None, raise_on_error=False):
-    """Unified error handling wrapper.
-
-    Provides consistent error handling across the application with optional
-    exception re-raising capabilities.
-
-    Args:
-        e (Exception): The exception that occurred
-        context (str): Context information about where the error occurred
-        default_return: Default value to return on error
-        raise_on_error (bool): Whether to re-raise the exception
-
-    Returns:
-        The default_return value or re-raises the exception
-    """
-    error_msg = f"Error{f' in {context}' if context else ''}: {e}"
-    logging.error(error_msg)
-
-    if raise_on_error:
-        raise e
-
-    return default_return
 
 
 async def main():
