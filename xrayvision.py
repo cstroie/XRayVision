@@ -66,6 +66,10 @@ audit_logger.addHandler(_audit_handler)
 
 import configparser
 
+APP_NAME    = 'XRayVision'
+APP_VERSION = '1.0'
+USER_AGENT  = f'{APP_NAME}/{APP_VERSION}'
+
 DEFAULT_CONFIG = {
     'general': {
         'XRAYVISION_DB_PATH': 'xrayvision.db',
@@ -2655,7 +2659,7 @@ async def check_report(report_text):
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME}")
 
         start_time = asyncio.get_running_loop().time()
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
             result = await send_to_openai(session, headers, payload)
             global timings
             end_time = asyncio.get_running_loop().time()
@@ -2808,7 +2812,7 @@ async def translate_report(report_text):
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
 
         start_time = asyncio.get_running_loop().time()
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
             result = await send_to_openai(session, headers, payload)
             global timings
             end_time = asyncio.get_running_loop().time()
@@ -3009,7 +3013,7 @@ async def detailed_analysis_report(report_text):
         logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for detailed analysis")
 
         start_time = asyncio.get_running_loop().time()
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
             result = await send_to_openai(session, headers, payload)
             global timings
             end_time = asyncio.get_running_loop().time()
@@ -3079,7 +3083,7 @@ async def update_patient_info_from_fhir(exam):
     patient_name = exam['patient']['name']
     patient_birthdate = exam['patient']['birthdate']
     if patient_cnp and (not exam['patient']['id'] or not patient_birthdate or patient_birthdate == -1):
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
             fhir_patient = await get_fhir_patient(session, patient_cnp, patient_name)
             if fhir_patient:
                 if 'id' in fhir_patient:
@@ -3248,7 +3252,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
         attempt = 1
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
             while attempt <= max_retries:
                 try:
                     start_time = asyncio.get_running_loop().time()
@@ -3820,7 +3824,7 @@ async def send_ntfy_notification(uid, report, info):
         if NTFY_IMAGE_BASE_URL:
             headers["Attach"] = f"{NTFY_IMAGE_BASE_URL.rstrip('/')}/images/{uid}.png"
 
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
             async with session.post(
                 NTFY_URL,
                 data=message,
@@ -4226,7 +4230,7 @@ async def get_report_handler(request):
         async def async_process():
             try:
                 if not exam['patient']['id']:
-                    async with aiohttp.ClientSession() as session:
+                    async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
                         formatted_name = format_patient_name_for_fhir(exam['patient']['name'])
                         patient_id = await get_patient_id_from_fhir(session, exam['patient']['cnp'], formatted_name)
                         if patient_id:
@@ -4235,7 +4239,7 @@ async def get_report_handler(request):
                 if exam['patient']['id']:
                     current_exam = exam['exam']
                     current_exam['uid'] = uid
-                    async with aiohttp.ClientSession() as session:
+                    async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
                         await process_single_exam_without_rad_report(session, current_exam, exam['patient']['id'])
 
                 QUEUE_EVENT.set()
@@ -4414,7 +4418,7 @@ async def openai_health_check():
             base_url = url.split('/v1/')[0] if '/v1/' in url else url.rstrip('/')
             models_url = f"{base_url}/v1/models"
             try:
-                async with aiohttp.ClientSession() as session:
+                async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
                     async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                         health_status[url] = (resp.status == 200)
                         logging.debug(f"Health check {url} → {resp.status}")
@@ -4444,7 +4448,7 @@ async def fhir_loop():
             continue
 
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
                 async with session.get(f"{FHIR_URL}/fhir/Metadata", timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     health_status[FHIR_URL] = resp.status == 200
                     logging.debug(f"FHIR check {FHIR_URL} → {resp.status}")
