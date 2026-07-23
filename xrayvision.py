@@ -2423,10 +2423,7 @@ async def extract_report_data(report, exam_uid, exam_type = "radio", exam_region
 
     radiologist = ''
     try:
-        if 'resultsInterpreter' in report and len(report['resultsInterpreter']) > 0:
-            interpreter = report['resultsInterpreter'][0]
-            if 'display' in interpreter:
-                radiologist = interpreter['display']
+        radiologist = presented_form.get('validator', '') or ''
     except Exception as e:
         logging.warning(f"Could not extract radiologist name from FHIR report: {e}")
 
