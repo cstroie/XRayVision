@@ -30,6 +30,12 @@ Usage:
         --variant candidate=tools/prompt_variants/v6_chk_grounding \\
         --texts-file suspect_texts.json --samples 5 --output probe_results.jsonl
 
+    # --texts-file is repeatable: probe multiple find_mismatches.py outputs
+    # together, extracting each case's ai_text (not rad_text) via --field
+    python tools/check_report_probe.py --variant baseline --variant v7=tools/prompt_variants/v7_chk_combined \\
+        --texts-file mismatches_chest_fn.json --texts-file mismatches_chest_unassessed.json \\
+        --field ai_text --samples 3 --output probe_ai_text.jsonl
+
     python tools/check_report_probe.py --variant baseline \\
         --text "Cord, pulmon normale radiologic." --samples 5 --dry-run
 """
@@ -88,26 +94,34 @@ def parse_variant_args(variant_args):
 
 
 def load_texts(args):
-    """Returns a list of (label, text) pairs."""
+    """Returns a list of (label, text) pairs. --texts-file is repeatable so
+    multiple find_mismatches.py outputs (e.g. the fn set and the unassessed
+    set) can be probed together in one run without pre-merging them."""
     texts = []
     if args.text:
         for i, t in enumerate(args.text):
             texts.append((f"cli-{i}", t))
-    if args.texts_file:
-        with open(args.texts_file, 'r', encoding='utf-8') as f:
+    for texts_file in (args.texts_file or []):
+        with open(texts_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        if isinstance(data, list):
-            for item in data:
-                if isinstance(item, str):
-                    texts.append((item[:40], item))
-                elif isinstance(item, dict):
-                    # Accept find_mismatches.py's case dicts directly: use rad_text.
-                    label = item.get('uid') or item.get('label') or str(len(texts))
-                    text = item.get('text') or item.get('rad_text')
-                    if text:
-                        texts.append((label, text))
-        else:
-            raise ValueError(f"Unrecognized JSON shape in {args.texts_file}")
+        if not isinstance(data, list):
+            raise ValueError(f"Unrecognized JSON shape in {texts_file}")
+        for item in data:
+            if isinstance(item, str):
+                texts.append((item[:40], item))
+            elif isinstance(item, dict):
+                # Accept find_mismatches.py's case dicts directly.
+                # --field picks which text column to probe (a case dict
+                # from find_mismatches.py has both rad_text and ai_text);
+                # default tries the explicit 'text'/'label' shape first,
+                # then falls back through rad_text -> ai_text.
+                label = item.get('uid') or item.get('label') or str(len(texts))
+                if args.field:
+                    text = item.get(args.field)
+                else:
+                    text = item.get('text') or item.get('rad_text') or item.get('ai_text')
+                if text:
+                    texts.append((label, text))
     return texts
 
 
@@ -243,8 +257,12 @@ def main():
     parser.add_argument('--variant', action='append', required=True,
                          help="NAME=DIR (repeatable). 'baseline' needs no DIR. DIR should contain chk_prompt.txt.")
     parser.add_argument('--text', action='append', default=[], help="Report text (repeatable)")
-    parser.add_argument('--texts-file', default=None,
-                         help="JSON array of strings, or of {label,text} / find_mismatches.py case dicts (uses rad_text)")
+    parser.add_argument('--texts-file', action='append', default=[],
+                         help="JSON array of strings, or of {label,text} / find_mismatches.py case dicts "
+                              "(repeatable -- e.g. pass the fn set and the unassessed set together)")
+    parser.add_argument('--field', choices=['text', 'rad_text', 'ai_text'], default=None,
+                         help="Which field to read from each case dict in --texts-file "
+                              "(default: text, then rad_text, then ai_text, first non-empty wins)")
     parser.add_argument('--samples', type=int, default=5)
     parser.add_argument('--output', default=None, help="JSONL output path")
     parser.add_argument('--openai-url', default=None)
