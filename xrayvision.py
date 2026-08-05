@@ -2673,9 +2673,12 @@ async def check_report(report_text):
             response_text = result["choices"][0]["message"]["content"].strip()
             logging.debug(f"Raw AI check response: {response_text}")
 
-            response_text = re.findall(r'```json\s*({.*?})\s*```', response_text, re.DOTALL)
-            if response_text:
-                response_text = response_text[-1]
+            # chk_prompt.txt only requires "ONLY valid JSON", not fenced JSON --
+            # fall back to the raw text when no ```json ... ``` fence is present,
+            # rather than discarding a valid bare-JSON response.
+            fenced_matches = re.findall(r'```json\s*({.*?})\s*```', response_text, re.DOTALL)
+            if fenced_matches:
+                response_text = fenced_matches[-1]
 
             try:
                 parsed_response = json.loads(response_text) if response_text else None
@@ -3217,6 +3220,33 @@ def prepare_ai_request_data(prompt, image_bytes):
     return headers, data
 
 
+def parse_ai_report_text(report_text, impression_max_words=3):
+    """Split a raw AI report into (findings, impression).
+
+    Impression is discarded (set to None) when longer than
+    impression_max_words, matching the terse-summary convention the rest of
+    the pipeline expects from IMPRESSION lines.
+    """
+    findings = None
+    impression = None
+    findings_match = re.search(r'FINDINGS:(.*?)(IMPRESSION:|$)', report_text, re.DOTALL)
+    impression_match = re.search(r'IMPRESSION:(.*)', report_text, re.DOTALL)
+
+    if findings_match and impression_match:
+        findings = findings_match.group(1).strip()
+        impression = impression_match.group(1).strip()
+        if impression and len(impression.split()) > impression_max_words:
+            impression = None
+    elif findings_match:
+        findings = findings_match.group(1).strip()
+        impression = None
+    else:
+        findings = report_text
+        impression = None
+
+    return findings, impression
+
+
 async def send_exam_to_openai(exam, max_retries = 3):
     try:
         await update_patient_info_from_fhir(exam)
@@ -3276,22 +3306,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
 
                     logging.info(f"AI report for {exam['uid']}: {' '.join(report.split()[:10])}...")
 
-                    findings = None
-                    impression = None
-                    findings_match = re.search(r'FINDINGS:(.*?)(IMPRESSION:|$)', report, re.DOTALL)
-                    impression_match = re.search(r'IMPRESSION:(.*)', report, re.DOTALL)
-
-                    if findings_match and impression_match:
-                        findings = findings_match.group(1).strip()
-                        impression = impression_match.group(1).strip()
-                        if impression and len(impression.split()) > 3:
-                            impression = None
-                    elif findings_match:
-                        findings = findings_match.group(1).strip()
-                        impression = None
-                    else:
-                        findings = report
-                        impression = None
+                    findings, impression = parse_ai_report_text(report)
 
                     db_insert('ai_reports',
                         uid=exam['uid'],

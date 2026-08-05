@@ -518,6 +518,41 @@ class TestXRayVision(unittest.TestCase):
         mock_db_get.assert_called_once_with("12345", "chest", 3)
         self.assertEqual(result, [])
 
+    def test_parse_ai_report_text_labeled_short_impression(self):
+        """FINDINGS/IMPRESSION labels present, impression within word limit is kept"""
+        report = "FINDINGS: Clear lung fields bilaterally.\n\nIMPRESSION: normal."
+        findings, impression = xrayvision.parse_ai_report_text(report)
+        self.assertEqual(findings, "Clear lung fields bilaterally.")
+        self.assertEqual(impression, "normal.")
+
+    def test_parse_ai_report_text_labeled_long_impression_discarded(self):
+        """Impression longer than the word limit is discarded (set to None)"""
+        report = "FINDINGS: Consolidation right lower lobe.\n\nIMPRESSION: bilateral perihilar consolidation likely pneumonia."
+        findings, impression = xrayvision.parse_ai_report_text(report)
+        self.assertEqual(findings, "Consolidation right lower lobe.")
+        self.assertIsNone(impression)
+
+    def test_parse_ai_report_text_custom_impression_max_words(self):
+        """impression_max_words parameter controls the truncation threshold"""
+        report = "FINDINGS: Consolidation right lower lobe.\n\nIMPRESSION: bilateral perihilar consolidation likely pneumonia."
+        findings, impression = xrayvision.parse_ai_report_text(report, impression_max_words=10)
+        self.assertEqual(findings, "Consolidation right lower lobe.")
+        self.assertEqual(impression, "bilateral perihilar consolidation likely pneumonia.")
+
+    def test_parse_ai_report_text_no_labels(self):
+        """Unlabeled free text is returned entirely as findings, no impression"""
+        report = "Clear lung fields bilaterally. No focal consolidation or effusion."
+        findings, impression = xrayvision.parse_ai_report_text(report)
+        self.assertEqual(findings, report)
+        self.assertIsNone(impression)
+
+    def test_parse_ai_report_text_findings_only(self):
+        """FINDINGS label present but no IMPRESSION label"""
+        report = "FINDINGS: Clear lung fields bilaterally. No acute abnormality."
+        findings, impression = xrayvision.parse_ai_report_text(report)
+        self.assertEqual(findings, "Clear lung fields bilaterally. No acute abnormality.")
+        self.assertIsNone(impression)
+
 
 class TestXRayVisionAsync(unittest.IsolatedAsyncioTestCase):
     """Async test cases for the xrayvision module"""
@@ -554,6 +589,36 @@ class TestXRayVisionAsync(unittest.IsolatedAsyncioTestCase):
         result = await xrayvision.translate_report("")
         self.assertIsNone(result)
         mock_send_to_openai.assert_not_called()
+
+
+class TestCheckReportParsing(unittest.IsolatedAsyncioTestCase):
+    """Regression tests for check_report()'s JSON extraction."""
+
+    @patch('xrayvision.send_to_openai')
+    async def test_check_report_accepts_fenced_json(self, mock_send_to_openai):
+        mock_send_to_openai.return_value = {
+            "choices": [{"message": {"content": '```json\n{"pathologic": "yes", "severity": 6, "summary": "pneumonia"}\n```'}}]
+        }
+        result = await xrayvision.check_report("FINDINGS: consolidation.")
+        self.assertEqual(result, {"pathologic": "yes", "severity": 6, "summary": "pneumonia"})
+
+    @patch('xrayvision.send_to_openai')
+    async def test_check_report_accepts_bare_json(self, mock_send_to_openai):
+        """Bare JSON with no code fence -- what chk_prompt.txt actually asks for
+        ("Respond with ONLY valid JSON") -- must not be silently discarded."""
+        mock_send_to_openai.return_value = {
+            "choices": [{"message": {"content": '{"pathologic": "yes", "severity": 7, "summary": "pneumonia"}'}}]
+        }
+        result = await xrayvision.check_report("FINDINGS: consolidation.")
+        self.assertEqual(result, {"pathologic": "yes", "severity": 7, "summary": "pneumonia"})
+
+    @patch('xrayvision.send_to_openai')
+    async def test_check_report_rejects_garbage(self, mock_send_to_openai):
+        mock_send_to_openai.return_value = {
+            "choices": [{"message": {"content": "I cannot help with that."}}]
+        }
+        result = await xrayvision.check_report("FINDINGS: consolidation.")
+        self.assertIn('error', result)
 
 
 class TestXRayVisionConfig(unittest.TestCase):
