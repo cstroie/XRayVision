@@ -111,27 +111,27 @@ def load_texts(args):
     return texts
 
 
-def probe_active_openai_url(override_url=None):
+async def probe_active_openai_url(override_url=None):
+    """Must be awaited from within an already-running event loop (main_async
+    runs under asyncio.run()) -- do not try to spin up a nested loop here."""
     if override_url:
         xrayvision.active_openai_url = override_url
         return override_url
 
-    async def _probe():
-        for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
-            base_url = url.split('/v1/')[0] if '/v1/' in url else url.rstrip('/')
-            models_url = f"{base_url}/v1/models"
-            try:
-                async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
-                    async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                        if resp.status == 200:
-                            return url
-            except Exception:
-                continue
-        return None
+    for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
+        base_url = url.split('/v1/')[0] if '/v1/' in url else url.rstrip('/')
+        models_url = f"{base_url}/v1/models"
+        try:
+            async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
+                async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        xrayvision.active_openai_url = url
+                        return url
+        except Exception:
+            continue
 
-    active = asyncio.get_event_loop().run_until_complete(_probe())
-    xrayvision.active_openai_url = active
-    return active
+    xrayvision.active_openai_url = None
+    return None
 
 
 def summarize(rows):
@@ -171,7 +171,7 @@ async def main_async(args):
     baseline_prompts = dict(xrayvision.PROMPTS)
 
     if not args.dry_run:
-        active = probe_active_openai_url(args.openai_url)
+        active = await probe_active_openai_url(args.openai_url)
         if not active:
             print("No healthy OpenAI-compatible endpoint found.", file=sys.stderr)
             return 1
