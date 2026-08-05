@@ -7,5 +7,9 @@
   {"label": "control_positive_then_negatives", "text": "Consolidation in the right lower lung zone. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits."},
   {"label": "control_positive_isolated", "text": "Consolidation in the right lower lung zone."},
   {"label": "control_negatives_then_positive", "text": "No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits. Consolidation in the right lower lung zone."},
-  {"label": "control_positive_first_sentence_of_many", "text": "Consolidation in the right lower lung zone. No pleural effusion. No pneumothorax. Cardiomediastinal silhouette within normal limits. No acute osseous abnormality. Soft tissues unremarkable."}
+  {"label": "control_positive_first_sentence_of_many", "text": "Consolidation in the right lower lung zone. No pleural effusion. No pneumothorax. Cardiomediastinal silhouette within normal limits. No acute osseous abnormality. Soft tissues unremarkable."},
+  {"label": "v7_regression_all_negative_ai_text", "text": "Lungs: The lungs are clear. No focal consolidation, pleural effusion, or pneumothorax. Heart size is normal. Mediastinal contours are normal. Bones: No acute osseous abnormality."},
+  {"label": "v7_regression_degenerate_boy", "text": "The image shows a frontal chest radiograph of a young boy."},
+  {"label": "v7_regression_degenerate_girl", "text": "The image shows a frontal chest x-ray of a young girl."},
+  {"label": "v7_regression_vague_terse", "text": "Obvious acute abnormalities are identified."}
 ]
