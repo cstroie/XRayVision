@@ -4,5 +4,8 @@
   {"label": "uid_280575_hallucinated_hemorrhage", "text": "Transparenta pulmonara normala"},
   {"label": "uid_160140_hallucinated_acute_stemi", "text": "Interstitiu pulmonar accentuat infrahilar bilateral.\nCord normal radiologic."},
   {"label": "control_clearly_normal_english", "text": "Clear lung fields bilaterally. No focal consolidation, pleural effusion, or pneumothorax. Cardiac silhouette normal in size."},
-  {"label": "control_clearly_positive_english", "text": "Consolidation in the right lower lung zone. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits."}
+  {"label": "control_positive_then_negatives", "text": "Consolidation in the right lower lung zone. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits."},
+  {"label": "control_positive_isolated", "text": "Consolidation in the right lower lung zone."},
+  {"label": "control_negatives_then_positive", "text": "No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits. Consolidation in the right lower lung zone."},
+  {"label": "control_positive_first_sentence_of_many", "text": "Consolidation in the right lower lung zone. No pleural effusion. No pneumothorax. Cardiomediastinal silhouette within normal limits. No acute osseous abnormality. Soft tissues unremarkable."}
 ]

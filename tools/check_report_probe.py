@@ -134,6 +134,21 @@ async def probe_active_openai_url(override_url=None):
     return None
 
 
+async def fetch_served_models(active_url):
+    """Best-effort GET {base}/v1/models, for reporting exactly what backend
+    is behind active_openai_url -- purely informational, never raises."""
+    base_url = active_url.split('/v1/')[0] if '/v1/' in active_url else active_url.rstrip('/')
+    try:
+        async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
+            async with session.get(f"{base_url}/v1/models", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return [m.get('id', '?') for m in data.get('data', [])]
+    except Exception:
+        pass
+    return None
+
+
 def summarize(rows):
     """Per (variant, label): distribution of severity values and summaries,
     flagged as UNSTABLE if severity range > 3 or summaries disagree wildly."""
@@ -176,6 +191,10 @@ async def main_async(args):
             print("No healthy OpenAI-compatible endpoint found.", file=sys.stderr)
             return 1
         print(f"Using AI endpoint: {active}", file=sys.stderr)
+        served_models = await fetch_served_models(active)
+        if served_models:
+            print(f"Models served at this endpoint: {served_models}  (configured MODEL_NAME={xrayvision.MODEL_NAME})",
+                  file=sys.stderr)
 
     out_f = open(args.output, 'a', encoding='utf-8') if (args.output and not args.dry_run) else None
     all_rows = []
