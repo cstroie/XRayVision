@@ -6,9 +6,24 @@ Read the report and extract the main pathological status in JSON format.
 - Analyze each sentence independently.
 - If any sentence contains a pathological finding, the report is pathologic.
 - Normal statements do not negate pathological ones elsewhere in the report.
+- A report almost always mixes one or more positive findings with several
+  negative ("no X", "clear", "unremarkable") sentences describing everything
+  else that was checked. The presence of many negative sentences does NOT
+  outweigh or cancel a single positive one. Judge on whether ANY sentence is
+  positive, not on which type of sentence is more numerous.
+- Only classify a finding that is actually described in the text. If the
+  report contains no descriptive findings at all -- for example only a
+  generic framing sentence like "this shows a chest X-ray of a young boy"
+  with no mention of any organ's appearance, size, or abnormality -- there
+  is not enough information to diagnose anything. Do not guess a specific
+  condition in that case; see the "insufficient information" rule below.
 
 SYSTEM INSTRUCTION
 - Think silently if needed.
+- Always respond with the JSON object only, for every report you are given,
+  no matter how short, vague, or unusual the report text is. Never reply
+  with an acknowledgment, a request for the report, or an explanation of
+  what you are about to do -- classify the exact text provided.
 
 OUTPUT FORMAT (JSON)
 ```json
@@ -25,6 +40,46 @@ RULES
 - Do not infer beyond what is written.
 - Respond with ONLY valid JSON. No extra text.
 - Do not include any explanation or commentary.
+
+INSUFFICIENT INFORMATION RULE
+- If the report contains no actual clinical description (no organ, no size,
+  no appearance, no finding -- just generic framing text), output
+  {"pathologic":"no","severity":0,"summary":"insufficient information"}.
+  Do not invent or guess a diagnosis such as "pneumonia" when nothing was
+  actually described.
+
+HEDGED LANGUAGE RULE
+- A radiologist hedges when a finding is real but not fully certain -- hedging is not the
+  same as absence of a finding.
+- Phrases such as "suggestive of", "cannot exclude", "cannot rule out", "possible",
+  "probable", "likely", "concerning for", "may represent", "raises the possibility of",
+  "questionable", or "equivocal" attached to an abnormal finding still count as
+  "pathologic": "yes".
+- Score severity from the clinical significance of the SUSPECTED finding, not reduced
+  simply because the language is hedged. A hedged finding is still scored by its
+  clinical significance, not as normal.
+- Only treat a sentence as normal when it states the absence of a finding
+  (e.g. "no consolidation", "no effusion") -- not when it describes a finding with
+  cautious wording.
+
+EXAMPLE (one positive sentence among several negatives -- still pathologic)
+Report: "Traiect de fractura la nivelul falangei proximale. No pleural effusion or pneumothorax. Cardiomediastinal silhouette within normal limits."
+Output: {"pathologic": "yes", "severity": 5, "summary": "fracture"}
+(The first sentence reports a real finding. The negative sentences that
+follow describe unrelated structures being normal -- they do not cancel the
+fracture. This report is pathologic.)
+
+EXAMPLE (hedged finding among negatives -- still pathologic)
+Report: "Opacification of the left hemithorax, suggestive of pleural effusion. Right lung is clear. Heart size is normal."
+Output: {"pathologic": "yes", "severity": 5, "summary": "pleural effusion"}
+
+EXAMPLE (all sentences negative -- normal)
+Report: "Clear lung fields bilaterally. No focal consolidation, pleural effusion, or pneumothorax. Cardiac silhouette normal in size."
+Output: {"pathologic": "no", "severity": 0, "summary": "normal"}
+
+EXAMPLE (no actual findings described -- insufficient information, not a guess)
+Report: "The image shows a frontal chest X-ray of a young boy."
+Output: {"pathologic": "no", "severity": 0, "summary": "insufficient information"}
 
 LANGUAGE RULES (Romanian)
 - "fără" / "fara" = without / no
