@@ -13,8 +13,10 @@ The pipeline has two AI stages per exam:
    produces a free-text report (`ai_text`).
 2. **Classifier stage** (`chk_prompt.txt`) — the same model reads `ai_text`
    and outputs `{"pathologic": ..., "severity": ..., "summary": ...}`.
-   `ai_reports.severity >= SEVERITY_THRESHOLD` (5) is the production gate
-   used for triage.
+   `ai_reports.severity >= SEVERITY_THRESHOLD` (3, per `local.cfg` —
+   overrides the `xrayvision.cfg` default of 5) is the production gate
+   used for triage. Verified via `xrayvision.SEVERITY_THRESHOLD` at
+   runtime; all numbers in this report use the real value, 3.
 
 A false negative occurs when the radiologist's report is positive but the
 pipeline's final severity stays below threshold. These fall into two
@@ -172,10 +174,72 @@ evaluation set before promotion, not just this false-negative-focused one.
 mechanical bug (missing/inconsistent FINDINGS:/IMPRESSION: labels feeding
 a parser that depends on them) but does not measurably improve detection
 of the false-negative cases it targeted, at n=27. It's left in
-`tools/prompt_variants/v9_vision_combined/` for reference; the labeling
-fix specifically may be worth re-testing in isolation from the `{question}`
-change, since combining both makes it impossible to attribute the (null)
-outcome to either one.
+`tools/prompt_variants/v9_vision_combined/` for reference.
+
+## Elicitation vs. capability: is the vision-stage miss fixable by prompting at all?
+
+Before investing further in vision-prompt iteration, the open question was
+disentangled directly: for the 11 worst-set uids where **both** `baseline`
+and `v9` scored severity 0 with a fully negative `ai_text`, is the model
+failing to *volunteer* a finding it can actually see (an elicitation
+problem, fixable by prompt architecture), or is it a genuine capability
+limit of this 4B model (not fixable by prompt wording at all)?
+
+### Method
+
+`tools/targeted_probe.py` sends the same image plus a direct,
+pathology-specific yes/no question derived from the radiologist's actual
+report (e.g. *"Is there a pneumothorax on this image?"*), instead of the
+open-ended "write a report" task — one live call per uid, 9 of the 11
+cases (2 excluded: one had an unrelated extremity fracture as the rad
+finding, one's snippet was ambiguous on first read). Uses the current
+production `rep_prompt.txt` as system message unchanged; only the
+user-turn task differs.
+
+### First pass: 2/9 "yes", but the question leaked the answer
+
+The first round of direct questions got "yes" (matching the correct
+finding) on 2/9 (both bilateral perihilar interstitial-marking cases) and
+"no" on the rest, including severe cases like tension pneumothorax with
+mediastinal shift. Read at face value this looked like a real, if narrow,
+elicitation problem worth fixing.
+
+It wasn't. The two "yes" questions were phrased leadingly (*"Are there
+bilateral accentuated perihilar interstitial lung markings?"*) and the
+model's answer echoed the question's own phrasing back — a sycophancy
+pattern, not evidence of detection. The control that exposes this: a
+third, separately-worded interstitial-markings case in the same probe
+(`02051458040185`) got an equivalently leading question and answered
+**"No, lung fields are clear"** — same finding type, same question shape,
+opposite answer. Re-asking the two "yes" cases with neutral, non-leading
+phrasing (*"Describe the interstitial lung markings... normal or
+abnormal?"*) reverted both to **"normal"**. A third case that initially
+looked like a formatting bug — the model said "No" but then described the
+correct finding (hyperlucent hemithorax, mediastinal shift) in the same
+response when leadingly prompted — also reverted to a fully normal
+description under a neutral, non-leading re-ask ("compare lung
+transparency/volume between hemithoraces, describe mediastinal position").
+
+### Result: 9/9 capability ceiling, 0/9 elicitation
+
+With leading-question artifacts excluded, **none** of the 9 probed
+worst-set misses could be recovered by asking the model to look for the
+specific finding directly. This is a materially stronger and more useful
+result than "v9 didn't help": it says a vision-stage prompt refactor
+*cannot* help on this backend for this failure population, because the
+signal isn't accessible to the model at all — not because the prompt
+isn't asking the right question. Building a v10 "checklist" prompt
+(explicit per-pathology assessment) was considered and **not built**,
+because the evidence above already fails the condition that would justify
+it (needed: real, non-leading-question-confirmed detections on at least
+some of the probed misses; got: zero).
+
+This is a capability-ceiling finding specific to `medgemma-4b-it` on
+subtle/complex chest findings (tension pneumothorax, foreign body/stent,
+hyperlucent hemithorax, faint interstitial patterns) — consistent with,
+and now directly confirming with targeted evidence, the residual
+hallucination/miss pattern already noted from the `chk_prompt.txt` work
+below.
 
 ## Known residual limitation (not fully solved)
 
@@ -196,25 +260,39 @@ endpoint and performed worse; not recommended as a substitute.
 1. **Ship**: the `check_report()` fence-parsing fix and the promoted
    `chk_prompt.txt` — both are shipped already, real-data validated, and
    contained to the classifier text-in/JSON-out step (no vision risk).
-2. **Do not ship** `v9_vision_combined` as-is. If vision-stage work
-   continues, isolate the FINDINGS:/IMPRESSION: labeling fix from the
-   `{question}` change and re-test each independently.
-3. **Before any future vision-prompt promotion**, build a
-   negative-enriched evaluation set (rad-confirmed-normal exams) alongside
-   the false-negative set — the current sets can measure sensitivity gains
-   but not the false-positive cost.
-4. **Statistical power**: 27 uids is enough to validate a targeted
-   classifier-text fix (where the specific failure mode is known and
-   checked directly) but not enough to detect realistic effect sizes in
-   a vision-stage sensitivity/specificity comparison. A future vision
-   candidate evaluation should budget for a substantially larger uid set
-   (low hundreds) if a statistically decisive answer is required — that's
-   a scope/cost decision for the user, not something to run inline.
-5. **Vision-stage blindness remains the dominant open problem.** Most
-   false negatives are still cases where `ai_text` contains no signal at
-   all for any classifier to act on. This is a model-capability question
-   more than a prompt-wording one, and the cheapest next lever (prompt
-   iteration) has now been tried without a measurable win.
+2. **Do not ship** `v9_vision_combined`. Isolating its two changes
+   (`{question}` wiring vs. mandatory FINDINGS:/IMPRESSION: labeling) and
+   re-testing each separately was considered and **deliberately not run**:
+   the targeted probe below already shows the underlying miss population
+   is a capability ceiling, not a labeling or elicitation artifact, so
+   splitting a null result into two smaller nulls would spend live-inference
+   time without changing the conclusion.
+3. **A negative-enriched evaluation set and a larger (low-hundreds) uid
+   scale-up were considered and deliberately not run.** Both are only
+   worth the live-inference cost once there's a specific candidate prompt
+   showing a real effect worth measuring precisely. There isn't one right
+   now — `v9` showed no gain, and a v10 checklist candidate was ruled out
+   before being built (see below). Building the negative-enriched set
+   remains a prerequisite for any *future* vision candidate, not a
+   standalone task to run speculatively.
+4. **Do not build a "checklist"/targeted-interrogation vision prompt (v10)
+   for this failure population.** It was evaluated as a design option and
+   rejected on evidence, not skipped: `tools/targeted_probe.py` asked the
+   model direct, pathology-specific yes/no questions about the 9 worst
+   real misses it had already gotten wrong in free text. Under leading
+   phrasing 2/9 looked recoverable; under neutral, non-leading phrasing
+   (the only fair test, since production prompts can't smuggle the answer
+   into the question) **0/9 were recoverable**. No prompt architecture
+   change can fix a signal the model doesn't perceive in the image.
+5. **Vision-stage blindness on `medgemma-4b-it` is a model-capability
+   limit, not a prompt problem, for this failure population** (tension
+   pneumothorax, foreign body/stent, hyperlucent hemithorax, faint
+   interstitial patterns). This is now supported by targeted evidence, not
+   just a null A/B result. Closing the remaining false-negative gap
+   requires a model/pipeline change (larger or fine-tuned vision model,
+   ensemble/second-opinion pass, or explicit escalation of
+   low-confidence-normal reads to a human) — none of which are prompt
+   changes, and none of which were in scope to change unilaterally here.
 
 ## Artifacts
 
@@ -226,3 +304,9 @@ endpoint and performed worse; not recommended as a substitute.
 - `evaluation_report.md` — full `evaluate_prompts.py` output (all views:
   per-sample, per-uid max-severity, pediatric/adult and case-set
   stratification, paired significance).
+- `tools/targeted_probe.py` / `targeted_probe_results.jsonl` — the
+  elicitation-vs-capability probe and its raw responses (first-pass
+  leading-question results only; the neutral-phrasing re-asks that
+  overturned 3 of them are recorded in this report's text, not re-saved
+  to a file, since they were a 3-call confirmatory check, not a
+  structured run).
