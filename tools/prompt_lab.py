@@ -27,6 +27,13 @@ Usage:
         --variant candidate=tools/prompt_variants/v4_combined \\
         --uids-file mismatches_chest_fn.json --samples 3 --output results.jsonl
 
+    # --uids-file is repeatable: combine the worst-case set and a random
+    # sample in one run, to check a candidate isn't just overfit to the
+    # hardest cases
+    python tools/prompt_lab.py --variant baseline --variant v9=tools/prompt_variants/v9_vision_combined \\
+        --uids-file mismatches_chest_fn.json --uids-file mismatches_chest_random.json \\
+        --samples 3 --output results.jsonl
+
     python tools/prompt_lab.py --variant baseline --uids fn-1 fn-2 --dry-run
 """
 
@@ -105,18 +112,19 @@ def parse_variant_args(variant_args):
 
 
 def load_uids(args):
+    """--uids-file is repeatable, so e.g. the worst-case set and a random
+    sample can be combined in one prompt_lab.py run without pre-merging."""
     uids = list(args.uids or [])
-    if args.uids_file:
-        with open(args.uids_file, 'r', encoding='utf-8') as f:
+    for uids_file in (args.uids_file or []):
+        with open(uids_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        if isinstance(data, list):
-            for item in data:
-                if isinstance(item, str):
-                    uids.append(item)
-                elif isinstance(item, dict) and 'uid' in item:
-                    uids.append(item['uid'])
-        else:
-            raise ValueError(f"Unrecognized JSON shape in {args.uids_file}")
+        if not isinstance(data, list):
+            raise ValueError(f"Unrecognized JSON shape in {uids_file}")
+        for item in data:
+            if isinstance(item, str):
+                uids.append(item)
+            elif isinstance(item, dict) and 'uid' in item:
+                uids.append(item['uid'])
     # de-duplicate, preserve order
     seen = set()
     result = []
@@ -339,8 +347,9 @@ def main():
     parser.add_argument('--variant', action='append', required=True,
                          help="NAME=DIR (repeatable). 'baseline' needs no DIR.")
     parser.add_argument('--uids', nargs='*', default=[])
-    parser.add_argument('--uids-file', default=None,
-                         help="JSON array of uid strings, or find_mismatches.py's JSON output")
+    parser.add_argument('--uids-file', action='append', default=[],
+                         help="JSON array of uid strings, or find_mismatches.py's JSON output "
+                              "(repeatable -- e.g. pass the worst-case set and a random sample together)")
     parser.add_argument('--samples', type=int, default=3)
     parser.add_argument('--output', default=None, help="Resumable JSONL output path")
     parser.add_argument('--review', action='store_true',
