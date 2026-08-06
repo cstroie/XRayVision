@@ -360,6 +360,83 @@ informal "it's worse" verdict does not survive this measured comparison,
 but neither does a clean "switch to it," because the false-positive risk
 it introduces is real, specific, and currently unquantified.
 
+## Large-sample follow-up: 90 uids, 20 rad-negative (properly powered)
+
+The negative-enriched re-evaluation flagged above was run:
+`mismatches_chest_random_v2.json` (75 new uids, severity-stratified with
+20 per bucket including the 0-2/negative bucket, deduplicated against the
+existing worst-case set) combined with the original 15-uid worst-case
+set, both models run through the full pipeline again
+(`results_model_compare_v2.jsonl`, `evaluation_report_model_compare_v2.md`,
+90 uids total, 20 genuinely rad-negative).
+
+| View (per-uid max-severity, severity≥3 gate) | `medgemma-4b-it` | `medgemma-1.5-4b-it` |
+|---|---|---|
+| Sensitivity (95% CI) | 27.1% [18.1%, 38.5%] | **51.4% [40.0%, 62.8%]** |
+| Specificity (95% CI) | 80.0% [58.4%, 91.9%] | 70.0% [48.1%, 85.5%] |
+| Precision | 82.6% | 85.7% |
+| F1 | 0.409 | **0.643** |
+| MCC | 0.068 | **0.179** |
+
+Paired significance (90 uids): b(4b right / 1.5 wrong)=5, c(4b wrong /
+1.5 right)=20, **McNemar chi-square (corrected) = 7.840, p=0.0051** — this
+time with enough discordant pairs (25) for the full chi-square test
+itself, not the small-sample sign-test fallback used earlier in this
+report.
+
+### This corrects, not just confirms, the earlier read
+
+**`medgemma-4b-it`'s "100% specificity" claimed earlier in this report
+was an artifact of n=3 negative uids, not a real property of the model.**
+At n=20 its actual specificity is 80%, with 4 real false positives. The
+sensitivity gap direction and its statistical reality both hold up at
+scale; what changes is the size of the specificity trade-off, which
+turns out to be real but far more moderate (80%→70%, a 10-point gap) than
+the earlier 3-sample estimate implied (100%→67%, a 33-point gap that
+looked far scarier than it turns out to be).
+
+### The false-positive mechanism is different at scale than the small sample suggested
+
+The n=3 false positive (device/line severity miscalibration) does **not**
+turn out to be the dominant pattern. Across all 10 false positives found
+in this run (4 from `4b-it`, 6 from `1.5-4b-it`), the classifier summary
+field shows:
+
+| uid (suffix) | model | model severity | rad severity | classifier summary |
+|---|---|---|---|---|
+| 05141702220795 | 4b | 4 | 0 | cardiomegaly |
+| 03090505000632 | 4b | 7 | 0 | cardiomegaly |
+| 03031218570842 | 4b | 4 | 0 | pulmonary edema |
+| 03251748580321 | 4b | 7 | 0 | cardiomegaly |
+| 03090505000632 | 1.5 | 8 | 0 | cardiomegaly |
+| 03031218570842 | 1.5 | 4 | 0 | diaphragm |
+| 08110214080352 | 1.5 | 7 | 0 | bowel obstruction |
+| 12062315060643 | 1.5 | 8 | 0 | enlarged heart |
+| 03251748580321 | 1.5 | 7 | 0 | cardiomegaly |
+| 03061431100704 | 1.5 | 5 | 2 | multiple abnormalities |
+
+**Cardiomegaly (over-called heart enlargement) is the dominant false-positive
+driver for both models** — 3/4 of `4b-it`'s false positives and 3/6 of
+`1.5-4b-it`'s. Two uids (`03090505000632`, `03251748580321`) are false
+positives for *both* models on the same cardiomegaly call, suggesting a
+shared, systematic weakness (plausibly cardiac-silhouette magnification
+on portable/AP chest films, a known radiographic pitfall) rather than a
+per-model quirk. This is a more actionable, more generalizable target
+than the earlier device/line theory, and it's a `chk_prompt.txt`/
+`rep_prompt.txt` calibration question (how confidently to call
+cardiomegaly from a single AP view) rather than a vision-capability
+question.
+
+### Updated reading
+
+The sensitivity advantage of `medgemma-1.5-4b-it` is now well-supported,
+not just suggestive (p=0.0051 at proper n). The specificity cost is real
+but moderate, and both models share the same dominant failure mode
+(cardiomegaly over-calling) rather than `1.5-4b-it` introducing a new one
+— it just also inherits `4b-it`'s existing weakness while fixing more of
+its misses. On F1 and MCC, `1.5-4b-it` is the stronger model on this
+dataset. See Recommendations for what this changes.
+
 ## Known residual limitation (not fully solved)
 
 The backend (`medgemma-4b-it`, confirmed via `/v1/models`) occasionally
@@ -396,21 +473,33 @@ endpoint and performed worse; not recommended as a substitute.
    non-borderline false positive traced to a specific, identified
    mechanism (classifier severity miscalibration on incidental line/tube
    findings, not vision hallucination). See the comparison section above.
-4. **Do not switch production to `medgemma-1.5-4b-it` yet.** The
-   sensitivity gain is well-supported at this n; the false-positive rate
-   is not (3 rad-negative uids total, one became FP — a 66.7% specificity
-   point estimate with a CI wide enough to be nearly uninformative on its
-   own). The next concrete step is building the negative-enriched
-   evaluation set flagged earlier in this report and re-running this same
-   `--model` comparison against it, specifically to bound the
-   device/line-severity-miscalibration false-positive rate before any
-   promotion decision.
-5. **If the false-positive rate holds up on a larger negative set, the
-   fix is likely in `chk_prompt.txt` (severity calibration for incidental
-   device/line mentions), not the vision prompt** — the vision-stage text
-   in the one false positive found so far was accurate, the classifier's
-   severity assignment was the problem. That's a smaller, more contained
-   fix than a vision-prompt rewrite if it holds.
+4. **`medgemma-1.5-4b-it` is now a real, evidence-backed candidate for
+   production, pending a decision, not just a research finding.** The
+   90-uid, 20-negative follow-up (see "Large-sample follow-up" above)
+   confirms the sensitivity gain at proper statistical power (p=0.0051)
+   and shows the specificity cost is real but moderate (80%→70%, not the
+   33-point gap the 3-negative sample implied) — F1 (0.409→0.643) and MCC
+   (0.068→0.179) both favor `1.5-4b-it`. This report does not make the
+   switch decision — that's a clinical-risk-tolerance call (is a 10-point
+   specificity drop, i.e. more false alarms needing radiologist
+   dismissal, an acceptable trade for catching roughly twice as many real
+   misses) that belongs to whoever owns that tradeoff, not to prompt
+   engineering. The quantitative basis to make that call now exists.
+5. **The concrete, contained next fix — independent of the model
+   decision — is cardiomegaly-severity calibration in `chk_prompt.txt`
+   and/or `rep_prompt.txt`.** The large-sample false-positive breakdown
+   shows cardiomegaly over-calling is the dominant false-positive driver
+   for *both* models (3/4 of `4b-it`'s FPs, 3/6 of `1.5-4b-it`'s, with 2
+   uids failing identically on both), not a `1.5-4b-it`-specific problem
+   and not the device/line miscalibration the earlier small sample
+   suggested. This is a well-known radiographic pitfall (cardiac
+   silhouette magnification on portable/AP films) and a plausible,
+   scoped prompt fix: add explicit calibration guidance (e.g. "AP/portable
+   views inflate apparent heart size; downgrade cardiomegaly confidence
+   unless the ratio is clearly outside normal limits, or supine/AP
+   technique is not stated as excluded") — this is a smaller, more
+   contained change than a vision-prompt rewrite, and would benefit
+   whichever model is running in production.
 6. **A "checklist"/targeted-interrogation vision prompt (v10) was
    evaluated on both models and is not currently worth building as a
    standalone architecture change**, independent of the model question
@@ -441,8 +530,16 @@ endpoint and performed worse; not recommended as a substitute.
   `checklist_probe_medgemma-1.5-4b-it.jsonl` — the generic (no
   foreknowledge) per-category checklist probe, run against both models.
 - `results_model_compare.jsonl` — combined per-sample results
-  (`model_4b` + `model_15b` variants, 162 rows) from the `medgemma-4b-it`
-  vs `medgemma-1.5-4b-it` full-pipeline comparison, via `prompt_lab.py`'s
-  new `--model` override.
+  (`model_4b` + `model_15b` variants, 162 rows) from the initial 27-uid
+  `medgemma-4b-it` vs `medgemma-1.5-4b-it` comparison, via
+  `prompt_lab.py`'s new `--model` override.
 - `evaluation_report_model_compare.md` — full `evaluate_prompts.py`
-  output for that comparison.
+  output for that initial comparison.
+- `mismatches_chest_random_v2.json` — the 75-uid negative-enriched,
+  severity-stratified follow-up random set (20 per severity bucket
+  0-2/3-5/6-8/9-10), deduplicated against the worst-case set.
+- `results_model_compare_v2.jsonl` — combined per-sample results (540
+  rows, 90 uids) from the large-sample follow-up comparison.
+- `evaluation_report_model_compare_v2.md` — full `evaluate_prompts.py`
+  output for the large-sample comparison, the properly-powered numbers
+  this report's conclusions are based on.
