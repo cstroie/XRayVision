@@ -283,7 +283,82 @@ re-test both models properly rather than trust either informal read.
 override) run against both models on the full 27-uid set with the
 existing production prompts and classifier, to get real
 sensitivity/specificity numbers instead of a qualitative 9-sample read.
-Results to follow.
+Results below.
+
+## `medgemma-1.5-4b-it` vs `medgemma-4b-it`: real sensitivity/specificity comparison
+
+Both models run through the full production pipeline (current promoted
+`rep_prompt.txt`/`chk_prompt.txt`, 3 samples each) against the same
+27-uid set (`results_model_compare.jsonl`,
+`evaluation_report_model_compare.md`). This directly contradicts an
+earlier informal read (from before this investigation) that
+`medgemma-1.5-4b-it` "performs worse" — under this measured comparison it
+does not, though it trades one failure mode for another.
+
+| View (per-uid max-severity, severity≥3 gate) | `medgemma-4b-it` | `medgemma-1.5-4b-it` |
+|---|---|---|
+| Sensitivity (95% CI) | 25.0% [12.0%, 44.9%] | **62.5% [42.7%, 78.8%]** |
+| Specificity (95% CI) | 100% [43.8%, 100%] | 66.7% [20.8%, 93.9%] |
+| Precision | 100% | 93.8% |
+| F1 | 0.400 | **0.750** |
+
+Paired significance (27 uids, exact binomial sign test): b(4b right /
+1.5 wrong)=1, c(4b wrong / 1.5 right)=9, **p=0.0215** — statistically
+meaningful at this n, not just noise, unlike the `v9` comparison earlier
+in this report.
+
+### What it fixes
+
+9 of the 27 uids flip from missed to caught, including cases from
+several distinct pathology categories: pneumothorax (`04300312170723`),
+bilateral perihilar interstitial markings (`03191707160140`,
+`02051458040185`), hyperlucent hemithorax with mediastinal shift
+(`07181000300192`), the tension-pneumothorax-with-lines case
+(`10260711340683`), and others. This lines up with what
+`checklist_probe.py` hinted at on a 9-sample qualitative read, now
+confirmed quantitatively across the full 27-uid set.
+
+### What it breaks
+
+1 of 3 rad-negative uids in the set becomes a new, non-borderline false
+positive: `...06081121550212` (rad severity 1 — tubes/lines present but
+clinically unremarkable) gets scored severity 8 by `medgemma-1.5-4b-it`.
+Inspecting the raw text shows this is **not** a vision hallucination —
+the model correctly identifies a central venous catheter and endotracheal
+tube, closely matching the radiologist's own description ("Right
+subclavian central venous catheter" vs. rad's "Right jugular central
+venous catheter" — same finding category, different vessel). The
+`chk_prompt` classifier then scores "catheters present" as severity 8, as
+if routine line/tube placement were a major pathological finding, which
+it isn't in this clinical context. This is a **classifier calibration
+gap specific to incidental device/line findings**, not a vision-stage
+capability issue, and it's a different bug class than anything
+`chk_prompt.txt` v6-v8 targeted (those were about negation handling, not
+severity calibration for non-pathological incidental findings).
+
+Sample-to-sample variance on this case is also large (severity 8, 1, 5
+across 3 samples of the same image) — consistent with the
+higher-variance, occasionally-hallucinating behavior noted below,
+here manifesting as severity instability rather than content
+hallucination.
+
+### Reading this result
+
+n=3 rad-negative uids is far too small to trust the 66.7% specificity
+point estimate (CI spans 20.8%-93.9%) — this is exactly the
+negative-enriched-set gap flagged earlier in this report, now with a
+concrete reason it matters: there's a real, identified false-positive
+mechanism (device/line severity miscalibration) that a 3-negative-uid
+set can only barely detect, not properly bound. The sensitivity gain
+(p=0.0215, 9 recovered uids across multiple pathology types) is much
+better supported by this sample size than the specificity number is.
+
+**This is not a recommendation to switch production models.** It's
+enough evidence to say `medgemma-1.5-4b-it` deserves a properly powered,
+negative-enriched re-evaluation before any such decision — the earlier
+informal "it's worse" verdict does not survive this measured comparison,
+but neither does a clean "switch to it," because the false-positive risk
+it introduces is real, specific, and currently unquantified.
 
 ## Known residual limitation (not fully solved)
 
@@ -301,42 +376,50 @@ endpoint and performed worse; not recommended as a substitute.
 
 ## Recommendations
 
-1. **Ship**: the `check_report()` fence-parsing fix and the promoted
-   `chk_prompt.txt` — both are shipped already, real-data validated, and
-   contained to the classifier text-in/JSON-out step (no vision risk).
-2. **Do not ship** `v9_vision_combined`. Isolating its two changes
-   (`{question}` wiring vs. mandatory FINDINGS:/IMPRESSION: labeling) and
-   re-testing each separately was considered and **deliberately not run**:
-   the targeted probe below already shows the underlying miss population
-   is a capability ceiling, not a labeling or elicitation artifact, so
-   splitting a null result into two smaller nulls would spend live-inference
-   time without changing the conclusion.
-3. **A negative-enriched evaluation set and a larger (low-hundreds) uid
-   scale-up were considered and deliberately not run.** Both are only
-   worth the live-inference cost once there's a specific candidate prompt
-   showing a real effect worth measuring precisely. There isn't one right
-   now — `v9` showed no gain, and a v10 checklist candidate was ruled out
-   before being built (see below). Building the negative-enriched set
-   remains a prerequisite for any *future* vision candidate, not a
-   standalone task to run speculatively.
-4. **Do not build a "checklist"/targeted-interrogation vision prompt (v10)
-   for this failure population.** It was evaluated as a design option and
-   rejected on evidence, not skipped: `tools/targeted_probe.py` asked the
-   model direct, pathology-specific yes/no questions about the 9 worst
-   real misses it had already gotten wrong in free text. Under leading
-   phrasing 2/9 looked recoverable; under neutral, non-leading phrasing
-   (the only fair test, since production prompts can't smuggle the answer
-   into the question) **0/9 were recoverable**. No prompt architecture
-   change can fix a signal the model doesn't perceive in the image.
-5. **Vision-stage blindness on `medgemma-4b-it` is a model-capability
-   limit, not a prompt problem, for this failure population** (tension
-   pneumothorax, foreign body/stent, hyperlucent hemithorax, faint
-   interstitial patterns). This is now supported by targeted evidence, not
-   just a null A/B result. Closing the remaining false-negative gap
-   requires a model/pipeline change (larger or fine-tuned vision model,
-   ensemble/second-opinion pass, or explicit escalation of
-   low-confidence-normal reads to a human) — none of which are prompt
-   changes, and none of which were in scope to change unilaterally here.
+1. **Shipped**: the `check_report()` fence-parsing fix, the promoted
+   `chk_prompt.txt`, and the FINDINGS:/IMPRESSION: labeling half of
+   `rep_prompt.txt` — all real-data validated, all in production.
+2. **Do not ship `v9`'s `{question}` wiring.** The targeted probe shows
+   the worst-miss population on `medgemma-4b-it` is a capability ceiling,
+   not a labeling or elicitation artifact — no prompt change recovers it
+   on that model. Isolating `v9`'s two changes further was considered and
+   deliberately not run, since this conclusion doesn't depend on which
+   half of `v9` is "responsible" for a null result.
+3. **The model-capability-ceiling conclusion is `medgemma-4b-it`-specific,
+   not universal — it does not extend to `medgemma-1.5-4b-it`.** The
+   claim in earlier sections of this report that vision-stage blindness
+   requires "a model/pipeline change" turned out to be checkable, not just
+   speculative, and checking it reversed the informal prior belief that
+   `1.5-4b-it` is worse: on a real, quantified 27-uid comparison it
+   recovers 9 of the false-negative misses `4b-it` gets wrong
+   (sensitivity 62.5% vs. 25.0%, p=0.0215), at the cost of one new,
+   non-borderline false positive traced to a specific, identified
+   mechanism (classifier severity miscalibration on incidental line/tube
+   findings, not vision hallucination). See the comparison section above.
+4. **Do not switch production to `medgemma-1.5-4b-it` yet.** The
+   sensitivity gain is well-supported at this n; the false-positive rate
+   is not (3 rad-negative uids total, one became FP — a 66.7% specificity
+   point estimate with a CI wide enough to be nearly uninformative on its
+   own). The next concrete step is building the negative-enriched
+   evaluation set flagged earlier in this report and re-running this same
+   `--model` comparison against it, specifically to bound the
+   device/line-severity-miscalibration false-positive rate before any
+   promotion decision.
+5. **If the false-positive rate holds up on a larger negative set, the
+   fix is likely in `chk_prompt.txt` (severity calibration for incidental
+   device/line mentions), not the vision prompt** — the vision-stage text
+   in the one false positive found so far was accurate, the classifier's
+   severity assignment was the problem. That's a smaller, more contained
+   fix than a vision-prompt rewrite if it holds.
+6. **A "checklist"/targeted-interrogation vision prompt (v10) was
+   evaluated on both models and is not currently worth building as a
+   standalone architecture change**, independent of the model question
+   above: under neutral, non-leading phrasing (the only fair test), 0/9
+   ground-truth-informed direct questions were recoverable on `4b-it`,
+   and the realistic no-foreknowledge checklist version recovered 0/9
+   correct categories on `4b-it` and a partial 2/9 on `1.5-4b-it` (both
+   qualitative, n=9). The larger, better-supported lever is the model
+   comparison in point 3-4, not a v10 prompt rewrite on either model.
 
 ## Artifacts
 
@@ -354,3 +437,12 @@ endpoint and performed worse; not recommended as a substitute.
   overturned 3 of them are recorded in this report's text, not re-saved
   to a file, since they were a 3-call confirmatory check, not a
   structured run).
+- `tools/checklist_probe.py` / `checklist_probe_medgemma-4b-it.jsonl` /
+  `checklist_probe_medgemma-1.5-4b-it.jsonl` — the generic (no
+  foreknowledge) per-category checklist probe, run against both models.
+- `results_model_compare.jsonl` — combined per-sample results
+  (`model_4b` + `model_15b` variants, 162 rows) from the `medgemma-4b-it`
+  vs `medgemma-1.5-4b-it` full-pipeline comparison, via `prompt_lab.py`'s
+  new `--model` override.
+- `evaluation_report_model_compare.md` — full `evaluate_prompts.py`
+  output for that comparison.
