@@ -241,6 +241,50 @@ and now directly confirming with targeted evidence, the residual
 hallucination/miss pattern already noted from the `chk_prompt.txt` work
 below.
 
+## Update: checklist-style second pass revisited (partially overturns "don't build v10")
+
+The targeted probe above used a *ground-truth-informed* question ("is
+there a pneumothorax on this image?") — the realistic worst case, since
+production doesn't know the answer in advance. `tools/checklist_probe.py`
+tests the *realistic* version: a single generic per-category checklist
+(pneumothorax / effusion / consolidation / mediastinal shift /
+cardiomegaly / fracture / foreign body / interstitial pattern / other),
+identical for every uid, run against the same 9 worst-set misses, no
+foreknowledge of which category applies.
+
+**`medgemma-4b-it`**: 2/9 flagged `OVERALL: abnormal` — both for the
+*wrong* category (flagged "consolidation" on cases whose real findings
+were pneumothorax and interstitial markings respectively). 0/9 correct
+category-level catches.
+
+**`medgemma-1.5-4b-it`** (same 9 uids, same checklist prompt): 3/9
+flagged abnormal, and 2 of those 3 hit a genuinely correct category —
+it caught the central line/NG tube (`foreign body/support device:
+present`) in the tension-pneumothorax case (missing the pneumothorax
+itself, but catching a real, correlated abnormal finding that would
+still route to human review) and the mediastinal shift in the
+hyperlucent-hemithorax case (attributed to atelectasis rather than
+tension physiology, but the category flag itself was correct). Both
+models still missed all 4 interstitial-marking cases regardless of
+framing — that specific finding type looks like a harder ceiling than
+the others tested.
+
+This **does not overturn** the core conclusion that ground-truth-informed
+targeted questions get 0/9 under neutral phrasing — that result stands.
+It does mean the "don't build v10" call above was slightly too strong:
+a generic checklist second pass produces non-zero, non-random signal on
+`medgemma-1.5-4b-it` specifically, worth quantifying properly rather than
+dismissing on a 9-sample qualitative read. This also runs against the
+earlier informal finding that `1.5-4b-it` "performs worse" — under this
+framing, on this tiny sample, it did better, which is reason enough to
+re-test both models properly rather than trust either informal read.
+
+**Next step in progress**: `tools/prompt_lab.py` (now with a `--model`
+override) run against both models on the full 27-uid set with the
+existing production prompts and classifier, to get real
+sensitivity/specificity numbers instead of a qualitative 9-sample read.
+Results to follow.
+
 ## Known residual limitation (not fully solved)
 
 The backend (`medgemma-4b-it`, confirmed via `/v1/models`) occasionally

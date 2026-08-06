@@ -365,10 +365,16 @@ def main():
                          help="Words allowed in IMPRESSION before parse_ai_report_text() discards it "
                               "(default: 3, matches production). Raise this to test whether the "
                               "3-word truncation is suppressing real short diagnoses.")
+    parser.add_argument('--model', default=None,
+                         help="Override xrayvision.MODEL_NAME for this run (e.g. to A/B a different "
+                              "backend model against the same prompts/uids). Must already be loaded "
+                              "and servable at the configured endpoint.")
     args = parser.parse_args()
 
     if args.images_dir:
         xrayvision.IMAGES_DIR = args.images_dir
+    if args.model:
+        xrayvision.MODEL_NAME = args.model
 
     return asyncio.run(main_async(args))
 
