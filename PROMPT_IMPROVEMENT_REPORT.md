@@ -451,6 +451,33 @@ capability limit of this specific 4B model rather than something prompt
 wording alone resolves. `medgemma-1.5-4b-it` was tried on the same
 endpoint and performed worse; not recommended as a substitute.
 
+## Decisions made (2026-08-06)
+
+- **Production switched to `medgemma-1.5-4b-it`** (`local.cfg`
+  `MODEL_NAME`, untracked/environment-specific). Accepted on the strength
+  of the large-sample comparison above: the decision-maker's risk
+  tolerance is that false positives are acceptable for an early-warning
+  system, which resolves the sensitivity/specificity tradeoff in favor of
+  the model that catches more real misses.
+- **Two-look (generic pass, then a conditional specific/checklist pass if
+  the first is normal) architecture: rejected, not built.** The
+  checklist probe's marginal, mostly-overlapping-with-the-model-switch
+  gains (2/9 partial catches on `1.5-4b-it`, 0/9 clean category matches)
+  don't justify 2x inference cost and added complexity, especially once
+  false positives are an accepted tradeoff — the entire rationale for a
+  conditional second pass (get more sensitivity while limiting FP cost by
+  only escalating on a "normal" first read) evaporates once FP cost is
+  no longer the constraint. A cheaper lever exists in the same direction
+  if more sensitivity is later wanted: lowering `SEVERITY_THRESHOLD`
+  trades specificity for sensitivity directly, with a config edit, no new
+  inference calls, and no new failure surface.
+- **Cardiomegaly-calibration prompt fix: deferred, not done.** Still a
+  real, identified, shared weakness in both models (see the large-sample
+  false-positive breakdown above), but explicitly lower priority now that
+  false positives are an accepted cost of the early-warning design. Worth
+  revisiting later for alert-quality/radiologist-trust reasons, not
+  urgent.
+
 ## Recommendations
 
 1. **Shipped**: the `check_report()` fence-parsing fix, the promoted
