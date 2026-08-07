@@ -4652,19 +4652,29 @@ async def main():
         MAIN_LOOP.add_signal_handler(sig, stop_event.set)
     stop_task = asyncio.create_task(stop_event.wait())
 
+    # Race the stop signal against the *aggregate* of all tasks, not any
+    # individual one — some (e.g. start_dashboard) return as soon as setup
+    # is done rather than running forever, and racing per-task would trigger
+    # a full shutdown the moment the first of those finished.
+    tasks_task = asyncio.gather(*tasks)
+
     try:
-        await asyncio.wait([stop_task, *tasks], return_when=asyncio.FIRST_COMPLETED)
+        await asyncio.wait([stop_task, tasks_task], return_when=asyncio.FIRST_COMPLETED)
         if stop_task.done():
             logging.info("Shutdown signal received. Stopping XRayVision...")
+        elif tasks_task.done():
+            try:
+                tasks_task.result()
+            except Exception:
+                logging.exception("A background task terminated unexpectedly. Shutting down...")
     except asyncio.CancelledError:
         logging.info("Main task cancelled. Shutting down...")
     finally:
-        for task in tasks:
-            if not task.done():
-                task.cancel()
+        if not tasks_task.done():
+            tasks_task.cancel()
         if not stop_task.done():
             stop_task.cancel()
-        await asyncio.gather(*tasks, stop_task, return_exceptions=True)
+        await asyncio.gather(tasks_task, stop_task, return_exceptions=True)
         await stop_servers()
 
 
