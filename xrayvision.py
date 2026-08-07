@@ -3256,10 +3256,6 @@ async def send_exam_to_openai(exam, max_retries = 3):
             return False
 
         prompt = create_exam_prompt(exam, region, question, subject, anatomy)
-        logging.debug(f"Prompt: {prompt}")
-        logging.info(f"Processing {exam['uid']} with {region} x-ray.")
-
-        headers, data = prepare_ai_request_data(prompt, image_bytes)
 
         prior_ai_report = (exam.get('report') or {}).get('ai') or {}
         prior_ai_text = prior_ai_report.get('text') if isinstance(prior_ai_report, dict) else None
@@ -3274,8 +3270,15 @@ async def send_exam_to_openai(exam, max_retries = 3):
             prior_ai_text = None
         if prior_ai_text:
             logging.info(f"Previous report: {prior_ai_text}")
-            data['messages'].append({'role': 'assistant', 'content': prior_ai_text})
-            data['messages'].append({'role': 'user', 'content': PROMPTS['REV_PROMPT'].strip()})
+            # MedGemma is tuned for single-turn use, not multi-turn chat, so the
+            # revision request is folded into one user turn rather than faked
+            # via assistant/user message roles.
+            prompt = f"{prompt}\n\nPREVIOUS REPORT:\n{prior_ai_text}\n\n{PROMPTS['REV_PROMPT'].strip()}"
+
+        logging.debug(f"Prompt: {prompt}")
+        logging.info(f"Processing {exam['uid']} with {region} x-ray.")
+
+        headers, data = prepare_ai_request_data(prompt, image_bytes)
 
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
         attempt = 1
