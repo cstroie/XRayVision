@@ -1,0 +1,65 @@
+#!/sbin/openrc-run
+# OpenRC init script for Alpine Linux (and other OpenRC systems).
+#
+# Install:
+#   adduser -S -D -H -h /opt/xrayvision -s /sbin/nologin xrayvision
+#   git clone https://github.com/cstroie/XRayVision.git /opt/xrayvision   # or rsync/symlink an existing checkout there
+#   chown -R xrayvision:xrayvision /opt/xrayvision
+#   su -s /bin/sh xrayvision -c 'python3 -m pip install --user -r /opt/xrayvision/requirements.txt'
+#   cp xrayvision.openrc /etc/init.d/xrayvision
+#   chmod +x /etc/init.d/xrayvision
+#   rc-update add xrayvision default
+#   rc-service xrayvision start
+#
+# Optional overrides go in /etc/conf.d/xrayvision (auto-sourced by
+# openrc-run), e.g. to point at a different checkout or Python:
+#   xrayvision_home="/opt/xrayvision"
+#   xrayvision_python="/opt/xrayvision/.python/bin/python3"
+
+name="xrayvision"
+description="XRayVision DICOM relay and AI-assisted radiology analysis platform"
+
+: "${xrayvision_user:=xrayvision}"
+: "${xrayvision_group:=xrayvision}"
+: "${xrayvision_home:=/opt/xrayvision}"
+: "${xrayvision_python:=${xrayvision_home}/.python/bin/python3}"
+
+# Fall back to system python3 if no dedicated venv was set up.
+if [ ! -x "${xrayvision_python}" ]; then
+	xrayvision_python="/usr/bin/python3"
+fi
+
+# supervise-daemon (not start-stop-daemon --background) because
+# xrayvision.py runs in the foreground and doesn't fork itself — same
+# reasoning as Type=simple in the systemd unit. It also gives us respawn-
+# on-crash for free, mirroring Restart=on-failure there.
+supervisor="supervise-daemon"
+command="${xrayvision_python}"
+command_args="${xrayvision_home}/xrayvision.py --pidfile /run/${RC_SVCNAME}.pid"
+command_user="${xrayvision_user}:${xrayvision_group}"
+directory="${xrayvision_home}"
+pidfile="/run/${RC_SVCNAME}.pid"
+
+respawn_delay=5
+respawn_max=0
+
+# Secrets (OpenAI-compatible API key, FHIR/PACS credentials, admin
+# passwords) belong in local.cfg (chmod 600, not tracked by git) in
+# xrayvision_home, not in this init script or /etc/conf.d/xrayvision.
+
+# supervise-daemon logs the supervised process's stdout/stderr here. Kept
+# under the checkout's own log/ dir (not /var/log) so everything XRayVision
+# writes stays in one place. Application logs still go to xrayvision.log
+# and xrayvision_audit.log in the working directory.
+output_log="${xrayvision_home}/log/xrayvision.out"
+error_log="${xrayvision_home}/log/xrayvision.out"
+
+# SIGTERM triggers xrayvision.py's own graceful-shutdown handler
+# (stop_servers() via the stop_event signal handlers in main()); give
+# in-flight requests / DB writes a bit of time before escalating.
+retry="TERM/20/KILL/5"
+
+depend() {
+	need net
+	use dns
+}

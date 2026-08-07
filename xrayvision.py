@@ -20,6 +20,7 @@ import logging
 import math
 import os
 import re
+import signal
 import sqlite3
 import random
 import time
@@ -4641,15 +4642,29 @@ async def main():
     if LOAD_DICOM:
         await load_existing_dicom_files()
         await query_and_retrieve(60)
+
+    # SIGTERM (sent by the xrayvision control script / systemd / OpenRC) and
+    # SIGINT (Ctrl-C) both resolve this event instead of tearing the process
+    # down immediately, so stop_servers() always runs and in-flight requests
+    # get a chance to finish.
+    stop_event = asyncio.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        MAIN_LOOP.add_signal_handler(sig, stop_event.set)
+    stop_task = asyncio.create_task(stop_event.wait())
+
     try:
-        await asyncio.gather(*tasks)
+        await asyncio.wait([stop_task, *tasks], return_when=asyncio.FIRST_COMPLETED)
+        if stop_task.done():
+            logging.info("Shutdown signal received. Stopping XRayVision...")
     except asyncio.CancelledError:
         logging.info("Main task cancelled. Shutting down...")
+    finally:
         for task in tasks:
             if not task.done():
                 task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-    finally:
+        if not stop_task.done():
+            stop_task.cancel()
+        await asyncio.gather(*tasks, stop_task, return_exceptions=True)
         await stop_servers()
 
 
@@ -4664,6 +4679,7 @@ if __name__ == '__main__':
     parser.add_argument("--retrieval-method", type=str, choices=['C-MOVE', 'C-GET'], default=RETRIEVAL_METHOD, help="DICOM retrieval method")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Set logging level")
     parser.add_argument("--translate-existing", action = "store_true", help = "Translate existing radiologist reports without English translations")
+    parser.add_argument("--pidfile", metavar="PATH", help="Write the process PID to this file on startup and remove it on clean shutdown; enables the xrayvision control script to find and signal this process")
     args = parser.parse_args()
     KEEP_DICOM = args.keep_dicom
     LOAD_DICOM = args.load_dicom
@@ -4673,9 +4689,19 @@ if __name__ == '__main__':
     RETRIEVAL_METHOD = args.retrieval_method
     TRANSLATE_EXISTING = args.translate_existing
     logging.getLogger().setLevel(getattr(logging, args.log_level))
+
+    if args.pidfile:
+        with open(args.pidfile, "w") as f:
+            f.write(str(os.getpid()))
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("XRayVision stopped by user. Shutting down.")
     finally:
+        if args.pidfile:
+            try:
+                os.remove(args.pidfile)
+            except FileNotFoundError:
+                pass
         logging.shutdown()

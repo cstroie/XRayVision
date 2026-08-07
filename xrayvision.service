@@ -1,0 +1,58 @@
+[Unit]
+Description=XRayVision DICOM relay and AI-assisted radiology analysis platform
+Documentation=file:/opt/xrayvision/CLAUDE.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Runs as a dedicated, unprivileged system account rather than a personal
+# user. One-time setup:
+#   useradd --system --home-dir /opt/xrayvision --shell /usr/sbin/nologin xrayvision
+#   git clone https://github.com/cstroie/XRayVision.git /opt/xrayvision   # or rsync/symlink an existing checkout there
+#   chown -R xrayvision:xrayvision /opt/xrayvision
+#   sudo -u xrayvision python3 -m pip install --user -r /opt/xrayvision/requirements.txt
+User=xrayvision
+Group=xrayvision
+WorkingDirectory=/opt/xrayvision
+
+# Secrets (OpenAI-compatible API key, FHIR/PACS credentials, admin
+# passwords) belong in local.cfg (chmod 600, owned by xrayvision:xrayvision,
+# NOT in git) — never inline here.
+
+# RuntimeDirectory creates /run/xrayvision (mode 0755, owned by the User=/
+# Group= above) for the duration of the service, so the pidfile lives with
+# other pidfiles under /run instead of inside the checkout.
+RuntimeDirectory=xrayvision
+ExecStart=/usr/bin/python3 /opt/xrayvision/xrayvision.py --pidfile /run/xrayvision/xrayvision.pid
+# SIGTERM triggers xrayvision.py's own graceful-shutdown handler
+# (stop_servers() via the stop_event signal handlers in main()) — no need
+# for KillSignal overrides. Give in-flight requests / DB writes a bit of
+# time before systemd escalates to SIGKILL.
+TimeoutStopSec=20
+Restart=on-failure
+RestartSec=5
+
+# systemd captures stdout/stderr itself — no need for a separate .out file.
+# Application logs still go to xrayvision.log and xrayvision_audit.log in
+# the working directory.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xrayvision
+
+# Hardening. ReadWritePaths covers the checkout (DB file, images/, backup/,
+# log files, local.cfg edits); RuntimeDirectory above handles the pidfile
+# and PrivateTmp isolates /tmp from other services.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/xrayvision
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
