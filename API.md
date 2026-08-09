@@ -1,6 +1,6 @@
 # XRayVision API Documentation
 
-This document describes the REST API for the XRayVision application, a DICOM processor with OpenAI integration.
+This document describes the REST API for the XRayVision application, a DICOM processor with LLM integration.
 
 ## Base URL
 
@@ -135,11 +135,17 @@ Every frame is a JSON object. All fields are always present; `event` is only inc
     "ignore_count":   4,
     "success_count":  37
   },
-  "openai": {
+  "llm": {
     "url": "http://192.168.3.238:1234/v1/chat/completions",
-    "health": {
-      "pri": true,
-      "sec": false
+    "backends": {
+      "primary": true,
+      "secondary": false
+    },
+    "tasks": {
+      "exam": { "backend": "primary", "model": "medgemma-1.5-4b-it" },
+      "translation": { "backend": "primary", "model": "qwen/qwen3-4b" },
+      "check": { "backend": "primary", "model": "qwen/qwen3-4b" },
+      "analysis": { "backend": "primary", "model": "qwen/qwen3-4b" }
     }
   },
   "timings": {
@@ -186,7 +192,7 @@ ws.onmessage = (msg) => {
 
     // Always update dashboard state
     updateQueueDisplay(data.dashboard);
-    updateAIHealth(data.openai);
+    updateAIHealth(data.llm);
 
     // Handle named events
     if (data.event) {
@@ -387,16 +393,24 @@ Provide severity levels and their report counts.
 **Response:** Object mapping severity level (string key `"0"`–`"10"`) to report count integer.
 
 #### GET /api/config
-Provide global configuration parameters to the frontend.
+Provide global configuration parameters to the frontend. `LLM_BACKENDS`, `NTFY_URL`, `REMOTE_AE_*` are only included for admin users.
 
 **Response:**
 ```json
 {
-  "OPENAI_URL_PRIMARY": "string",
-  "OPENAI_URL_SECONDARY": "string",
-  "NTFY_URL": "string",
+  "MODEL_NAME": "string",
+  "TASK_MODELS": {
+    "exam": "string",
+    "translation": "string",
+    "check": "string",
+    "analysis": "string"
+  },
   "AE_TITLE": "string",
   "AE_PORT": "integer",
+  "DASHBOARD_PORT": "integer",
+  "USER_ROLE": "string",
+  "LLM_BACKENDS": { "primary": "string (url)", "secondary": "string (url)" },
+  "NTFY_URL": "string",
   "REMOTE_AE_TITLE": "string",
   "REMOTE_AE_IP": "string",
   "REMOTE_AE_PORT": "integer"

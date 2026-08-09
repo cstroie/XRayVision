@@ -11,8 +11,8 @@ interrogation is justified.
 If it says no even when asked directly -> capability ceiling on this
 model, no prompt wording fixes it.
 
-Read-only: uses only prepare_exam_data/prepare_ai_request_data/send_to_openai
-(bare HTTP call), never send_exam_to_openai/check_ai_report_and_update.
+Read-only: uses only prepare_exam_data/prepare_ai_request_data/send_to_llm
+(bare HTTP call), never send_exam_to_llm/check_ai_report_and_update.
 """
 import asyncio
 import json
@@ -23,8 +23,9 @@ import aiohttp
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from xrayvision import db_get_exams, prepare_exam_data, prepare_ai_request_data, send_to_openai, USER_AGENT
-from prompt_lab import probe_active_openai_url
+import xrayvision
+from xrayvision import db_get_exams, prepare_exam_data, prepare_ai_request_data, send_to_llm, USER_AGENT
+from prompt_lab import probe_active_llm_backend
 
 # uid suffix -> targeted yes/no question, derived from mismatches_chest_fn.json rad_text_en.
 # Resolved to full uids at runtime against mismatches_chest_fn.json so a
@@ -71,9 +72,10 @@ async def probe_one(session, uid, question):
     # message, unchanged -- only the user-turn task is replaced with a
     # direct pathology-specific question instead of "write a report".
     user_prompt = f"{question} Answer yes or no first, then briefly describe what you see."
-    headers, payload = prepare_ai_request_data(user_prompt, image_bytes)
+    exam_backend = xrayvision.TASK_ACTIVE['exam']
+    headers, payload = prepare_ai_request_data(user_prompt, image_bytes, exam_backend['model'], exam_backend['api_key'])
 
-    resp = await send_to_openai(session, headers, payload)
+    resp = await send_to_llm(session, headers, payload, url=exam_backend['url'])
     if not resp:
         return {"uid": uid, "error": "no response"}
     try:
@@ -84,7 +86,7 @@ async def probe_one(session, uid, question):
 
 
 async def main():
-    active = await probe_active_openai_url()
+    active = await probe_active_llm_backend()
     if not active:
         print("No active AI endpoint reachable", file=sys.stderr)
         sys.exit(1)

@@ -13,12 +13,12 @@ The entire backend lives in a **single file**: `xrayvision.py` (~6600 lines). Do
 ```
 DICOM server (pynetdicom)
     └─ C-STORE handler → dicom_store()
-         └─ QUEUE_EVENT → relay_to_openai_loop()
-              └─ send_exam_to_openai()
+         └─ QUEUE_EVENT → relay_to_llm_loop()
+              └─ send_exam_to_llm()
                    ├─ update_patient_info_from_fhir()  ← FHIR integration
                    ├─ prepare_exam_data()               ← region/projection/gender
                    ├─ create_exam_prompt()              ← prompt assembly
-                   └─ send_to_openai()                  ← HTTP to AI API
+                   └─ send_to_llm()                     ← HTTP to LLM server
 
 query_retrieve_loop()    ← periodic C-FIND + C-MOVE/C-GET from PACS
 fhir_loop()             ← polls FHIR for radiologist reports on processed exams
@@ -64,11 +64,14 @@ Example: `2026-01-10 10:26:37,940 |    ERROR | Failed to parse AI translation re
 - Schema changes require updating both the `CREATE TABLE` in `db_init()` and any relevant helper queries throughout the file.
 
 ### AI integration
-- Two endpoints: `OPENAI_URL_PRIMARY` and `OPENAI_URL_SECONDARY` (failover).
-- `active_openai_url` is set by `openai_health_check()` running every 60 s.
-- All AI calls go through `send_to_openai(session, headers, payload)`.
-- `send_exam_to_openai()` implements exponential backoff (3 retries, 2 s / 4 s / 8 s delays).
+- LLM backends are configured as an arbitrary, ordered list: `[llm] backends = primary, secondary, ...` names matching `[llm:<name>]` sections, each with its own `url`, optional `api_key`, and a model per task (`exam`, `translation`, `check`, `analysis`). A task left blank in a backend section falls back to that same backend's `exam` model. Loaded into `LLM_BACKEND_NAMES` / `LLM_BACKENDS` at startup.
+- `llm_health_check()` runs every 300 s, probes `<backend>/v1/models` for each backend (reachability into `health_status[name]`, parsed model-id set into `available_models[name]`), then calls `resolve_task_backend(task)` for each of the 4 tasks to pick the highest-priority backend that is reachable **and** has that task's model — result stored per-task in `TASK_ACTIVE[task] = {'backend', 'url', 'model', 'api_key'}`. If a backend doesn't return a parseable model list, it's treated permissively (not gated on model presence) to avoid breaking servers without `/v1/models` support.
+- `active_llm_url` is kept as a back-compat alias for `TASK_ACTIVE['exam']['url']` — it's what gates `relay_to_llm_loop`, the startup wait loop, and the coarse "AI reachable" check in `check_rad_report_and_update()`.
+- Each AI-calling function (`send_exam_to_llm`/`prepare_ai_request_data`, `translate_report`, `check_report`, `detailed_analysis_report`) reads its own task's entry from `TASK_ACTIVE` for the model, backend URL, and API key — never a single global model/URL. `build_ai_headers(api_key)` omits the `Authorization` header entirely when a backend's `api_key` is blank.
+- All AI calls go through `send_to_llm(session, headers, payload, url=...)`.
+- `send_exam_to_llm()` implements exponential backoff (3 retries, 2 s / 4 s / 8 s delays).
 - AI responses are expected as JSON with specific keys; parsing failures are logged at ERROR level (see `TODO` for known edge cases with MedGemma returning plain text).
+- **Different backends may use different model-id strings for the same model** (e.g. `qwen3-4b` on llama.cpp vs `qwen/qwen3-4b` on LM Studio) — this is exactly why models are configured per-backend rather than once globally; never assume a model id is portable across backends.
 
 ### Prompt system
 - Prompts live in `prompts/` as `.txt` files, loaded at startup by `load_prompts()` into the `PROMPTS` dict.
@@ -156,7 +159,7 @@ When fixing issues from `issues.txt`:
 - **`GROUP_CONCAT` separator**: default separator `,` breaks `.split()` when values contain commas. Use `'||'` as separator and split on `'||'`.
 - **Config delimiter for multi-item values with commas**: `[templates]` uses `|` as separator because items contain commas inside parentheses. Apply the same pattern for any future config list whose items may contain commas.
 - **Blocking calls in async functions**: `process_dicom_file()` (PIL conversion) and file reads in `prepare_exam_data()` must run via `asyncio.to_thread()` — calling them directly blocks the event loop and makes the web server unreachable during DICOM ingestion.
-- **Translation before AI is ready**: `translate_existing_reports()` polls `active_openai_url` (30 s interval) before querying the DB. Inline translation in `get_rad_report()` returns `False` immediately if the URL is not set, letting `fhir_loop` retry. Never call `translate_report()` when `active_openai_url is None`.
+- **Translation before AI is ready**: `translate_existing_reports()` polls `active_llm_url` (30 s interval) before querying the DB. Inline translation in `get_rad_report()` returns `False` immediately if the URL is not set, letting `fhir_loop` retry. Never call `translate_report()` when `active_llm_url is None`.
 - **`SUM(CASE …)` returns NULL** (not 0) when no rows match — always guard with `or 0` in Python after fetching.
 - **`HAVING` with column aliases**: SQLite does not allow `HAVING alias > N`. Use `HAVING COUNT(*) > N` or repeat the expression.
 - **`isCorrect === null` vs `=== false`** in JS: `null` means not reviewed, `false` means wrong. Never use `!isCorrect` to mean "incorrect" — it catches both.

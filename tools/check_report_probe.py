@@ -54,9 +54,10 @@ import aiohttp
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import xrayvision
-from xrayvision import check_report, OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY, USER_AGENT
+from xrayvision import check_report, USER_AGENT
+from prompt_lab import probe_active_llm_backend
 
-_FORBIDDEN_NAMES = ('send_exam_to_openai', 'check_ai_report_and_update', 'check_rad_report_and_update',
+_FORBIDDEN_NAMES = ('send_exam_to_llm', 'check_ai_report_and_update', 'check_rad_report_and_update',
                      'db_insert', 'db_update', 'db_execute_query_retry')
 for _name in _FORBIDDEN_NAMES:
     assert _name not in globals(), f"check_report_probe.py must never import {_name} -- it writes to the DB"
@@ -125,32 +126,9 @@ def load_texts(args):
     return texts
 
 
-async def probe_active_openai_url(override_url=None):
-    """Must be awaited from within an already-running event loop (main_async
-    runs under asyncio.run()) -- do not try to spin up a nested loop here."""
-    if override_url:
-        xrayvision.active_openai_url = override_url
-        return override_url
-
-    for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
-        base_url = url.split('/v1/')[0] if '/v1/' in url else url.rstrip('/')
-        models_url = f"{base_url}/v1/models"
-        try:
-            async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
-                async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                    if resp.status == 200:
-                        xrayvision.active_openai_url = url
-                        return url
-        except Exception:
-            continue
-
-    xrayvision.active_openai_url = None
-    return None
-
-
 async def fetch_served_models(active_url):
     """Best-effort GET {base}/v1/models, for reporting exactly what backend
-    is behind active_openai_url -- purely informational, never raises."""
+    is behind the resolved 'check' task URL -- purely informational, never raises."""
     base_url = active_url.split('/v1/')[0] if '/v1/' in active_url else active_url.rstrip('/')
     try:
         async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
@@ -200,15 +178,15 @@ async def main_async(args):
     baseline_prompts = dict(xrayvision.PROMPTS)
 
     if not args.dry_run:
-        active = await probe_active_openai_url(args.openai_url)
+        active = await probe_active_llm_backend(args.llm_url)
         if not active:
-            print("No healthy OpenAI-compatible endpoint found.", file=sys.stderr)
+            print("No healthy LLM backend found.", file=sys.stderr)
             return 1
-        print(f"Using AI endpoint: {active}", file=sys.stderr)
+        check_model = xrayvision.TASK_ACTIVE['check']['model']
+        print(f"Using AI endpoint: {active} (check model={check_model})", file=sys.stderr)
         served_models = await fetch_served_models(active)
         if served_models:
-            print(f"Models served at this endpoint: {served_models}  (configured MODEL_NAME={xrayvision.MODEL_NAME})",
-                  file=sys.stderr)
+            print(f"Models served at this endpoint: {served_models}", file=sys.stderr)
 
     out_f = open(args.output, 'a', encoding='utf-8') if (args.output and not args.dry_run) else None
     all_rows = []
@@ -265,7 +243,7 @@ def main():
                               "(default: text, then rad_text, then ai_text, first non-empty wins)")
     parser.add_argument('--samples', type=int, default=5)
     parser.add_argument('--output', default=None, help="JSONL output path")
-    parser.add_argument('--openai-url', default=None)
+    parser.add_argument('--llm-url', default=None, help="Override the LLM endpoint URL (skips backend probing)")
     parser.add_argument('--dry-run', action='store_true', help="Print assembled CHK_PROMPT, skip the HTTP call")
     args = parser.parse_args()
 

@@ -15,10 +15,10 @@ generated report with the same chk_prompt classification step used in
 production. Used to A/B candidate prompts against the live MedGemma endpoint
 before promoting them into prompts/*.txt.
 
-SAFETY: this script must NEVER call xrayvision.send_exam_to_openai() or
+SAFETY: this script must NEVER call xrayvision.send_exam_to_llm() or
 xrayvision.check_ai_report_and_update() -- both write to the production
 database. It only uses the side-effect-free primitives: db_get_exams (read),
-prepare_exam_data, create_exam_prompt, prepare_ai_request_data, send_to_openai
+prepare_exam_data, create_exam_prompt, prepare_ai_request_data, send_to_llm
 (a bare HTTP call), parse_ai_report_text, and check_report (returns a dict,
 does not touch the DB).
 
@@ -53,13 +53,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import xrayvision
 from xrayvision import (
     db_get_exams, prepare_exam_data, create_exam_prompt, prepare_ai_request_data,
-    send_to_openai, parse_ai_report_text, check_report,
-    OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY, USER_AGENT,
+    send_to_llm, parse_ai_report_text, check_report, USER_AGENT,
 )
 
 # Safety guard: fail loudly if this script is ever edited to import the
 # DB-writing functions it must not call.
-_FORBIDDEN_NAMES = ('send_exam_to_openai', 'check_ai_report_and_update')
+_FORBIDDEN_NAMES = ('send_exam_to_llm', 'check_ai_report_and_update')
 for _name in _FORBIDDEN_NAMES:
     assert _name not in globals(), (
         f"prompt_lab.py must never import {_name} -- it writes to the production DB"
@@ -135,29 +134,48 @@ def load_uids(args):
     return result
 
 
-async def probe_active_openai_url(override_url=None):
-    """One-shot mirror of openai_health_check()'s body -- picks a working
-    endpoint without starting the background loop (which never runs here).
-    Must be awaited from within an already-running event loop (main_async
-    runs under asyncio.run()) -- do not try to spin up a nested loop here."""
+async def probe_active_llm_backend(override_url=None):
+    """One-shot mirror of llm_health_check()'s body -- resolves every task
+    (exam, translation, check, analysis) to a backend/model without starting
+    the background loop (which never runs here). Must be awaited from within
+    an already-running event loop (main_async runs under asyncio.run()) --
+    do not try to spin up a nested loop here. Returns the 'exam' task's
+    resolved URL, or None if no backend serves it."""
     if override_url:
-        xrayvision.active_openai_url = override_url
+        default_backend = xrayvision.LLM_BACKENDS[xrayvision.LLM_BACKEND_NAMES[0]]
+        for task in xrayvision.TASK_ACTIVE:
+            xrayvision.TASK_ACTIVE[task] = {
+                'backend': None, 'url': override_url,
+                'model': default_backend['models'][task], 'api_key': default_backend['api_key'],
+            }
+        xrayvision.active_llm_url = override_url
         return override_url
 
-    for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
-        base_url = url.split('/v1/')[0] if '/v1/' in url else url.rstrip('/')
+    for name in xrayvision.LLM_BACKEND_NAMES:
+        backend_url = xrayvision.LLM_BACKENDS[name]['url']
+        base_url = backend_url.split('/v1/')[0] if '/v1/' in backend_url else backend_url.rstrip('/')
         models_url = f"{base_url}/v1/models"
         try:
             async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
                 async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    xrayvision.health_status[name] = (resp.status == 200)
                     if resp.status == 200:
-                        xrayvision.active_openai_url = url
-                        return url
+                        try:
+                            body = await resp.json()
+                            xrayvision.available_models[name] = {m.get('id') for m in body.get('data', []) if isinstance(m, dict) and m.get('id')}
+                        except Exception:
+                            xrayvision.available_models[name] = None
+                    else:
+                        xrayvision.available_models[name] = None
         except Exception:
-            continue
+            xrayvision.health_status[name] = False
+            xrayvision.available_models[name] = None
 
-    xrayvision.active_openai_url = None
-    return None
+    for task in xrayvision.TASK_ACTIVE:
+        name, url, model, api_key = xrayvision.resolve_task_backend(task)
+        xrayvision.TASK_ACTIVE[task] = {'backend': name, 'url': url, 'model': model, 'api_key': api_key}
+    xrayvision.active_llm_url = xrayvision.TASK_ACTIVE['exam']['url']
+    return xrayvision.TASK_ACTIVE['exam']['url']
 
 
 def load_completed_keys(output_path):
@@ -184,7 +202,8 @@ async def run_one_sample(exam, region, question, subject, anatomy, image_bytes,
     """Run one vision + check pass (optionally + review pass) for the
     currently-applied PROMPTS. Returns a result dict, never writes to the DB."""
     prompt = create_exam_prompt(exam, region, question, subject, anatomy)
-    headers, data = prepare_ai_request_data(prompt, image_bytes)
+    exam_backend = xrayvision.TASK_ACTIVE['exam']
+    headers, data = prepare_ai_request_data(prompt, image_bytes, exam_backend['model'], exam_backend['api_key'])
 
     result_row = {
         'raw_response': None, 'findings': None, 'impression': None,
@@ -198,7 +217,7 @@ async def run_one_sample(exam, region, question, subject, anatomy, image_bytes,
         api_result = None
         t0 = time.monotonic()
         while attempt <= max_retries:
-            api_result = await send_to_openai(session, headers, data)
+            api_result = await send_to_llm(session, headers, data, url=exam_backend['url'])
             if api_result:
                 break
             await asyncio.sleep(2 ** attempt)
@@ -233,7 +252,7 @@ async def run_one_sample(exam, region, question, subject, anatomy, image_bytes,
         if do_review:
             data['messages'].append({'role': 'assistant', 'content': report_text})
             data['messages'].append({'role': 'user', 'content': xrayvision.PROMPTS['REV_PROMPT'].strip()})
-            review_result = await send_to_openai(session, headers, data)
+            review_result = await send_to_llm(session, headers, data, url=exam_backend['url'])
             if review_result:
                 try:
                     review_text = review_result["choices"][0]["message"]["content"].strip()
@@ -263,9 +282,9 @@ async def main_async(args):
     baseline_prompts = dict(xrayvision.PROMPTS)  # pristine copy, captured once at startup
 
     if not args.dry_run:
-        active = await probe_active_openai_url(args.openai_url)
+        active = await probe_active_llm_backend(args.llm_url)
         if not active:
-            print("No healthy OpenAI-compatible endpoint found (PRIMARY/SECONDARY both failed).",
+            print("No healthy LLM backend found for the 'exam' task (all configured backends failed).",
                   file=sys.stderr)
             return 1
         print(f"Using AI endpoint: {active}", file=sys.stderr)
@@ -355,7 +374,7 @@ def main():
     parser.add_argument('--review', action='store_true',
                          help="Also run the rev_prompt self-review second turn")
     parser.add_argument('--sleep', type=float, default=0.0)
-    parser.add_argument('--openai-url', default=None)
+    parser.add_argument('--llm-url', default=None, help="Override the LLM endpoint URL (skips backend probing)")
     parser.add_argument('--max-retries', type=int, default=3)
     parser.add_argument('--dry-run', action='store_true',
                          help="Print assembled prompts, skip the HTTP call entirely")

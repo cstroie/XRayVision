@@ -18,8 +18,8 @@ Usage:
     python tools/checklist_probe.py --model medgemma-4b-it
     python tools/checklist_probe.py --model medgemma-1.5-4b-it
 
-Read-only: only prepare_exam_data/prepare_ai_request_data/send_to_openai
-(bare HTTP call), never send_exam_to_openai/check_ai_report_and_update.
+Read-only: only prepare_exam_data/prepare_ai_request_data/send_to_llm
+(bare HTTP call), never send_exam_to_llm/check_ai_report_and_update.
 """
 import argparse
 import asyncio
@@ -33,8 +33,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import xrayvision
-from xrayvision import db_get_exams, prepare_exam_data, prepare_ai_request_data, send_to_openai, USER_AGENT
-from prompt_lab import probe_active_openai_url
+from xrayvision import db_get_exams, prepare_exam_data, prepare_ai_request_data, send_to_llm, USER_AGENT
+from prompt_lab import probe_active_llm_backend
 from targeted_probe import CASES  # same 9 uids as the ground-truth-informed probe
 
 CHECKLIST_PROMPT = """For EACH of the following categories, state "present" or "absent" based only on this image, one line per category, in this exact format "Category: present/absent - brief note":
@@ -63,8 +63,9 @@ async def probe_one(session, uid):
     if region is None:
         return {"uid": uid, "error": "region not supported"}
 
-    headers, payload = prepare_ai_request_data(CHECKLIST_PROMPT, image_bytes)
-    resp = await send_to_openai(session, headers, payload)
+    exam_backend = xrayvision.TASK_ACTIVE['exam']
+    headers, payload = prepare_ai_request_data(CHECKLIST_PROMPT, image_bytes, exam_backend['model'], exam_backend['api_key'])
+    resp = await send_to_llm(session, headers, payload, url=exam_backend['url'])
     if not resp:
         return {"uid": uid, "error": "no response"}
     try:
@@ -80,10 +81,12 @@ async def main():
     parser.add_argument('--output', default=None, help="Output jsonl path (default: checklist_probe_<model>.jsonl)")
     args = parser.parse_args()
 
+    default_backend = xrayvision.LLM_BACKENDS[xrayvision.LLM_BACKEND_NAMES[0]]
+    default_backend['models']['exam'] = args.model
     xrayvision.MODEL_NAME = args.model
     output = args.output or f"checklist_probe_{args.model.replace('/', '_')}.jsonl"
 
-    active = await probe_active_openai_url()
+    active = await probe_active_llm_backend()
     if not active:
         print("No active AI endpoint reachable", file=sys.stderr)
         sys.exit(1)

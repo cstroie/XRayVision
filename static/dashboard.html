@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html data-theme="dark" lang="en">
 <!--
-  XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+  XRayVision - Async DICOM processor with LLM and WebSocket dashboard.
   Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
 
   This program is free software: you can redistribute it and/or modify
@@ -201,7 +201,7 @@
         <hr>
         <div class="grid">
             <div>
-                <strong>OpenAI backend</strong> <span id="openai-backend"><i aria-busy="true"></i></span>
+                <strong>LLM backend</strong> <span id="llm-backend"><i aria-busy="true"></i></span>
             </div>
             <div>
                 <strong>Examination timing</strong> <span id="examination-timings"><i aria-busy="true"></i></span>
@@ -319,10 +319,12 @@
                     document.getElementById('check_queue').textContent = data.dashboard.check_queue_size || 0;
                     updatePageTitle();
                 }
-                if (data.openai !== undefined) {
-                    const oaiPri = data.openai.health.pri ? "<ins>primary</ins>" : "<del>primary</del>";
-                    const oaiSec = data.openai.health.sec ? "<ins>secondary</ins>" : "<del>secondary</del>";
-                    document.getElementById("openai-backend").innerHTML = `${oaiPri}&nbsp;${oaiSec}`;
+                if (data.llm !== undefined) {
+                    const badges = Object.entries(data.llm.backends || {}).map(([name, reachable]) => {
+                        const tag = reachable ? "ins" : "del";
+                        return `<${tag}>${sanitize(name)}</${tag}>`;
+                    });
+                    document.getElementById("llm-backend").innerHTML = badges.join("&nbsp;") || "<del>none configured</del>";
                 }
                 if (data.timings !== undefined) {
                     document.getElementById("examination-timings").textContent = `${data.timings.examination/1000} s`;

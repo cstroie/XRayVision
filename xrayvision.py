@@ -86,11 +86,24 @@ DEFAULT_CONFIG = {
         'REMOTE_AE_PORT': '104',
         'RETRIEVAL_METHOD': 'C-MOVE'
     },
-    'openai': {
-        'OPENAI_URL_PRIMARY': 'http://127.0.0.1:8080/v1/chat/completions',
-        'OPENAI_URL_SECONDARY': 'http://127.0.0.1:11434/v1/chat/completions',
-        'OPENAI_API_KEY': 'sk-your-api-key',
-        'MODEL_NAME': 'medgemma-4b-it'
+    'llm': {
+        'backends': 'primary, secondary'
+    },
+    'llm:primary': {
+        'url': 'http://127.0.0.1:8080/v1/chat/completions',
+        'api_key': 'sk-your-api-key',
+        'exam': 'medgemma-4b-it',
+        'translation': '',
+        'check': '',
+        'analysis': ''
+    },
+    'llm:secondary': {
+        'url': 'http://127.0.0.1:11434/v1/chat/completions',
+        'api_key': 'sk-your-api-key',
+        'exam': 'medgemma-4b-it',
+        'translation': '',
+        'check': '',
+        'analysis': ''
     },
     'dashboard': {
         'DASHBOARD_PORT': '8000'
@@ -200,9 +213,6 @@ if 'users' in config:
         except ValueError:
             logging.error(f"Malformed user entry '{user}' in config — expected 'password,role'")
 
-OPENAI_URL_PRIMARY = config.get('openai', 'OPENAI_URL_PRIMARY')
-OPENAI_URL_SECONDARY = config.get('openai', 'OPENAI_URL_SECONDARY')
-OPENAI_API_KEY = config.get('openai', 'OPENAI_API_KEY')
 NTFY_URL = config.get('notifications', 'NTFY_URL')
 NTFY_IMAGE_BASE_URL = config.get('notifications', 'NTFY_IMAGE_BASE_URL')
 IMAGES_DIR = 'images'
@@ -210,7 +220,44 @@ STATIC_DIR = 'static'
 DB_FILE = config.get('general', 'XRAYVISION_DB_PATH')
 BACKUP_DIR = config.get('general', 'XRAYVISION_BACKUP_DIR')
 BACKUP_MAX_FILES = config.getint('general', 'BACKUP_MAX_FILES', fallback=30)
-MODEL_NAME = config.get('openai', 'MODEL_NAME')
+
+# LLM backends: [llm] backends = name1, name2, ... lists backend section names
+# in priority order; each [llm:<name>] section defines its own url/api_key
+# and a model per task ('exam' is required, others fall back to it).
+_LLM_TASKS = ('translation', 'check', 'analysis')
+
+def _load_llm_backends():
+    names = [b.strip() for b in config.get('llm', 'backends', fallback='').split(',') if b.strip()]
+    backends = {}
+    for name in names:
+        section = f'llm:{name}'
+        try:
+            url = config.get(section, 'url')
+        except (configparser.NoSectionError, configparser.NoOptionError) as e:
+            logging.error(f"LLM backend '{name}' is listed in [llm] backends but misconfigured: {e}")
+            raise SystemExit(1)
+        api_key = config.get(section, 'api_key', fallback='').strip()
+        exam_model = config.get(section, 'exam', fallback='').strip()
+        if not exam_model:
+            logging.error(f"LLM backend '{name}' ([{section}]) has no 'exam' model configured")
+            raise SystemExit(1)
+        models = {'exam': exam_model}
+        fallback_tasks = []
+        for task in _LLM_TASKS:
+            val = config.get(section, task, fallback='').strip()
+            if val:
+                models[task] = val
+            else:
+                models[task] = exam_model
+                fallback_tasks.append(task)
+        backends[name] = {'url': url, 'api_key': api_key, 'models': models, '_fallback_tasks': fallback_tasks}
+    return names, backends
+
+LLM_BACKEND_NAMES, LLM_BACKENDS = _load_llm_backends()
+if not LLM_BACKEND_NAMES:
+    logging.error("No LLM backends configured — set [llm] backends = <name1>, <name2>, ...")
+    raise SystemExit(1)
+MODEL_NAME = LLM_BACKENDS[LLM_BACKEND_NAMES[0]]['models']['exam']  # default/display model — first backend's exam model
 AE_TITLE = config.get('dicom', 'AE_TITLE')
 REMOTE_AE_TITLE = config.get('dicom', 'REMOTE_AE_TITLE')
 REMOTE_AE_IP = config.get('dicom', 'REMOTE_AE_IP')
@@ -267,12 +314,11 @@ next_query = None
 dicom_server = None
 web_server = None
 
-active_openai_url = None  # Currently active AI API endpoint; None until health check passes
-health_status = {
-    OPENAI_URL_PRIMARY: False,
-    OPENAI_URL_SECONDARY: False,
-    FHIR_URL: False
-}
+active_llm_url = None  # Currently active AI API endpoint for the 'exam' task; None until health check passes
+health_status = {name: False for name in LLM_BACKEND_NAMES}
+health_status[FHIR_URL] = False
+available_models = {name: None for name in LLM_BACKEND_NAMES}  # None = unknown (backend didn't report a usable list); set() = known, possibly empty
+TASK_ACTIVE = {task: {'backend': None, 'url': None, 'model': None, 'api_key': None} for task in ('exam',) + _LLM_TASKS}
 timings = {
     'examination': 0,
     'translation': 0,
@@ -2629,13 +2675,15 @@ async def check_report(report_text):
             SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
             logging.debug(f"Added acronym list to check prompt:\n{acronym_list}")
 
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
+        check_backend = TASK_ACTIVE['check']
+        if not check_backend['url']:
+            logging.error("No active AI backend for 'check' task")
+            return {'error': 'Failed to get response from AI'}
+
+        headers = build_ai_headers(check_backend['api_key'])
 
         payload = {
-            "model": MODEL_NAME,
+            "model": check_backend['model'],
             "timings_per_token": True,
             "cache_prompt": True,
             "stream": False,
@@ -2654,11 +2702,11 @@ async def check_report(report_text):
             ]
         }
 
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME}")
+        logging.debug(f"Sending report to AI API with model: {check_backend['model']}")
 
         start_time = asyncio.get_running_loop().time()
         async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
-            result = await send_to_openai(session, headers, payload)
+            result = await send_to_llm(session, headers, payload, url=check_backend['url'])
             global timings
             end_time = asyncio.get_running_loop().time()
             processing_time = int((end_time - start_time) * 1000)
@@ -2785,13 +2833,15 @@ async def translate_report(report_text):
             SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
             logging.debug(f"Added acronym list to translation prompt:\n{acronym_list}")
 
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
+        translation_backend = TASK_ACTIVE['translation']
+        if not translation_backend['url']:
+            logging.error("No active AI backend for 'translation' task")
+            return None
+
+        headers = build_ai_headers(translation_backend['api_key'])
 
         payload = {
-            "model": MODEL_NAME,
+            "model": translation_backend['model'],
             "timings_per_token": True,
             "cache_prompt": True,
             "stream": False,
@@ -2810,11 +2860,11 @@ async def translate_report(report_text):
             ]
         }
 
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for translation")
+        logging.debug(f"Sending report to AI API with model: {translation_backend['model']} for translation")
 
         start_time = asyncio.get_running_loop().time()
         async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
-            result = await send_to_openai(session, headers, payload)
+            result = await send_to_llm(session, headers, payload, url=translation_backend['url'])
             global timings
             end_time = asyncio.get_running_loop().time()
             processing_time = int((end_time - start_time) * 1000)
@@ -2909,7 +2959,7 @@ async def check_rad_report_and_update(uid):
 
         report_text = rad_report['text']
 
-        if not active_openai_url:
+        if not active_llm_url:
             logging.debug(f"Skipping translation for exam {uid}: AI service not reachable")
             return False
         logging.info(f"Translating radiologist report for exam {uid}")
@@ -2950,7 +3000,7 @@ async def check_rad_report_and_update(uid):
             'positive': positive,
             'severity': severity,
             'summary': summary,
-            'model': MODEL_NAME,
+            'model': TASK_ACTIVE['check']['model'],
             'latency': int(processing_time)
         }
         if translation:
@@ -2986,13 +3036,15 @@ async def detailed_analysis_report(report_text):
             SYSTEM_PROMPT += f"\n\nMEDICAL ACRONYMS\n{acronym_list}"
             logging.debug(f"Added acronym list to detailed analysis prompt:\n{acronym_list}")
 
-        headers = {
-            'Authorization': f'Bearer {OPENAI_API_KEY}',
-            'Content-Type': 'application/json',
-        }
+        analysis_backend = TASK_ACTIVE['analysis']
+        if not analysis_backend['url']:
+            logging.error("No active AI backend for 'analysis' task")
+            return {'error': 'Failed to get response from AI'}
+
+        headers = build_ai_headers(analysis_backend['api_key'])
 
         payload = {
-            "model": MODEL_NAME,
+            "model": analysis_backend['model'],
             "timings_per_token": True,
             "cache_prompt": True,
             "stream": False,
@@ -3011,11 +3063,11 @@ async def detailed_analysis_report(report_text):
             ]
         }
 
-        logging.debug(f"Sending report to AI API with model: {MODEL_NAME} for detailed analysis")
+        logging.debug(f"Sending report to AI API with model: {analysis_backend['model']} for detailed analysis")
 
         start_time = asyncio.get_running_loop().time()
         async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
-            result = await send_to_openai(session, headers, payload)
+            result = await send_to_llm(session, headers, payload, url=analysis_backend['url'])
             global timings
             end_time = asyncio.get_running_loop().time()
             processing_time = int((end_time - start_time) * 1000)
@@ -3060,18 +3112,26 @@ async def detailed_analysis_report(report_text):
         return {'error': 'Internal server error'}
 
 
-async def send_to_openai(session, headers, payload):
-    if not active_openai_url:
+def build_ai_headers(api_key):
+    headers = {'Content-Type': 'application/json'}
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+    return headers
+
+
+async def send_to_llm(session, headers, payload, url=None):
+    target_url = url or active_llm_url
+    if not target_url:
         logging.error("No active AI URL configured")
         return None
-        
+
     try:
-        async with session.post(active_openai_url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as resp:
+        async with session.post(target_url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=300)) as resp:
             if resp.status == 200:
                 return await resp.json()
-            logging.warning(f"{active_openai_url} failed with status {resp.status}")
+            logging.warning(f"{target_url} failed with status {resp.status}")
     except Exception as e:
-        logging.error(f"{active_openai_url} request error: {e}")
+        logging.error(f"{target_url} request error: {e}")
     return None
 
 
@@ -3186,15 +3246,12 @@ def create_exam_prompt(exam, region, question, subject, anatomy):
 
     return "\n".join(prompt_lines)
 
-def prepare_ai_request_data(prompt, image_bytes):
+def prepare_ai_request_data(prompt, image_bytes, model, api_key):
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
     image_url = f"data:image/png;base64,{image_b64}"
-    headers = {
-        'Authorization': f'Bearer {OPENAI_API_KEY}',
-        'Content-Type': 'application/json',
-    }
+    headers = build_ai_headers(api_key)
     data = {
-        "model": MODEL_NAME,
+        "model": model,
         "timings_per_token": True,
         "min_p": 0.05,
         "top_k": 40,
@@ -3248,7 +3305,7 @@ def parse_ai_report_text(report_text, impression_max_words=3):
     return findings, impression
 
 
-async def send_exam_to_openai(exam, max_retries = 3):
+async def send_exam_to_llm(exam, max_retries = 3):
     try:
         await update_patient_info_from_fhir(exam)
 
@@ -3279,7 +3336,8 @@ async def send_exam_to_openai(exam, max_retries = 3):
         logging.debug(f"Prompt: {prompt}")
         logging.info(f"Processing {exam['uid']} with {region} x-ray.")
 
-        headers, data = prepare_ai_request_data(prompt, image_bytes)
+        exam_backend = TASK_ACTIVE['exam']
+        headers, data = prepare_ai_request_data(prompt, image_bytes, exam_backend['model'], exam_backend['api_key'])
 
         # Up to 3 attempts with exponential backoff (2s, 4s, 8s delays).
         attempt = 1
@@ -3287,7 +3345,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
             while attempt <= max_retries:
                 try:
                     start_time = asyncio.get_running_loop().time()
-                    result = await send_to_openai(session, headers, data)
+                    result = await send_to_llm(session, headers, data, url=exam_backend['url'])
 
                     global timings
                     end_time = asyncio.get_running_loop().time()
@@ -3300,7 +3358,7 @@ async def send_exam_to_openai(exam, max_retries = 3):
                     if not result:
                         break
                     response_text = result["choices"][0]["message"]["content"]
-                    response_model = result.get("model", MODEL_NAME)
+                    response_model = result.get("model", exam_backend['model'])
                     
                     # Process AI response - extract report text
                     report = response_text.strip()
@@ -3562,6 +3620,7 @@ async def config_handler(request):
         user_role = getattr(request, 'user_role', 'user')
         config = {
             "MODEL_NAME": MODEL_NAME,
+            "TASK_MODELS": {task: backend['model'] for task, backend in TASK_ACTIVE.items()},
             "AE_TITLE": AE_TITLE,
             "AE_PORT": AE_PORT,
             "DASHBOARD_PORT": DASHBOARD_PORT,
@@ -3570,8 +3629,7 @@ async def config_handler(request):
         # Infrastructure addresses only exposed to admins
         if user_role == 'admin':
             config.update({
-                "OPENAI_URL_PRIMARY": OPENAI_URL_PRIMARY,
-                "OPENAI_URL_SECONDARY": OPENAI_URL_SECONDARY,
+                "LLM_BACKENDS": {name: LLM_BACKENDS[name]['url'] for name in LLM_BACKEND_NAMES},
                 "NTFY_URL": NTFY_URL,
                 "REMOTE_AE_TITLE": REMOTE_AE_TITLE,
                 "REMOTE_AE_IP": REMOTE_AE_IP,
@@ -3806,11 +3864,9 @@ async def broadcast_dashboard_update(event = None, payload = None, client = None
     if event:
         data['event'] = {'name': event, 'payload': payload}
     data['dashboard'] = dashboard
-    data['openai'] = {'url': active_openai_url,
-                      'health': {
-                        'pri': health_status.get(OPENAI_URL_PRIMARY,  False),
-                        'sec': health_status.get(OPENAI_URL_SECONDARY, False)
-                       }
+    data['llm'] = {'url': active_llm_url,
+                      'backends': {name: health_status.get(name, False) for name in LLM_BACKEND_NAMES},
+                      'tasks': {task: {'backend': backend['backend'], 'model': backend['model']} for task, backend in TASK_ACTIVE.items()}
                      }
     data['timings'] = timings
     if NO_QUERY:
@@ -4373,15 +4429,15 @@ async def start_dashboard():
 
 # Background loops
 
-async def relay_to_openai_loop():
+async def relay_to_llm_loop():
     while True:
         try:
             exams, total = db_get_exams(limit=1, status=['queued', 'requeue', 'check'])
         except Exception as e:
-            logging.error(f"relay_to_openai_loop: failed to query queue: {e}")
+            logging.error(f"relay_to_llm_loop: failed to query queue: {e}")
             await asyncio.sleep(5)
             continue
-        if not exams or active_openai_url is None:
+        if not exams or active_llm_url is None:
             QUEUE_EVENT.clear()
             await QUEUE_EVENT.wait()
             continue
@@ -4395,7 +4451,7 @@ async def relay_to_openai_loop():
 
             exam_status = exam['exam']['status']
             if exam_status in ['queued', 'requeue']:
-                result = await send_exam_to_openai(exam)
+                result = await send_exam_to_llm(exam)
                 if result:
                     db_set_status(exam['uid'], "done")
                     if not KEEP_DICOM:
@@ -4427,31 +4483,62 @@ async def relay_to_openai_loop():
             await broadcast_dashboard_update()
 
 
-async def openai_health_check():
-    global active_openai_url
+def resolve_task_backend(task):
+    """Pick the highest-priority healthy backend that serves this task's model.
+
+    Each backend's per-task model already falls back to that same backend's
+    'exam' model at config-load time (see _load_llm_backends), so no
+    cross-backend fallback is needed here — just walk the priority list.
+    """
+    for name in LLM_BACKEND_NAMES:
+        if not health_status.get(name):
+            continue
+        backend = LLM_BACKENDS[name]
+        model = backend['models'][task]
+        models = available_models.get(name)
+        if models is None or model in models:  # unknown list => permissive, don't break existing setups
+            return name, backend['url'], model, backend['api_key']
+    return None, None, None, None
+
+
+async def llm_health_check():
+    global active_llm_url
     while True:
-        for url in [OPENAI_URL_PRIMARY, OPENAI_URL_SECONDARY]:
-            base_url = url.split('/v1/')[0] if '/v1/' in url else url.rstrip('/')
+        for name in LLM_BACKEND_NAMES:
+            backend_url = LLM_BACKENDS[name]['url']
+            base_url = backend_url.split('/v1/')[0] if '/v1/' in backend_url else backend_url.rstrip('/')
             models_url = f"{base_url}/v1/models"
             try:
                 async with aiohttp.ClientSession(headers={'User-Agent': USER_AGENT}) as session:
                     async with session.get(models_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                        health_status[url] = (resp.status == 200)
-                        logging.debug(f"Health check {url} → {resp.status}")
+                        health_status[name] = (resp.status == 200)
+                        if resp.status == 200:
+                            try:
+                                body = await resp.json()
+                                available_models[name] = {m.get('id') for m in body.get('data', []) if isinstance(m, dict) and m.get('id')}
+                            except Exception as e:
+                                available_models[name] = None
+                                logging.debug(f"Failed to parse model list from {models_url}: {e}")
+                        else:
+                            available_models[name] = None
+                        logging.debug(f"Health check {name} ({models_url}) → {resp.status}")
             except Exception as e:
-                health_status[url] = False
-                logging.debug(f"Health check failed for {url}: {e}")
+                health_status[name] = False
+                available_models[name] = None
+                logging.debug(f"Health check failed for {name} ({models_url}): {e}")
 
-        if health_status.get(OPENAI_URL_PRIMARY):
-            active_openai_url = OPENAI_URL_PRIMARY
-            logging.info("Using primary AI backend.")
-        elif health_status.get(OPENAI_URL_SECONDARY):
-            active_openai_url = OPENAI_URL_SECONDARY
-            logging.info("Using secondary AI backend.")
+        if any(health_status.get(name) for name in LLM_BACKEND_NAMES):
+            reachable = [name for name in LLM_BACKEND_NAMES if health_status.get(name)]
+            logging.info(f"Reachable AI backends: {', '.join(reachable)}")
         else:
-            active_openai_url = None
             logging.error("No AI backend is currently healthy")
-        if active_openai_url:
+
+        for task in TASK_ACTIVE:
+            name, url, model, api_key = resolve_task_backend(task)
+            TASK_ACTIVE[task] = {'backend': name, 'url': url, 'model': model, 'api_key': api_key}
+        active_llm_url = TASK_ACTIVE['exam']['url']
+
+        if active_llm_url:
             QUEUE_EVENT.set()
         await broadcast_dashboard_update()
         await asyncio.sleep(300)
@@ -4500,7 +4587,7 @@ async def query_retrieve_loop():
 
 
 async def translate_existing_reports():
-    while active_openai_url is None:
+    while active_llm_url is None:
         logging.debug("translate_existing_reports: waiting for AI service to become available...")
         await asyncio.sleep(30)
 
@@ -4615,8 +4702,8 @@ async def main():
 
     if any(u['password'] == 'admin' for u in USERS.values()):
         logging.warning("SECURITY: Default admin password is still in use. Update credentials in local.cfg.")
-    if OPENAI_API_KEY == 'sk-your-api-key':
-        logging.warning("SECURITY: Default OPENAI_API_KEY placeholder is still set. Update it in local.cfg.")
+    if any(LLM_BACKENDS[name]['api_key'] == 'sk-your-api-key' for name in LLM_BACKEND_NAMES):
+        logging.warning("SECURITY: Default api_key placeholder is still set on an LLM backend. Update it in local.cfg.")
 
     reset_count = db_update('exams', "status = ?", ('processing',), status='queued')
     if reset_count and reset_count > 0:
@@ -4632,8 +4719,8 @@ async def main():
     tasks = []
     tasks.append(asyncio.create_task(asyncio.to_thread(start_dicom_server)))
     tasks.append(asyncio.create_task(start_dashboard()))
-    tasks.append(asyncio.create_task(openai_health_check()))
-    tasks.append(asyncio.create_task(relay_to_openai_loop()))
+    tasks.append(asyncio.create_task(llm_health_check()))
+    tasks.append(asyncio.create_task(relay_to_llm_loop()))
     tasks.append(asyncio.create_task(query_retrieve_loop()))
     tasks.append(asyncio.create_task(maintenance_loop()))
     tasks.append(asyncio.create_task(fhir_loop()))
@@ -4685,7 +4772,7 @@ if __name__ == '__main__':
     parser.add_argument("--load-dicom", action = "store_true", default=LOAD_DICOM, help = "Load existing .dcm files in queue")
     parser.add_argument("--no-query", action = "store_true", default=NO_QUERY, help = "Do not query the DICOM server automatically")
     parser.add_argument("--enable-ntfy", action = "store_true", default=ENABLE_NTFY, help = "Enable ntfy.sh notifications")
-    parser.add_argument("--model", type=str, default=MODEL_NAME, help="Model name to use for analysis")
+    parser.add_argument("--model", type=str, default=MODEL_NAME, help="Default model name (used for exam analysis and any task without its own configured model)")
     parser.add_argument("--retrieval-method", type=str, choices=['C-MOVE', 'C-GET'], default=RETRIEVAL_METHOD, help="DICOM retrieval method")
     parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Set logging level")
     parser.add_argument("--translate-existing", action = "store_true", help = "Translate existing radiologist reports without English translations")
@@ -4696,6 +4783,12 @@ if __name__ == '__main__':
     NO_QUERY = args.no_query
     ENABLE_NTFY = args.enable_ntfy
     MODEL_NAME = args.model
+    # --model overrides the default (first-listed) backend's 'exam' model, and
+    # cascades to that backend's tasks that had no task-specific model configured.
+    _default_backend = LLM_BACKENDS[LLM_BACKEND_NAMES[0]]
+    _default_backend['models']['exam'] = MODEL_NAME
+    for _task in _default_backend['_fallback_tasks']:
+        _default_backend['models'][_task] = MODEL_NAME
     RETRIEVAL_METHOD = args.retrieval_method
     TRANSLATE_EXISTING = args.translate_existing
     logging.getLogger().setLevel(getattr(logging, args.log_level))

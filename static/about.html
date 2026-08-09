@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html data-theme="dark" lang="en">
 <!--
-  XRayVision - Async DICOM processor with OpenAI and WebSocket dashboard.
+  XRayVision - Async DICOM processor with LLM and WebSocket dashboard.
   Copyright (C) 2025 Costin Stroie <costinstroie@eridu.eu.org>
 
   This program is free software: you can redistribute it and/or modify
@@ -53,7 +53,7 @@
                 <p>XRayVision offers a range of features to enhance radiology workflows:</p>
             </hgroup>
             <ul class="feature-list">
-                <li><strong>AI-Powered Analysis</strong> - Uses OpenAI (with backup) to intelligently interpret images</li>
+                <li><strong>AI-Powered Analysis</strong> - Uses configurable LLM backends (with automatic failover) to intelligently interpret images</li>
                 <li><strong>DICOM Compatibility</strong> - Works seamlessly with medical imaging systems</li>
                 <li><strong>Real-Time Dashboard</strong> - See live updates as images are processed</li>
                 <li><strong>Smart Database</strong> - Stores exams with filtering and review capabilities</li>
@@ -121,16 +121,16 @@
             <table class="config-table" role="grid">
                 <tbody>
                     <tr>
-                        <td>Primary AI Endpoint</td>
-                        <td id="openai-primary" class="loading">Loading...</td>
+                        <td>AI Backends</td>
+                        <td id="llm-backends" class="loading">Loading...</td>
                     </tr>
                     <tr>
-                        <td>Backup AI Endpoint</td>
-                        <td id="openai-secondary" class="loading">Loading...</td>
-                    </tr>
-                    <tr>
-                        <td>Model Name</td>
+                        <td>Default Model</td>
                         <td id="model-name" class="loading">Loading...</td>
+                    </tr>
+                    <tr>
+                        <td>Task Models</td>
+                        <td id="task-models" class="loading">Loading...</td>
                     </tr>
                     <tr>
                         <td>Notification URL</td>
@@ -173,8 +173,30 @@
         fetch('/api/config')
             .then(response => { if (!response.ok) throw new Error(response.status); return response.json(); })
             .then(data => {
-                document.getElementById('openai-primary').textContent = data.OPENAI_URL_PRIMARY || 'Not configured';
-                document.getElementById('openai-secondary').textContent = data.OPENAI_URL_SECONDARY || 'Not configured';
+                const backendsCell = document.getElementById('llm-backends');
+                backendsCell.textContent = '';
+                if (data.LLM_BACKENDS && Object.keys(data.LLM_BACKENDS).length > 0) {
+                    for (const [name, url] of Object.entries(data.LLM_BACKENDS)) {
+                        const line = document.createElement('div');
+                        line.textContent = `${name}: ${url}`;
+                        backendsCell.appendChild(line);
+                    }
+                } else {
+                    backendsCell.textContent = 'Not visible to this role';
+                }
+
+                const taskModelsCell = document.getElementById('task-models');
+                taskModelsCell.textContent = '';
+                if (data.TASK_MODELS) {
+                    for (const [task, model] of Object.entries(data.TASK_MODELS)) {
+                        const line = document.createElement('div');
+                        line.textContent = `${task}: ${model}`;
+                        taskModelsCell.appendChild(line);
+                    }
+                } else {
+                    taskModelsCell.textContent = 'Not configured';
+                }
+
                 document.getElementById('model-name').textContent = data.MODEL_NAME || 'Not configured';
                 document.getElementById('ntfy-url').textContent = data.NTFY_URL || 'Not configured';
                 document.getElementById('ae-title').textContent = data.AE_TITLE || 'Not configured';

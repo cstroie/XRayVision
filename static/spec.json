@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "XRayVision API",
-    "description": "API for the XRayVision DICOM processor with OpenAI integration",
+    "description": "API for the XRayVision DICOM processor with LLM integration",
     "version": "1.0.0"
   },
   "servers": [
@@ -282,14 +282,17 @@
       "Config": {
         "type": "object",
         "properties": {
-          "OPENAI_URL_PRIMARY": { "type": "string", "description": "Primary OpenAI API URL" },
-          "OPENAI_URL_SECONDARY": { "type": "string", "description": "Secondary OpenAI API URL" },
-          "NTFY_URL": { "type": "string", "description": "NTFY notification URL" },
+          "MODEL_NAME": { "type": "string", "description": "Default model (first-listed LLM backend's exam model)" },
+          "TASK_MODELS": { "type": "object", "description": "Model currently resolved for each task (exam, translation, check, analysis)" },
+          "USER_ROLE": { "type": "string", "description": "Role of the requesting user" },
+          "LLM_BACKENDS": { "type": "object", "description": "Admin only: map of LLM backend name to its URL" },
+          "NTFY_URL": { "type": "string", "description": "Admin only: NTFY notification URL" },
           "AE_TITLE": { "type": "string", "description": "DICOM AE Title" },
           "AE_PORT": { "type": "integer", "description": "DICOM AE Port" },
-          "REMOTE_AE_TITLE": { "type": "string", "description": "Remote DICOM AE Title" },
-          "REMOTE_AE_IP": { "type": "string", "description": "Remote DICOM AE IP" },
-          "REMOTE_AE_PORT": { "type": "integer", "description": "Remote DICOM AE Port" }
+          "DASHBOARD_PORT": { "type": "integer", "description": "Dashboard web server port" },
+          "REMOTE_AE_TITLE": { "type": "string", "description": "Admin only: Remote DICOM AE Title" },
+          "REMOTE_AE_IP": { "type": "string", "description": "Admin only: Remote DICOM AE IP" },
+          "REMOTE_AE_PORT": { "type": "integer", "description": "Admin only: Remote DICOM AE Port" }
         }
       },
       "CNPValidationResponse": {

@@ -52,15 +52,15 @@ SQLite is configured with WAL journal mode, `isolation_level=None`, and `BEGIN I
 
 | Function | Role |
 |---|---|
-| `send_to_openai(session, headers, payload)` | Single POST to `active_openai_url`; 300 s timeout; returns parsed JSON or None |
-| `send_exam_to_openai(exam)` | Full exam processing: builds prompt, retries 3× with exponential backoff, parses FINDINGS/IMPRESSION structure, writes `ai_reports`, triggers downstream checks |
+| `send_to_llm(session, headers, payload, url=...)` | Single POST to the given (or default) LLM URL; 300 s timeout; returns parsed JSON or None |
+| `send_exam_to_llm(exam)` | Full exam processing: builds prompt, retries 3× with exponential backoff, parses FINDINGS/IMPRESSION structure, writes `ai_reports`, triggers downstream checks |
 | `check_ai_report_and_update(uid)` | Sends AI report text to model with `CHK_PROMPT`; extracts severity/confidence/summary; updates `ai_reports` |
 | `check_rad_report_and_update(uid)` | Same flow for radiologist reports |
 | `translate_report(text)` | Sends Romanian report to model with `TRN_PROMPT`; stores English result in `rad_reports.text_en` |
 | `check_report(text)` | Ad-hoc single-pass check via `/api/check` |
 | `detailed_analysis_report(text)` | Multi-pass analysis (overview → detail → critique → assessment) via `ANA_PROMPT` |
 
-All AI calls use a shared `aiohttp.ClientSession` scoped to the operation. Failover between `OPENAI_URL_PRIMARY` and `OPENAI_URL_SECONDARY` is managed by `openai_health_check()`.
+All AI calls use a shared `aiohttp.ClientSession` scoped to the operation. Each task (`exam`, `translation`, `check`, `analysis`) is routed to its own resolved backend/model in `TASK_ACTIVE`; failover across the ordered `[llm] backends = ...` list is managed by `llm_health_check()`.
 
 ### 6. FHIR / HIS Integration (lines ~4900–5300)
 
@@ -95,10 +95,10 @@ All loops are `async def` tasks started in `main()` via `asyncio.gather()`.
 
 | Task | Function | Trigger | Role |
 |---|---|---|---|
-| Processing | `relay_to_openai_loop()` | `QUEUE_EVENT` (async) | Dequeues `queued`/`requeue` exams, calls `send_exam_to_openai()` |
+| Processing | `relay_to_llm_loop()` | `QUEUE_EVENT` (async) | Dequeues `queued`/`requeue` exams, calls `send_exam_to_llm()` |
 | Query/Retrieve | `query_retrieve_loop()` | Timer (`QUERY_INTERVAL`) | Periodic C-FIND → C-MOVE/GET from PACS |
 | FHIR polling | `fhir_loop()` | Timer | Checks `done` exams for missing radiologist reports |
-| AI health check | `openai_health_check()` | Timer (60 s) | Sets `active_openai_url`; signals `QUEUE_EVENT` when endpoint recovers |
+| AI health check | `llm_health_check()` | Timer (300 s) | Resolves each task's backend/model into `TASK_ACTIVE`; sets `active_llm_url`; signals `QUEUE_EVENT` when a backend recovers |
 | Maintenance | `maintenance_loop()` | Timer (daily) | DB backup, dead WebSocket cleanup, cache eviction, purge old errors |
 
 ---
@@ -117,15 +117,15 @@ dicom_store()
   └─ QUEUE_EVENT.set()
         │
         ▼
-relay_to_openai_loop()           ← wakes on QUEUE_EVENT
-  └─ send_exam_to_openai(exam)
+relay_to_llm_loop()               ← wakes on QUEUE_EVENT
+  └─ send_exam_to_llm(exam)
        ├─ update_patient_info_from_fhir()   → enriches patient dict from HIS
        ├─ prepare_exam_data()               → region, projection, gender text
        ├─ create_exam_prompt()              → assembles REP_PROMPT + USR_PROMPT + base64 image
-       ├─ send_to_openai()                  → POST /v1/chat/completions  (retry ×3)
+       ├─ send_to_llm()                     → POST /v1/chat/completions  (retry ×3)
        ├─ db_insert('ai_reports', text=…)   → exams.status = done
        └─ check_ai_report_and_update()
-            ├─ send_to_openai()             → CHK_PROMPT → severity / confidence / summary
+            ├─ send_to_llm()                → CHK_PROMPT → severity / confidence / summary
             ├─ db_update('ai_reports', …)
             ├─ broadcast_dashboard_update() → WebSocket → browser
             └─ send_ntfy_notification()     → ntfy.sh  (if severity ≥ SEVERITY_THRESHOLD)
@@ -149,8 +149,9 @@ Browser
 | Variable | Type | Purpose |
 |---|---|---|
 | `QUEUE_EVENT` | `asyncio.Event` | Signals relay loop when exams are queued or endpoint recovers |
-| `active_openai_url` | `str \| None` | Currently healthy AI endpoint (set by health check loop) |
-| `health_status` | `dict[str, bool]` | Health of each endpoint URL |
+| `active_llm_url` | `str \| None` | Currently healthy LLM endpoint for the 'exam' task (set by health check loop) |
+| `TASK_ACTIVE` | `dict[str, dict]` | Per-task resolved `{backend, url, model, api_key}` (exam, translation, check, analysis) |
+| `health_status` | `dict[str, bool]` | Reachability of each configured LLM backend (by name) |
 | `timings` | `dict[str, int]` | Rolling average latencies (ms) per AI call type |
 | `dashboard` | `dict` | Queue sizes and processing state pushed to WebSocket clients |
 | `websocket_clients` | `set` | Live WebSocket connections; cleaned up by maintenance loop |

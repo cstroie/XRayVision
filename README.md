@@ -32,7 +32,7 @@ PACS ──C-STORE/C-MOVE──► XRayVision ──► AI Vision Model
 | | |
 |---|---|
 | **DICOM** | C-STORE receiver + periodic C-FIND/C-MOVE/C-GET from PACS |
-| **AI analysis** | OpenAI-compatible API, primary + secondary endpoint failover |
+| **AI analysis** | OpenAI-compatible API, multiple LLM backends with per-task models and failover |
 | **Radiologist reports** | FHIR integration, auto-translation (Romanian → English) |
 | **Dashboard** | Live WebSocket updates, lightbox previews, search & filter |
 | **Statistics** | Per-region, per-radiologist, per-diagnostic accuracy metrics |
@@ -68,11 +68,18 @@ cd XRayVision
 Copy or edit `xrayvision.cfg`. The most important sections:
 
 ```ini
-[openai]
-OPENAI_URL_PRIMARY   = http://127.0.0.1:8080/v1/chat/completions
-OPENAI_URL_SECONDARY = http://127.0.0.1:11434/v1/chat/completions
-OPENAI_API_KEY       = sk-your-api-key
-MODEL_NAME           = medgemma-4b-it
+[llm]
+backends = primary, secondary
+
+[llm:primary]
+url     = http://127.0.0.1:8080/v1/chat/completions
+api_key = sk-your-api-key
+exam    = medgemma-4b-it
+
+[llm:secondary]
+url     = http://127.0.0.1:11434/v1/chat/completions
+api_key = sk-your-api-key
+exam    = medgemma-4b-it
 
 [dicom]
 AE_TITLE        = XRAYVISION
@@ -141,7 +148,8 @@ All options live in `xrayvision.cfg`. The full file is commented. Key sections:
 | `[general]` | Database path, backup directory |
 | `[users]` | Credentials — `username = password,role` (`admin` or `user`) |
 | `[dicom]` | AE title/port, remote PACS address, retrieval method |
-| `[openai]` | AI API URLs, key, model name |
+| `[llm]` | Ordered list of LLM backend names |
+| `[llm:<name>]` | One per backend — URL, optional API key, model per task (exam/translation/check/analysis) |
 | `[fhir]` | FHIR server URL and credentials (Hipocrate HIS) |
 | `[dashboard]` | Web server port |
 | `[notifications]` | ntfy.sh URL, optional image base URL for attachments |

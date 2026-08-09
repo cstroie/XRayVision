@@ -16,7 +16,7 @@ data volume here is tens of rows, not a DataFrame problem.
 
 Ground truth positive: rad.severity >= threshold (fetched from the DB per uid).
 Predicted positive:    classification['severity'] >= threshold (mirrors
-                        production's actual gate in send_exam_to_openai; the
+                        production's actual gate in send_exam_to_llm; the
                         'pathologic' field is reported separately as a
                         secondary view, since disagreement between the two
                         surfaces classifier self-contradiction bugs too).

@@ -557,64 +557,78 @@ class TestXRayVision(unittest.TestCase):
 class TestXRayVisionAsync(unittest.IsolatedAsyncioTestCase):
     """Async test cases for the xrayvision module"""
 
-    @patch('xrayvision.send_to_openai')
-    async def test_translate_report_success(self, mock_send_to_openai):
+    def setUp(self):
+        self._orig_translation_active = xrayvision.TASK_ACTIVE['translation']
+        xrayvision.TASK_ACTIVE['translation'] = {'backend': 'test', 'url': 'http://test-backend/v1/chat/completions', 'model': 'test-model', 'api_key': ''}
+
+    def tearDown(self):
+        xrayvision.TASK_ACTIVE['translation'] = self._orig_translation_active
+
+    @patch('xrayvision.send_to_llm')
+    async def test_translate_report_success(self, mock_send_to_llm):
         """Test that translate_report successfully translates Romanian to English"""
         translation = "Clear costo-diaphragmatic sinuses, no pleural effusion."
-        mock_send_to_openai.return_value = {
+        mock_send_to_llm.return_value = {
             "choices": [{"message": {"content": f"```text\n{translation}\n```"}}]
         }
         result = await xrayvision.translate_report("SCD libere, fără lichid pleural.")
         self.assertEqual(result, translation)
 
-    @patch('xrayvision.send_to_openai')
-    async def test_translate_report_failure(self, mock_send_to_openai):
+    @patch('xrayvision.send_to_llm')
+    async def test_translate_report_failure(self, mock_send_to_llm):
         """Test that translate_report handles AI failures gracefully"""
-        mock_send_to_openai.return_value = None
+        mock_send_to_llm.return_value = None
         result = await xrayvision.translate_report("SCD libere, fără lichid pleural.")
         self.assertIsNone(result)
 
-    @patch('xrayvision.send_to_openai')
-    async def test_translate_report_invalid_json(self, mock_send_to_openai):
+    @patch('xrayvision.send_to_llm')
+    async def test_translate_report_invalid_json(self, mock_send_to_llm):
         """Test that translate_report handles invalid JSON responses"""
-        mock_send_to_openai.return_value = {
+        mock_send_to_llm.return_value = {
             "choices": [{"message": {"content": '{"invalid_field": "some text"}'}}]
         }
         result = await xrayvision.translate_report("SCD libere, fără lichid pleural.")
         self.assertIsNone(result)
 
-    @patch('xrayvision.send_to_openai')
-    async def test_translate_report_empty_input(self, mock_send_to_openai):
+    @patch('xrayvision.send_to_llm')
+    async def test_translate_report_empty_input(self, mock_send_to_llm):
         """Test that translate_report handles empty input"""
         result = await xrayvision.translate_report("")
         self.assertIsNone(result)
-        mock_send_to_openai.assert_not_called()
+        mock_send_to_llm.assert_not_called()
 
 
 class TestCheckReportParsing(unittest.IsolatedAsyncioTestCase):
     """Regression tests for check_report()'s JSON extraction."""
 
-    @patch('xrayvision.send_to_openai')
-    async def test_check_report_accepts_fenced_json(self, mock_send_to_openai):
-        mock_send_to_openai.return_value = {
+    def setUp(self):
+        self._orig_check_active = xrayvision.TASK_ACTIVE['check']
+        xrayvision.TASK_ACTIVE['check'] = {'backend': 'test', 'url': 'http://test-backend/v1/chat/completions', 'model': 'test-model', 'api_key': ''}
+
+    def tearDown(self):
+        xrayvision.TASK_ACTIVE['check'] = self._orig_check_active
+
+    @patch('xrayvision.send_to_llm')
+    async def test_check_report_accepts_fenced_json(self, mock_send_to_llm):
+        mock_send_to_llm.return_value = {
             "choices": [{"message": {"content": '```json\n{"pathologic": "yes", "severity": 6, "summary": "pneumonia"}\n```'}}]
         }
         result = await xrayvision.check_report("FINDINGS: consolidation.")
         self.assertEqual(result, {"pathologic": "yes", "severity": 6, "summary": "pneumonia"})
 
-    @patch('xrayvision.send_to_openai')
-    async def test_check_report_accepts_bare_json(self, mock_send_to_openai):
+    @patch('xrayvision.send_to_llm')
+    async def test_check_report_accepts_bare_json(self, mock_send_to_llm):
         """Bare JSON with no code fence -- what chk_prompt.txt actually asks for
         ("Respond with ONLY valid JSON") -- must not be silently discarded."""
-        mock_send_to_openai.return_value = {
+        mock_send_to_llm.return_value = {
             "choices": [{"message": {"content": '{"pathologic": "yes", "severity": 7, "summary": "pneumonia"}'}}]
         }
         result = await xrayvision.check_report("FINDINGS: consolidation.")
         self.assertEqual(result, {"pathologic": "yes", "severity": 7, "summary": "pneumonia"})
 
-    @patch('xrayvision.send_to_openai')
-    async def test_check_report_rejects_garbage(self, mock_send_to_openai):
-        mock_send_to_openai.return_value = {
+    @patch('xrayvision.send_to_llm')
+    async def test_check_report_rejects_garbage(self, mock_send_to_llm):
+        mock_send_to_llm.return_value = {
             "choices": [{"message": {"content": "I cannot help with that."}}]
         }
         result = await xrayvision.check_report("FINDINGS: consolidation.")
