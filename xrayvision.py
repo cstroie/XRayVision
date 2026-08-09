@@ -2880,9 +2880,18 @@ async def translate_report(report_text):
             response_text = result["choices"][0]["message"]["content"].strip()
             logging.debug(f"Raw AI translation response: {response_text}")
 
-            response_text = re.findall(r'```text\s*([^`]*?)\s*```', response_text, re.DOTALL)
-            if response_text:
-                response_text = response_text[-1]
+            # trn_prompt.txt asks for a ```text``` fence, but not every model
+            # follows it reliably -- fall back to the raw text rather than
+            # discarding a valid translation, mirroring check_report()'s
+            # handling of unfenced JSON. A response that looks like JSON
+            # (e.g. a stray tool-call artifact) is not a plausible unfenced
+            # translation, so that case is still discarded; validate_translation()
+            # downstream screens out other garbage/error responses either way.
+            fenced_matches = re.findall(r'```text\s*([^`]*?)\s*```', response_text, re.DOTALL)
+            if fenced_matches:
+                response_text = fenced_matches[-1]
+            elif response_text.startswith('{') or response_text.startswith('['):
+                response_text = ''
 
             if not response_text:
                 logging.warning("Empty translation response received")

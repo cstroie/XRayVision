@@ -148,7 +148,7 @@ When fixing issues from `issues.txt`:
 
 ## Known issues / active work
 
-- `translate_report()` expects the model to wrap the translation in ` ```text``` ` code fences. If the model returns plain text (no fences), the response is discarded and the function returns `None`. This is a known model behaviour issue with some versions of MedGemma.
+- `translate_report()` asks the model to wrap the translation in ` ```text``` ` code fences (`trn_prompt.txt`), but not every model follows that reliably (MedGemma, qwen3-4b). When no fence is found, it falls back to the raw response text — unless that text looks like JSON (starts with `{`/`[`), which is treated as a malformed/tool-call artifact and discarded. `validate_translation()` still screens the fallback for garbage (identical-to-source, too short, apology phrases) before it's stored.
 - Issues backlog in `issues.txt`: transaction isolation, WebSocket cleanup, FHIR response validation, path validation.
 - `acronyms.txt` / `find_acronyms.py` tools exist for expanding Romanian medical abbreviations (in progress).
 - `[questions]` config section is loaded into `REGION_QUESTIONS` and passed to `create_exam_prompt()` but the `{question}` placeholder is not present in `usr_prompt.txt`, so questions are currently unused. Left in place intentionally — superseded by `[templates]`.

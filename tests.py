@@ -582,6 +582,17 @@ class TestXRayVisionAsync(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(result)
 
     @patch('xrayvision.send_to_llm')
+    async def test_translate_report_accepts_unfenced_text(self, mock_send_to_llm):
+        """Plain-text translation with no ```text``` fence must not be discarded
+        -- some models (e.g. qwen3-4b) don't reliably follow the fence instruction."""
+        translation = "No acute cardiopulmonary abnormality."
+        mock_send_to_llm.return_value = {
+            "choices": [{"message": {"content": translation}}]
+        }
+        result = await xrayvision.translate_report("Cord, pulmon normale radiologic.")
+        self.assertEqual(result, translation)
+
+    @patch('xrayvision.send_to_llm')
     async def test_translate_report_invalid_json(self, mock_send_to_llm):
         """Test that translate_report handles invalid JSON responses"""
         mock_send_to_llm.return_value = {
