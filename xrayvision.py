@@ -3384,7 +3384,7 @@ async def send_exam_to_llm(exam, max_retries = 3):
                     is_positive = severity >= SEVERITY_THRESHOLD
                     ai_report = (exam.get('report') or {}).get('ai') or {}
                     reviewed = ai_report.get('reviewed', False) if isinstance(ai_report, dict) else False
-                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': reviewed, 'severity': severity})
+                    await broadcast_dashboard_update(event = "new_exam", payload = {'uid': exam['uid'], 'positive': is_positive, 'reviewed': reviewed, 'severity': severity, 'created': exam['exam'].get('created')})
                     if is_positive:
                         try:
                             await send_ntfy_notification(exam['uid'], report, exam)

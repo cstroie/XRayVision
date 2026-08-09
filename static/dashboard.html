@@ -258,7 +258,19 @@
         }
 
         let isPlayingChime = false;
-        
+
+        // Only chime for exams actually taken recently -- reprocessing an
+        // older study (requeue, model change, bulk backfill) still updates
+        // the dashboard but shouldn't sound an alert for a months-old exam.
+        const CHIME_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+        function isRecentExam(created) {
+            if (!created) return false;
+            const createdMs = Date.parse(created.replace(' ', 'T'));
+            if (Number.isNaN(createdMs)) return false;
+            return (Date.now() - createdMs) <= CHIME_MAX_AGE_MS;
+        }
+
         function playChime() {
             if (isPlayingChime) return;
             
@@ -342,8 +354,9 @@
                         if (currentPage === 1) {
                             loadPage(1);
                         }
-                        // Play chime if positive and not reviewed (new finding)
-                        if (data.event.payload.positive && !data.event.payload.reviewed) {
+                        // Play chime only for a recent, unreviewed positive finding --
+                        // not for historic exams being reprocessed
+                        if (data.event.payload.positive && !data.event.payload.reviewed && isRecentExam(data.event.payload.created)) {
                             playChime();
                         }
                     } else if (data.event.name === "connected") {
